@@ -48,6 +48,7 @@ from toil.cwl.utils import (
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.job import WorkerImportJob
 from toil.lib.threading import cpu_count
 from toil.test import (
     get_data,
@@ -1112,12 +1113,13 @@ def cwl_v1_0_spec(tmp_path: Path) -> Generator[Path]:
     finally:
         pass  # no cleanup
 
-
+@pytest.mark.integrative
+@pytest.mark.conformance
 @needs_cwl
 @needs_online
 @pytest.mark.cwl
 @pytest.mark.online
-class TestCWLv10:
+class TestCWLv10Conformance:
     """
     Run the CWL 1.0 conformance tests in various environments.
     """
@@ -1295,11 +1297,13 @@ def cwl_v1_1_spec(tmp_path: Path) -> Generator[Path]:
         pass  # no cleanup
 
 
+@pytest.mark.integrative
+@pytest.mark.conformance
 @needs_cwl
 @needs_online
 @pytest.mark.cwl
 @pytest.mark.online
-class TestCWLv11:
+class TestCWLv11Conformance:
     """
     Run the CWL 1.1 conformance tests in various environments.
     """
@@ -1383,11 +1387,13 @@ def cwl_v1_2_spec(tmp_path: Path) -> Generator[Path]:
         pass  # no cleanup
 
 
+@pytest.mark.integrative
+@pytest.mark.conformance
 @needs_cwl
 @needs_online
 @pytest.mark.cwl
 @pytest.mark.online
-class TestCWLv12:
+class TestCWLv12Conformance:
     """
     Run the CWL 1.2 conformance tests in various environments.
     """
@@ -1525,7 +1531,7 @@ class TestCWLv12:
         TOIL_WES_ENDPOINT=http://localhost:8080 \
         TOIL_WES_USER=test \
         TOIL_WES_PASSWORD=password \
-        python -m pytest src/toil/test/cwl/cwlTest.py::TestCWLv12::test_wes_server_cwl_conformance -vv --log-level INFO --log-cli-level INFO
+        python -m pytest src/toil/test/cwl/cwlTest.py::TestCWLv12Conformance::test_wes_server_cwl_conformance -vv --log-level INFO --log-cli-level INFO
         """
         endpoint = os.environ.get("TOIL_WES_ENDPOINT")
         extra_args = [f"--wes_endpoint={endpoint}"]
@@ -2010,12 +2016,16 @@ def test_import_on_workers() -> None:
 
     with get_data("test/cwl/download.cwl") as cwl_file:
         with get_data("test/cwl/directory/directory/file.txt") as file_path:
+            # To make sure we see every job issued with a leader log message
+            # that we can then detect for the test, we need to turn off
+            # chaining.
             args = [
                 "--runImportsOnWorkers",
                 "--importWorkersDisk=10MiB",
                 "--realTimeLogging=True",
                 "--logLevel=INFO",
                 "--logColors=False",
+                "--disableChaining=True",
                 str(cwl_file),
                 "--input",
                 str(file_path),
@@ -2036,7 +2046,7 @@ else:
 
 class ImportWorkersMessageHandler(_stream_handler):
     """
-    Detect the import workers log message and set a flag.
+    Detect whether any WorkerImportJob jobs ran during a workflow.
     """
 
     def __init__(self) -> None:
@@ -2045,7 +2055,9 @@ class ImportWorkersMessageHandler(_stream_handler):
         super().__init__(sys.stderr)
 
     def emit(self, record: logging.LogRecord) -> None:
+        # We get the job name from the class since we already started failing
+        # this test once due to it being renamed.
         if (record.msg % record.args).startswith(
-            "Issued job 'CWLImportJob' CWLImportJob"
+            f"Issued job '{WorkerImportJob.__name__}'"
         ):
             self.detected = True

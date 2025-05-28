@@ -2985,24 +2985,23 @@ def makeRootJob(
             else:
                 worker_metadata[filename] = file_data
 
+        if worker_metadata:
+            logger.info(
+                "Planning to import %s files on workers",
+                len(worker_metadata),
+            )
+
         # import the files for the leader first
         path_to_fileid = WorkerImportJob.import_files(
             list(leader_metadata.keys()), toil._jobStore
         )
 
-        # then install the imported files before importing the other files
-        # this way the control flow can fall from the leader to workers
-        tool, initialized_job_order = CWLInstallImportsJob.fill_in_files(
-            initialized_job_order,
-            tool,
-            path_to_fileid,
-            options.basedir,
-            options.reference_inputs,
-            options.bypass_file_store,
-        )
+        # Because installing the imported files expects all files to have been
+        # imported, we don't do that here; we combine the leader imports and
+        # the worker imports and install them all at once.
 
         import_job = CWLImportWrapper(
-            initialized_job_order, tool, runtime_context, worker_metadata, options
+            initialized_job_order, tool, runtime_context, worker_metadata, path_to_fileid, options
         )
         return import_job
     else:
@@ -3574,7 +3573,7 @@ class CWLInstallImportsJob(Job):
         basedir: str,
         skip_remote: bool,
         bypass_file_store: bool,
-        import_data: Promised[dict[str, FileID]],
+        import_data: list[Promised[dict[str, FileID]]],
         **kwargs: Any,
     ) -> None:
         """
@@ -3582,6 +3581,8 @@ class CWLInstallImportsJob(Job):
         to convert all file locations to URIs.
 
         This class is only used when runImportsOnWorkers is enabled.
+
+        :param import_data: List of mappings from file URI to imported file ID.
         """
         super().__init__(local=True, **kwargs)
         self.initialized_job_order = initialized_job_order
@@ -3591,6 +3592,8 @@ class CWLInstallImportsJob(Job):
         self.bypass_file_store = bypass_file_store
         self.import_data = import_data
 
+    # TODO: Since we only call this from the class itself now it doesn't really
+    # need to be static anymore.
     @staticmethod
     def fill_in_files(
         initialized_job_order: CWLObjectType,
@@ -3608,7 +3611,12 @@ class CWLInstallImportsJob(Job):
             """
             Return the file name's associated Toil file ID
             """
-            return candidate_to_fileid[filename]
+            try:
+                return candidate_to_fileid[filename]
+            except KeyError:
+                # Give something more useful than a KeyError if something went
+                # wrong with the importing.
+                raise RuntimeError(f"File at \"{filename}\" was never imported.")
 
         file_convert_function = functools.partial(
             extract_and_convert_file_to_toil_uri, fill_in_file
@@ -3655,11 +3663,19 @@ class CWLInstallImportsJob(Job):
         Convert the filenames in the workflow inputs into the URIs
         :return: Promise of transformed workflow inputs. A tuple of the job order and process
         """
-        candidate_to_fileid: dict[str, FileID] = unwrap(self.import_data)
+
+        # Merge all the input dicts down to one to check.
+        candidate_to_fileid: dict[str, FileID] = {
+            k: v for mapping in unwrap(
+                self.import_data
+            ) for k, v in unwrap(mapping).items()
+        }
 
         initialized_job_order = unwrap(self.initialized_job_order)
         tool = unwrap(self.tool)
-        return CWLInstallImportsJob.fill_in_files(
+
+        # Install the imported files in the tool and job order
+        return self.fill_in_files(
             initialized_job_order,
             tool,
             candidate_to_fileid,
@@ -3683,33 +3699,46 @@ class CWLImportWrapper(CWLNamedJob):
         tool: Process,
         runtime_context: cwltool.context.RuntimeContext,
         file_to_data: dict[str, FileMetadata],
+        imported_files: dict[str, FileID],
         options: Namespace,
     ):
+        """
+        Make a job to do file imports on workers and then run the workflow.
+
+        :param file_to_data: Metadata for files that need to be imported on the
+            worker.
+        :param imported_files: Files already imported on the leader.
+        """
         super().__init__(local=False, disk=options.import_workers_threshold)
         self.initialized_job_order = initialized_job_order
         self.tool = tool
-        self.options = options
         self.runtime_context = runtime_context
         self.file_to_data = file_to_data
+        self.imported_files = imported_files
+        self.options = options
 
     def run(self, file_store: AbstractFileStore) -> Any:
+        # Do the worker-based imports
         imports_job = ImportsJob(
             self.file_to_data,
             self.options.import_workers_threshold,
             self.options.import_workers_disk,
         )
         self.addChild(imports_job)
+
+        # Install the worker imports and any leader imports
         install_imports_job = CWLInstallImportsJob(
             initialized_job_order=self.initialized_job_order,
             tool=self.tool,
             basedir=self.options.basedir,
             skip_remote=self.options.reference_inputs,
             bypass_file_store=self.options.bypass_file_store,
-            import_data=imports_job.rv(0),
+            import_data=[self.imported_files, imports_job.rv(0)],
         )
         self.addChild(install_imports_job)
         imports_job.addFollowOn(install_imports_job)
 
+        # Run the workflow
         start_job = CWLStartJob(
             install_imports_job.rv(0),
             install_imports_job.rv(1),
