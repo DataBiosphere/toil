@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.lib.url import URLAccess
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +223,7 @@ def download_structure(
                 )
             else:
                 # We need to download from some other kind of URL.
-                size, executable = AbstractJobStore.read_from_url(
+                size, executable = URLAccess.read_from_url(
                     value, open(dest_path, "wb")
                 )
                 if executable:

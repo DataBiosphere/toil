@@ -23,6 +23,7 @@ from toil.test import (
     needs_docker,
     needs_docker_cuda,
     needs_google_storage,
+    needs_online,
     needs_singularity_or_docker,
     needs_wdl,
     slow,
@@ -650,6 +651,7 @@ class TestWDL:
                 != result_not_cached["random.value_written"]
             )
 
+    @needs_online
     def test_url_to_optional_file(self, tmp_path: Path) -> None:
         """
         Test if missing and error-producing URLs are handled correctly for optional File? values.
