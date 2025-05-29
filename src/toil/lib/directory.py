@@ -87,7 +87,7 @@ def decode_directory(
         # We have a path below this
         return contents, parts[1], directory_identifier
 
-def encode_directory(contents: DirectoryContents, name: Optional[str], source: Optional[str]) -> str:
+def encode_directory(contents: DirectoryContents, name: Optional[str] = None, source: Optional[str] = None) -> str:
     """
     Encode a directory from a "toildir:" path to a directory (or a file in it).
 
