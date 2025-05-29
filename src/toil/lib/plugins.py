@@ -39,9 +39,9 @@ def get_plugin(plugin_type: PluginType, plugin_name: str) -> Any:
     """
     Get a plugin class by name.
 
-    :raises: KeyError if the key is not the name of a plugin, and
-             ImportError if the plugin's class cannot be loaded.
+    :raises: KeyError if plugin_name is not the name of a plugin
     """
+    _load_all_plugins(plugin_type)
     return _registry[plugin_type][plugin_name]
 
 

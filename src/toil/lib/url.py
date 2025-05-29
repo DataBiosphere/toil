@@ -31,6 +31,7 @@ from urllib.parse import ParseResult, urlparse
 
 from toil.lib.exceptions import UnimplementedURLException
 from toil.lib.memoize import memoize
+from toil.lib.plugins import register_plugin, get_plugin
 
 try:
     from botocore.exceptions import ProxyConnectionError
@@ -250,7 +251,7 @@ class URLAccess:
     @classmethod
     def _find_url_implementation(
         cls, url: ParseResult, export: bool = False
-    ) -> Type["URLAccess"]:
+    ) -> type["URLAccess"]:
         """
         Returns the URLAccess subclass that supports the given URL.
 
@@ -259,38 +260,92 @@ class URLAccess:
         :param bool export: Determines if the url is supported for exporting
 
         """
-        for implementation in cls._url_access_classes():
-            if implementation._supports_url(url, export):
-                return implementation
+        try:
+            implementation_factory = get_plugin("url_access", url.scheme.lower())
+        except KeyError:
+            raise UnimplementedURLException(url, "export" if export else "import")
+        
+        try:
+            implementation = cast(Type[URLAccess], implementation_factory())
+        except (ImportError, ProxyConnectionError):
+            logger.debug(
+                "Unable to import implementation for scheme '%s', as is expected if the corresponding extra was "
+                "omitted at installation time.",
+                url.scheme.lower(),
+            )
+            raise UnimplementedURLException(url, "export" if export else "import")
+
+        if implementation._supports_url(url, export):
+            return implementation
         raise UnimplementedURLException(url, "export" if export else "import")
 
-    @staticmethod
-    @memoize
-    def _url_access_classes() -> list[Type["URLAccess"]]:
-        """
-        A list of concrete URLAccess implementations whose dependencies are installed.
+    # @staticmethod
+    # @memoize
+    # def _url_access_classes() -> list[Type["URLAccess"]]:
+    #     """
+    #     A list of concrete URLAccess implementations whose dependencies are installed.
 
-        """
-        url_access_class_names = (
-            "toil.jobStores.fileJobStore.FileJobStore",
-            "toil.jobStores.googleJobStore.GoogleJobStore",
-            "toil.jobStores.aws.jobStore.AWSJobStore",
-            "toil.jobStores.abstractJobStore.JobStoreSupport",
-        )
-        url_access_classes = []
-        for class_name in url_access_class_names:
-            module_name, class_name = class_name.rsplit(".", 1)
-            from importlib import import_module
+    #     """
+    #     url_access_class_names = (
+    #         "toil.jobStores.fileJobStore.FileJobStore",
+    #         "toil.jobStores.googleJobStore.GoogleJobStore",
+    #         "toil.jobStores.aws.jobStore.AWSJobStore",
+    #         "toil.jobStores.abstractJobStore.JobStoreSupport",
+    #     )
+    #     url_access_classes = []
+    #     for class_name in url_access_class_names:
+    #         module_name, class_name = class_name.rsplit(".", 1)
+    #         from importlib import import_module
 
-            try:
-                module = import_module(module_name)
-            except (ImportError, ProxyConnectionError):
-                logger.debug(
-                    "Unable to import '%s' as is expected if the corresponding extra was "
-                    "omitted at installation time.",
-                    module_name,
-                )
-            else:
-                url_access_class = getattr(module, class_name)
-                url_access_classes.append(url_access_class)
-        return url_access_classes
+    #         try:
+    #             module = import_module(module_name)
+    #         except (ImportError, ProxyConnectionError):
+    #             logger.debug(
+    #                 "Unable to import '%s' as is expected if the corresponding extra was "
+    #                 "omitted at installation time.",
+    #                 module_name,
+    #             )
+    #         else:
+    #             url_access_class = getattr(module, class_name)
+    #             url_access_classes.append(url_access_class)
+    #     return url_access_classes
+
+#####
+# Built-in url access
+#####
+
+def file_job_store_factory() -> type[URLAccess]:
+    from toil.jobStores.fileJobStore import FileJobStore
+
+    return FileJobStore
+
+
+def google_job_store_factory() -> type[URLAccess]:
+    from toil.jobStores.googleJobStore import GoogleJobStore
+
+    return GoogleJobStore
+
+
+def aws_job_store_factory() -> type[URLAccess]:
+    from toil.jobStores.aws.jobStore import AWSJobStore
+
+    return AWSJobStore
+
+
+def job_store_support_factory() -> type[URLAccess]:
+    from toil.jobStores.abstractJobStore import JobStoreSupport
+
+    return JobStoreSupport
+
+#make sure my py still works and the tests work
+# can then get rid of _url_access_classes method
+
+#####
+# Registers all built-in urls
+#####
+register_plugin("url_access", "file", file_job_store_factory)
+register_plugin("url_access", "gs", google_job_store_factory)
+register_plugin("url_access", "s3", aws_job_store_factory)
+register_plugin("url_access", "http", job_store_support_factory)
+register_plugin("url_access", "https", job_store_support_factory)
+register_plugin("url_access", "ftp", job_store_support_factory)
