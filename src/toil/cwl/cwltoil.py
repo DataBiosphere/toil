@@ -154,6 +154,7 @@ from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.io import mkdtemp
 from toil.lib.threading import ExceptionalThread, global_mutex
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
+from toil.lib.url import URLAccess
 
 logger = logging.getLogger(__name__)
 
@@ -1327,7 +1328,7 @@ class ToilFsAccess(StdFsAccess):
             destination = path
         else:
             # The destination is something else.
-            if AbstractJobStore.get_is_directory(path):
+            if URLAccess.get_is_directory(path):
                 # Treat this as a directory
                 if path not in self.dir_to_download:
                     logger.debug(
@@ -1337,14 +1338,14 @@ class ToilFsAccess(StdFsAccess):
 
                     # Recursively fetch all the files in the directory.
                     def download_to(url: str, dest: str) -> None:
-                        if AbstractJobStore.get_is_directory(url):
+                        if URLAccess.get_is_directory(url):
                             os.mkdir(dest)
-                            for part in AbstractJobStore.list_url(url):
+                            for part in URLAccess.list_url(url):
                                 download_to(
                                     os.path.join(url, part), os.path.join(dest, part)
                                 )
                         else:
-                            AbstractJobStore.read_from_url(url, open(dest, "wb"))
+                            URLAccess.read_from_url(url, open(dest, "wb"))
 
                     download_to(path, dest_dir)
                     self.dir_to_download[path] = dest_dir
@@ -1357,7 +1358,7 @@ class ToilFsAccess(StdFsAccess):
                     # Try to grab it with a jobstore implementation, and save it
                     # somewhere arbitrary.
                     dest_file = NamedTemporaryFile(delete=False)
-                    AbstractJobStore.read_from_url(path, dest_file)
+                    URLAccess.read_from_url(path, dest_file)
                     dest_file.close()
                     self.dir_to_download[path] = dest_file.name
                 destination = self.dir_to_download[path]
@@ -1415,7 +1416,7 @@ class ToilFsAccess(StdFsAccess):
             return open(self._abs(fn), mode)
         else:
             # This should be supported by a job store.
-            byte_stream = AbstractJobStore.open_url(fn)
+            byte_stream = URLAccess.open_url(fn)
             if "b" in mode:
                 # Pass stream along in binary
                 return byte_stream
@@ -1452,7 +1453,7 @@ class ToilFsAccess(StdFsAccess):
             return True
         else:
             # This should be supported by a job store.
-            return AbstractJobStore.url_exists(path)
+            return URLAccess.url_exists(path)
 
     def size(self, path: str) -> int:
         parse = urlparse(path)
@@ -1481,7 +1482,7 @@ class ToilFsAccess(StdFsAccess):
             )
         else:
             # This should be supported by a job store.
-            size = AbstractJobStore.get_size(path)
+            size = URLAccess.get_size(path)
             if size is None:
                 # get_size can be unimplemented or unavailable
                 raise RuntimeError(f"Could not get size of {path}")
@@ -1504,7 +1505,7 @@ class ToilFsAccess(StdFsAccess):
             # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
             return isinstance(found, str)
         else:
-            return self.exists(fn) and not AbstractJobStore.get_is_directory(fn)
+            return self.exists(fn) and not URLAccess.get_is_directory(fn)
 
     def isdir(self, fn: str) -> bool:
         logger.debug("ToilFsAccess checking type of %s", fn)
@@ -1524,7 +1525,7 @@ class ToilFsAccess(StdFsAccess):
             # TODO: We assume directories can't be deleted.
             return isinstance(found, dict)
         else:
-            status = AbstractJobStore.get_is_directory(fn)
+            status = URLAccess.get_is_directory(fn)
             logger.debug("AbstractJobStore said: %s", status)
             return status
 
@@ -1558,7 +1559,7 @@ class ToilFsAccess(StdFsAccess):
         else:
             return [
                 os.path.join(fn, entry.rstrip("/"))
-                for entry in AbstractJobStore.list_url(fn)
+                for entry in URLAccess.list_url(fn)
             ]
 
     def join(self, path: str, *paths: str) -> str:
@@ -1668,7 +1669,7 @@ def toil_get_file(
                                 pipe.write(data)
                     else:
                         # Stream from some other URI
-                        AbstractJobStore.read_from_url(uri, pipe)
+                        URLAccess.read_from_url(uri, pipe)
             except OSError as e:
                 # The other side of the pipe may have been closed by the
                 # reading thread, which is OK.
@@ -1711,7 +1712,7 @@ def toil_get_file(
                     # Open that path exclusively to make sure we created it
                     with open(src_path, "xb") as fh:
                         # Download into the file
-                        size, executable = AbstractJobStore.read_from_url(uri, fh)
+                        size, executable = URLAccess.read_from_url(uri, fh)
                         if executable:
                             # Set the execute bit in the file's permissions
                             os.chmod(src_path, os.stat(src_path).st_mode | stat.S_IXUSR)
@@ -2916,24 +2917,23 @@ def makeRootJob(
             else:
                 worker_metadata[filename] = file_data
 
+        if worker_metadata:
+            logger.info(
+                "Planning to import %s files on workers",
+                len(worker_metadata),
+            )
+
         # import the files for the leader first
         path_to_fileid = WorkerImportJob.import_files(
             list(leader_metadata.keys()), toil._jobStore
         )
 
-        # then install the imported files before importing the other files
-        # this way the control flow can fall from the leader to workers
-        tool, initialized_job_order = CWLInstallImportsJob.fill_in_files(
-            initialized_job_order,
-            tool,
-            path_to_fileid,
-            options.basedir,
-            options.reference_inputs,
-            options.bypass_file_store,
-        )
+        # Because installing the imported files expects all files to have been
+        # imported, we don't do that here; we combine the leader imports and
+        # the worker imports and install them all at once.
 
         import_job = CWLImportWrapper(
-            initialized_job_order, tool, runtime_context, worker_metadata, options
+            initialized_job_order, tool, runtime_context, worker_metadata, path_to_fileid, options
         )
         return import_job
     else:
@@ -3505,7 +3505,7 @@ class CWLInstallImportsJob(Job):
         basedir: str,
         skip_remote: bool,
         bypass_file_store: bool,
-        import_data: Promised[dict[str, FileID]],
+        import_data: list[Promised[dict[str, FileID]]],
         **kwargs: Any,
     ) -> None:
         """
@@ -3513,6 +3513,8 @@ class CWLInstallImportsJob(Job):
         to convert all file locations to URIs.
 
         This class is only used when runImportsOnWorkers is enabled.
+
+        :param import_data: List of mappings from file URI to imported file ID.
         """
         super().__init__(local=True, **kwargs)
         self.initialized_job_order = initialized_job_order
@@ -3522,6 +3524,8 @@ class CWLInstallImportsJob(Job):
         self.bypass_file_store = bypass_file_store
         self.import_data = import_data
 
+    # TODO: Since we only call this from the class itself now it doesn't really
+    # need to be static anymore.
     @staticmethod
     def fill_in_files(
         initialized_job_order: CWLObjectType,
@@ -3539,7 +3543,12 @@ class CWLInstallImportsJob(Job):
             """
             Return the file name's associated Toil file ID
             """
-            return candidate_to_fileid[filename]
+            try:
+                return candidate_to_fileid[filename]
+            except KeyError:
+                # Give something more useful than a KeyError if something went
+                # wrong with the importing.
+                raise RuntimeError(f"File at \"{filename}\" was never imported.")
 
         file_convert_function = functools.partial(
             extract_and_convert_file_to_toil_uri, fill_in_file
@@ -3586,11 +3595,19 @@ class CWLInstallImportsJob(Job):
         Convert the filenames in the workflow inputs into the URIs
         :return: Promise of transformed workflow inputs. A tuple of the job order and process
         """
-        candidate_to_fileid: dict[str, FileID] = unwrap(self.import_data)
+
+        # Merge all the input dicts down to one to check.
+        candidate_to_fileid: dict[str, FileID] = {
+            k: v for mapping in unwrap(
+                self.import_data
+            ) for k, v in unwrap(mapping).items()
+        }
 
         initialized_job_order = unwrap(self.initialized_job_order)
         tool = unwrap(self.tool)
-        return CWLInstallImportsJob.fill_in_files(
+
+        # Install the imported files in the tool and job order
+        return self.fill_in_files(
             initialized_job_order,
             tool,
             candidate_to_fileid,
@@ -3614,33 +3631,46 @@ class CWLImportWrapper(CWLNamedJob):
         tool: Process,
         runtime_context: cwltool.context.RuntimeContext,
         file_to_data: dict[str, FileMetadata],
+        imported_files: dict[str, FileID],
         options: Namespace,
     ):
+        """
+        Make a job to do file imports on workers and then run the workflow.
+
+        :param file_to_data: Metadata for files that need to be imported on the
+            worker.
+        :param imported_files: Files already imported on the leader.
+        """
         super().__init__(local=False, disk=options.import_workers_threshold)
         self.initialized_job_order = initialized_job_order
         self.tool = tool
-        self.options = options
         self.runtime_context = runtime_context
         self.file_to_data = file_to_data
+        self.imported_files = imported_files
+        self.options = options
 
     def run(self, file_store: AbstractFileStore) -> Any:
+        # Do the worker-based imports
         imports_job = ImportsJob(
             self.file_to_data,
             self.options.import_workers_threshold,
             self.options.import_workers_disk,
         )
         self.addChild(imports_job)
+
+        # Install the worker imports and any leader imports
         install_imports_job = CWLInstallImportsJob(
             initialized_job_order=self.initialized_job_order,
             tool=self.tool,
             basedir=self.options.basedir,
             skip_remote=self.options.reference_inputs,
             bypass_file_store=self.options.bypass_file_store,
-            import_data=imports_job.rv(0),
+            import_data=[self.imported_files, imports_job.rv(0)],
         )
         self.addChild(install_imports_job)
         imports_job.addFollowOn(install_imports_job)
 
+        # Run the workflow
         start_job = CWLStartJob(
             install_imports_job.rv(0),
             install_imports_job.rv(1),
@@ -4144,6 +4174,8 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
         options.tmpdir_prefix or DEFAULT_TMPDIR_PREFIX
     )
     tmp_outdir_prefix = options.tmp_outdir_prefix or tmpdir_prefix
+    # tmpdir_prefix and tmp_outdir_prefix must not be checked for existence as they may exist on a worker only path
+    # See https://github.com/DataBiosphere/toil/issues/5310
     workdir = options.workDir or tmp_outdir_prefix
 
     if options.jobStore is None:
@@ -4204,11 +4236,12 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # of filestore files and caches those.
         logger.debug("CWL task caching is turned on. Bypassing file store.")
         options.bypass_file_store = True
+
+        # Ensure the cache directory exists
+        # Only ensure the caching directory exists as that must be local.
+        os.makedirs(os.path.abspath(options.cachedir), exist_ok=True)
     if options.mpi_config_file is not None:
         runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
-    if cwltool.main.check_working_directories(runtime_context) is not None:
-        logger.error("Failed to create directory. If using tmpdir_prefix, tmpdir_outdir_prefix, or cachedir, consider changing directory locations.")
-        return 1
     setattr(runtime_context, "bypass_file_store", options.bypass_file_store)
     if options.bypass_file_store and options.destBucket:
         # We use the file store to write to buckets, so we can't do this (yet?)
