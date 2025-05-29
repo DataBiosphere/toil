@@ -279,37 +279,6 @@ class URLAccess:
             return implementation
         raise UnimplementedURLException(url, "export" if export else "import")
 
-    # @staticmethod
-    # @memoize
-    # def _url_access_classes() -> list[Type["URLAccess"]]:
-    #     """
-    #     A list of concrete URLAccess implementations whose dependencies are installed.
-
-    #     """
-    #     url_access_class_names = (
-    #         "toil.jobStores.fileJobStore.FileJobStore",
-    #         "toil.jobStores.googleJobStore.GoogleJobStore",
-    #         "toil.jobStores.aws.jobStore.AWSJobStore",
-    #         "toil.jobStores.abstractJobStore.JobStoreSupport",
-    #     )
-    #     url_access_classes = []
-    #     for class_name in url_access_class_names:
-    #         module_name, class_name = class_name.rsplit(".", 1)
-    #         from importlib import import_module
-
-    #         try:
-    #             module = import_module(module_name)
-    #         except (ImportError, ProxyConnectionError):
-    #             logger.debug(
-    #                 "Unable to import '%s' as is expected if the corresponding extra was "
-    #                 "omitted at installation time.",
-    #                 module_name,
-    #             )
-    #         else:
-    #             url_access_class = getattr(module, class_name)
-    #             url_access_classes.append(url_access_class)
-    #     return url_access_classes
-
 #####
 # Built-in url access
 #####
