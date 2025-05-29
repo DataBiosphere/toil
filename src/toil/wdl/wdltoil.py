@@ -1804,25 +1804,35 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             else:
                 # This is a directory and we have its decoded structure.
 
+                # Work out where the root uploaded directory would go
+                dir_basename = os.path.basename(urlsplit(base_dir_source_uri).path)
+                parent_url = urljoin(base_dir_source_uri, ".")
                 # TODO: Track source task for a directory
+                dir_path = os.path.join(choose_human_readable_directory(
+                    dest_dir, "TODO", parent_url
+                ), dir_basename)
 
-                # TODO: Track original directory basename
-
-                # For now just drop the directory under a random path
-                dest_path = os.path.join(dest_dir, str(uuid.uuid4()))
+                # And where this particular subdirectory we're fetching goes
+                dest_path = os.path.join(dir_path, remaining_path) if remaining_path is not None else dir_path
 
                 for relative_path, item_value in directory_contents_items(found):
+                    # Work out where this item goes relative to the uploaded
+                    # directory's destination path
                     if remaining_path is not None:
-                    item_path = os.path.join(dest_path, relative_path)
+                        item_path = os.path.join(dir_path, remaining_path, relative_path)
+                    else:
+                        item_path = os.path.join(dir_path, relative_path)
                     if item_value is None:
-                        # Make directories to hold things (and empty directories)
-                        os.mkdir(item_path)
+                        # Make directories to hold things (and empty directories).
+                        # OK if it has been downloaded already.
+                        os.makedirs(item_path, exist_ok=true)
                     else:
                         # Download files
-                        cls._write_uri_to(item_value, item_path, file_source, export)
+                        if os.path.exists(item_path):
+                            logger.debug("Skipping already-downloaded %s", item_path)
+                        else:
+                            cls._write_uri_to(item_value, item_path, file_source, export)
                     
-                assert os.path.exists(dest_path)
-                assert os.path.isdir(dest_path)
                 logger.info("Successfully devirtualized directory to %s", dest_path)
 
                 # Don't do the file download stuff because this is a directory
