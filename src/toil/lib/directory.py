@@ -87,7 +87,7 @@ def decode_directory(
         # We have a path below this
         return contents, parts[1], directory_identifier
 
-def encode_directory(contents: DirectoryContents, name: Optional[str]) -> str:
+def encode_directory(contents: DirectoryContents, name: Optional[str], source: Optional[str]) -> str:
     """
     Encode a directory from a "toildir:" path to a directory (or a file in it).
 
@@ -95,6 +95,8 @@ def encode_directory(contents: DirectoryContents, name: Optional[str]) -> str:
         file or dict for a subdirectory.
     :param name: the path or URI the directory belongs at, including its
         basename.
+    :param source: the name of a workflow component that uploaded the
+        directory.
     """
 
     check_directory_dict_invariants(contents)
