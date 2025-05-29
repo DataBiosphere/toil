@@ -36,8 +36,9 @@ class ToilDocumentationTest(ToilTest):
 
     def checkExitCode(self, script, extra_args: list[str] = []):
         program = os.path.join(self.directory, "scripts", script)
+        job_store = self._getTestJobStorePath()
         process = subprocess.Popen(
-            [python, program, "file:my-jobstore", "--clean=always"] + extra_args,
+            [python, program, f"file:{job_store}", "--clean=always"] + extra_args,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
