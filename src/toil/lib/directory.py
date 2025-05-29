@@ -15,6 +15,8 @@
 import json
 import base64
 
+from urllib.parse import quote, unquote
+
 from typing import Iterator, Optional, Union
 
 DirectoryContents = dict[str, Union[str, "DirectoryContents"]]
@@ -43,9 +45,9 @@ def decode_directory(
     """
     Decode a directory from a "toildir:" path to a directory (or a file in it).
 
-    Returns the decoded directory dict, the remaining part of the path (which may be
-    None), and the deduplication key string that uniquely identifies the
-    directory.
+    :returns: the decoded directory dict, the remaining part of the path (which
+        may be None), and an identifier string for the directory, which is the
+        stored name/source URI if one was provided.
     """
     if not dir_path.startswith("toildir:"):
         raise RuntimeError(f"Cannot decode non-directory path: {dir_path}")
@@ -53,12 +55,23 @@ def decode_directory(
     # We will decode the directory and then look inside it
 
     # Since this was encoded by upload_directory we know the
-    # next piece is encoded JSON describing the directory structure,
+    # next piece is encoded source URL and JSON describing the directory structure,
     # and it can't contain any slashes.
     parts = dir_path[len("toildir:") :].split("/", 1)
 
     # Before the first slash is the encoded data describing the directory contents
     dir_data = parts[0]
+    if ":" in dir_data:
+        # We also have a known name (source path/URI)
+        encoded_name, dir_data = dir_data.split(":")
+        name: Optional[str] = unquote(encoded_name)
+    else:
+        name = None
+    
+    # We need the unique key identifying this directory, which is where it came
+    # from if stored, or the encoded data itself otherwise.
+    # TODO: Is this too complicated?
+    directory_identifier = name if name is not None else dir_data
 
     # Decode what to download
     contents = json.loads(
@@ -69,24 +82,35 @@ def decode_directory(
 
     if len(parts) == 1 or parts[1] == "/":
         # We didn't have any subdirectory
-        return contents, None, dir_data
+        return contents, None, directory_identifier
     else:
         # We have a path below this
-        return contents, parts[1], dir_data
+        return contents, parts[1], directory_identifier
 
-def encode_directory(contents: DirectoryContents) -> str:
+def encode_directory(contents: DirectoryContents, name: Optional[str]) -> str:
     """
     Encode a directory from a "toildir:" path to a directory (or a file in it).
 
-    Takes the directory dict, which is a dict from name to URI for a file or
-    dict for a subdirectory.
+    :param contents: the directory dict, which is a dict from name to URI for a
+        file or dict for a subdirectory.
+    :param name: the path or URI the directory belongs at, including its
+        basename.
     """
 
     check_directory_dict_invariants(contents)
 
-    return "toildir:" + base64.urlsafe_b64encode(
-        json.dumps(contents).encode("utf-8")
-    ).decode("utf-8")
+    parts = [toildir]
+
+    if name is not None:
+        parts.append(quote(name, safe=""))
+
+    parts.append(
+        base64.urlsafe_b64encode(
+            json.dumps(contents).encode("utf-8")
+        ).decode("utf-8")
+    )
+
+    return ":".join(parts)
 
 
 def directory_item_exists(dir_path: str) -> bool:
@@ -103,12 +127,10 @@ def directory_item_exists(dir_path: str) -> bool:
         return False
     return True
 
-def get_directory_item(dir_path: str) -> Union[DirectoryContents, str]:
+def get_directory_contents_item(contents: DirectoryContents, remaining_path: Optional[str]) -> Union[DirectoryContents, str]:
     """
-    Get a subdirectory or file from a URL pointing to or into a toildir: directory.
+    Get a subdirectory or file from a decoded directory and remaining path.
     """
-
-    contents, remaining_path, _ = decode_directory(dir_path)
 
     if remaining_path is None:
         return contents
@@ -124,6 +146,16 @@ def get_directory_item(dir_path: str) -> Union[DirectoryContents, str]:
         here = here[part]
     # If we get here we successfully looked up the thing in the structure
     return here
+
+def get_directory_item(dir_path: str) -> Union[DirectoryContents, str]:
+    """
+    Get a subdirectory or file from a URL pointing to or into a toildir: directory.
+    """
+
+    contents, remaining_path, _ = decode_directory(dir_path)
+    
+    return get_directory_contents_item(contents, remaining_path)
+    
 
 def directory_contents_items(contents: DirectoryContents) -> Iterator[tuple[str, Union[str, None]]]:
     """

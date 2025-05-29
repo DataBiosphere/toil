@@ -115,6 +115,7 @@ from toil.lib.directory import (
     decode_directory,
     encode_directory,
     directory_item_exists,
+    get_directory_contents_item,
     get_directory_item,
     directory_contents_items,
 )
@@ -823,12 +824,15 @@ def parse_disks(
 
 
 def pack_toil_uri(
-    file_id: FileID, task_path: str, dir_id: uuid.UUID, file_basename: str
+    file_id: FileID, task_path: str, parent: str, file_basename: str
 ) -> str:
     """
     Encode a Toil file ID and metadata about who wrote it as a URI.
 
     The URI will start with the scheme in TOIL_URI_SCHEME.
+
+    :param parent: bare path or URI to the parent of the file. Only one unique
+        value will be used for a given parent location.
     """
 
     # We urlencode everything, including any slashes. We need to use a slash to
@@ -838,7 +842,7 @@ def pack_toil_uri(
         [
             quote(file_id.pack(), safe=""),
             quote(task_path, safe=""),
-            quote(str(dir_id)),
+            quote(dir_path, safe=""),
             quote(file_basename, safe=""),
         ]
     )
@@ -846,8 +850,9 @@ def pack_toil_uri(
 
 def unpack_toil_uri(toil_uri: str) -> tuple[FileID, str, str, str]:
     """
-    Unpack a URI made by make_toil_uri to retrieve the FileID and the basename
-    (no path prefix) that the file is supposed to have.
+    Unpack a URI made by make_toil_uri.
+
+    :returns: the FileID, source task, source parent path or URI, and basename.
     """
 
     # Split out scheme and rest of URL
@@ -864,10 +869,10 @@ def unpack_toil_uri(toil_uri: str) -> tuple[FileID, str, str, str]:
         raise ValueError(f"Wrong number of path segments in URI: {toil_uri}")
     file_id = FileID.unpack(unquote(parts[0]))
     task_path = unquote(parts[1])
-    parent_id = unquote(parts[2])
+    parent_dir = unquote(parts[2])
     file_basename = unquote(parts[3])
 
-    return file_id, task_path, parent_id, file_basename
+    return file_id, task_path, parent_dir, file_basename
 
 
 ###
@@ -1062,7 +1067,6 @@ def fill_execution_cache(
         return output_bindings
 
     # Set up deduplication just for these outputs.
-    devirtualization_state: DirectoryNamingStateDict = {}
     devirtualized_to_virtualized: dict[str, str] = dict()
     virtualized_to_devirtualized: dict[str, str] = dict()
     # TODO: if a URL is passed through multiple tasks it will be saved multiple times. Also save on input???
@@ -1113,7 +1117,6 @@ def fill_execution_cache(
                 virtualized,
                 output_directory,
                 file_store,
-                devirtualization_state,
                 wdl_options,
                 devirtualized_to_virtualized,
                 virtualized_to_devirtualized,
@@ -1135,15 +1138,10 @@ def fill_execution_cache(
     # the cached files in their input digests.
     return output_bindings
 
-
-DirectoryNamingStateDict = dict[str, tuple[dict[str, str], set[str]]]
-
-
 def choose_human_readable_directory(
     root_dir: str,
     source_task_path: str,
-    parent_id: str,
-    state: DirectoryNamingStateDict,
+    parent: str,
 ) -> str:
     """
     Select a good directory to save files from a task and source directory in.
@@ -1153,51 +1151,30 @@ def choose_human_readable_directory(
     :param root_dir: Directory that the path will be under
     :param source_task_path: The dotted WDL name of whatever generated the
         file. We assume this is an acceptable filename component.
-    :param parent_id: UUID of the directory that the file came from. All files
-        with the same parent ID will be placed as siblings files in a shared
-        parent directory.
+    :param parent: Directory path or parent URI that the file came from,
     :param state: A state dict that must be passed to repeated calls.
     """
 
-    # We need to always put things as siblings if they come from the same UUID
-    # even if different tasks generated them. So the first task we download
-    # from will get to name the directory for a parent ID.
-
-    # Get the state info for this root directory.
-    #
-    # For each parent ID, we need the directory we are using for it (dict).
-    #
-    # For each local directory, we need to know if we used it for a parent ID already (set).
-    id_to_dir, used_dirs = state.setdefault(root_dir, ({}, set()))
     logger.debug(
-        "Pick location for parent %s source %s root %s against id map %s and used set %s",
-        parent_id,
+        "Pick location for parent %s source %s root %s",
+        parent,
         source_task_path,
         root_dir,
-        id_to_dir,
-        used_dirs,
     )
-    if parent_id not in id_to_dir:
-        # Make a path for this parent named after this source task
+    
+    if is_any_url(parent):
+        # Parent might contain exciting things like "/../" or "///". The spec
+        # says the parent is everything up to the last / so we just encode the
+        # URL.
+        parent = quote(parent, safe="")
+    elif parent.startswith("/"):
+        # Make sure we can handle both absolute and relative paths in a sort of
+        # sensible way.
+        # TODO: Will they always be absolute?
+        parent = f"_toil_root{parent}"
 
-        # Problem: If we put any files right at the root of the source task
-        # directory, then we can't put any directories with guessable names in
-        # it, because we might later come across a file with that name that
-        # must be sibling to an existing file. So if a task uploads from
-        # multiple sources or otherwise manages to collide with our numbering,
-        # we will make multiple directories for it.
-
-        candidate = source_task_path
-        deduplicator = len(used_dirs)
-        while candidate in used_dirs:
-            # We use one run of deduplicating numbers across all the names.
-            candidate = f"{source_task_path}-{deduplicator}"
-            deduplicator += 1
-
-        id_to_dir[parent_id] = candidate
-        used_dirs.add(candidate)
-
-    result = os.path.join(root_dir, id_to_dir[parent_id])
+    result = os.path.join(root_dir, source_task_path, parent)
+    
     logger.debug("Picked path %s", result)
     return result
 
@@ -1374,8 +1351,6 @@ def virtualize_inodes_in_bindings(
         the file, including URI that would have been imported.
     :return: new bindings object with the annotated File objects in it.
     """
-    dir_ids = {t[1] for t in file_to_metadata.values()}
-    dir_to_id = {k: uuid.uuid4() for k in dir_ids}
 
     def virtualize_inode(inode: AnyINode) -> AnyINode:
         """
@@ -1401,7 +1376,7 @@ def virtualize_inodes_in_bindings(
             )
 
         toil_uri = pack_toil_uri(
-            file_id, task_path, dir_to_id[file_to_metadata[inode.value][1]], file_basename
+            file_id, task_path, file_to_metadata[inode.value][1], file_basename
         )
 
         # Don't mutate the original file object
@@ -1537,10 +1512,7 @@ def convert_remote_files(
                 # Must be a local path
                 parent_dir = os.path.dirname(candidate_uri)
 
-            # Pack a UUID of the parent directory
-            dir_id = path_to_id.setdefault(parent_dir, uuid.uuid4())
-
-            toil_uri = pack_toil_uri(imported, task_path, dir_id, file_basename)
+            toil_uri = pack_toil_uri(imported, task_path, parent_dir, file_basename)
 
             logger.info("Converting input file path %s to %s", filename, candidate_uri)
 
@@ -1659,10 +1631,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # Allow mapping back from absolute devirtualized files to virtualized
             # paths, to save re-uploads.
             self._devirtualized_to_virtualized: dict[str, str] = {}
-            # State we need for choosing good names for devirtualized files
-            self._devirtualization_state: DirectoryNamingStateDict = {}
-            # UUID to differentiate which node files are virtualized from
-            self._parent_dir_to_ids: dict[str, uuid.UUID] = dict()
         else:
             # Share file download/upload state
             self._virtualized_to_devirtualized = (
@@ -1671,8 +1639,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             self._devirtualized_to_virtualized = (
                 share_files_with._devirtualized_to_virtualized
             )
-            self._devirtualization_state = share_files_with._devirtualization_state
-            self._parent_dir_to_ids = share_files_with._parent_dir_to_ids
 
     @property
     def execution_dir(self) -> str | None:
@@ -1800,7 +1766,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             filename,
             self._file_store.localTempDir,
             self._file_store,
-            self._devirtualization_state,
             self._wdl_options,
             self._devirtualized_to_virtualized,
             self._virtualized_to_devirtualized,
@@ -1818,31 +1783,26 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         filename: str,
         dest_dir: str,
         file_source: AbstractFileStore | Toil,
-        state: DirectoryNamingStateDict,
         export: Optional[bool] = None,
     ) -> str:
         """
         Given a filename, either return the devirtualized path or the filename itself if not a virtualized URI.
 
+        Places it somewhere under dest_dir.
+
         :param export: Always create exported copies of files rather than views that a FileStore might clean up.
         """
         if is_toil_dir_url(filename):
             # This is either a directory or an indirect reference to something.
-            found = get_directory_item(filename)
+
+            base_dir_decoded, remaining_path, base_dir_source_uri = decode_directory(filename)
+            found = get_directory_contents_item(base_dir_decoded, remaining_path)
             if isinstance(found, str):
                 # This is a leaf file, so just devirtualize that
-                return cls._devirtualize_uri(found, dest_dir, file_source, state, export)
+                # TODO: Aren't we packing the source dir name into all these files???
+                return cls._devirtualize_uri(found, dest_dir, file_source, export)
             else:
                 # This is a directory and we have its decoded structure.
-
-                # TODO: If we already downloaded Files that came from inside
-                # this Directory, we can't keep all the files from inside this
-                # Directory properly sibling to them, because they might not
-                # have the proper relative path structure between them. We need
-                # to recursively replicate the whole directory structure when
-                # downloading any individual File actually to properly comply
-                # with the WDL spec. See
-                # <https://github.com/openwdl/wdl/blob/wdl-1.2/SPEC.md#task-input-localization>
 
                 # TODO: Track source task for a directory
 
@@ -1852,6 +1812,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 dest_path = os.path.join(dest_dir, str(uuid.uuid4()))
 
                 for relative_path, item_value in directory_contents_items(found):
+                    if remaining_path is not None:
                     item_path = os.path.join(dest_path, relative_path)
                     if item_value is None:
                         # Make directories to hold things (and empty directories)
@@ -1870,11 +1831,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         elif is_toil_file_url(filename):
             # This is a reference to the Toil filestore.
             # Deserialize the metadata about where the file came from
-            _, task_path, parent_id, file_basename = unpack_toil_uri(filename)
+            _, task_path, parent, file_basename = unpack_toil_uri(filename)
 
             # Decide where it should be put.
             dir_path = choose_human_readable_directory(
-                dest_dir, task_path, parent_id, state
+                dest_dir, task_path, parent
             )
         else:
             # This is a standard URI to a file or directory.
@@ -1982,7 +1943,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         filename: str,
         dest_dir: str,
         file_source: AbstractFileStore | Toil,
-        state: DirectoryNamingStateDict,
         wdl_options: WDLContext,
         devirtualized_to_virtualized: dict[str, str] | None = None,
         virtualized_to_devirtualized: dict[str, str] | None = None,
@@ -2007,7 +1967,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         The input filename could already be devirtualized. In this case, the filename
         should not be added to the cache.
 
-        :param state: State dict which must be shared among successive calls into a dest_dir.
         :param wdl_options: WDL options to carry through.
         :param export: Always create exported copies of files rather than views that a FileStore might clean up.
         """
@@ -2035,7 +1994,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 return result
             # Actually need to download/put in place/export
             result = cls._devirtualize_uri(
-                filename, dest_dir, file_source, state, export=export
+                filename, dest_dir, file_source, export=export
             )
             if devirtualized_to_virtualized is not None:
                 # Store the back mapping
@@ -2104,9 +2063,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
             contents = handle_directory(normalized_uri)
             
-            # TODO: Use a parent ID for this directory so we can make
-            # subling directories stay next to each other.
-            result = encode_directory(contents)
+            result = encode_directory(contents, name=normalized_uri)
             self._devirtualized_to_virtualized[normalized_uri] = result
             return result
         elif is_standard_url(normalized_uri):
@@ -2147,9 +2104,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             file_basename = os.path.basename(urlsplit(normalized_uri).path)
             # Get the URL to the parent directory and use that.
             parent_dir = urljoin(normalized_uri, ".")
-            # Pack a UUID of the parent directory
-            dir_id = self._parent_dir_to_ids.setdefault(parent_dir, uuid.uuid4())
-            result = pack_toil_uri(imported, self.task_path, dir_id, file_basename)
+            result = pack_toil_uri(imported, self.task_path, parent_dir, file_basename)
             logger.debug("Virtualized %s as WDL %s", normalized_uri, result)
             # We can't put the Toil URI in the virtualized_to_devirtualized
             # cache because it would point to the URL instead of a local file
@@ -2178,9 +2133,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             file_id = self._file_store.writeGlobalFile(abs_filename)
 
             file_dir = os.path.dirname(abs_filename)
-            parent_id = self._parent_dir_to_ids.setdefault(file_dir, uuid.uuid4())
             result = pack_toil_uri(
-                file_id, self.task_path, parent_id, os.path.basename(abs_filename)
+                file_id, self.task_path, file_dir, os.path.basename(abs_filename)
             )
             logger.debug("Virtualized %s as WDL %s", filename, result)
             # Remember the upload in case we share a cache
@@ -6088,7 +6042,6 @@ def main() -> None:
             if not isinstance(output_bindings, WDL.Env.Bindings):
                 raise RuntimeError("The output of the WDL job is not a binding.")
 
-            devirtualization_state: DirectoryNamingStateDict = {}
             devirtualized_to_virtualized: dict[str, str] = dict()
             virtualized_to_devirtualized: dict[str, str] = dict()
 
@@ -6107,7 +6060,6 @@ def main() -> None:
                     reference,
                     output_directory,
                     toil,
-                    devirtualization_state,
                     wdl_options,
                     devirtualized_to_virtualized,
                     virtualized_to_devirtualized,
