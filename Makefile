@@ -65,7 +65,7 @@ the appliance images to, for example:
 You might also want to build just for one architecture and load into your
 Docker daemon. We have a 'load_docker' target for this.
 
-    make load_docker arch=amd64
+    make load_docker arch=linux/amd64
 
 If Docker is not installed, Docker-related targets tasks and tests will be skipped. The
 same can be achieved by setting TOIL_DOCKER_REGISTRY to an empty string.
