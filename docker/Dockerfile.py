@@ -209,9 +209,9 @@ print(heredoc('''
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
-    # Install virtualenv (to deploy pipelines) and setuptools at the same time
-    # as Toil, so that we can't be stuck with distutils-installed packages in
-    # the Docker cache that can't be uninstalled.
+    # Install virtualenv (to deploy pipelines) at the same time as Toil, so
+    # that we can't be stuck with distutils-installed packages in the Docker
+    # cache that can't be uninstalled.
     # We need to --ignore-installed here to allow shadowing system packages
     # from apt in /usr/lib/python3/dist-packages when Toil needs newer
     # versions. We just hope that doesn't break the Ubuntu system too badly
@@ -221,7 +221,7 @@ print(heredoc('''
     #
     # TODO: Change to nested virtual environments and .pth files and teach TOil
     # to just ship the user-level one for hot deploy.
-    RUN {pip} install --ignore-installed --upgrade virtualenv==20.25.1 setuptools==69.2.0 {sdistName}[all]
+    RUN {pip} install --ignore-installed --upgrade 'virtualenv>=20.25.1,<21' {sdistName}[all]
     RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect
