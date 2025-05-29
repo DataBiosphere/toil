@@ -182,6 +182,23 @@ print(heredoc('''
     # The stock pip is too old and can't install from sdist with extras
     RUN curl -sS https://bootstrap.pypa.io/get-pip.py | {python}
 
+    # Include virtualenv, as it is still the recommended way to deploy
+    # pipelines.
+    #
+    # We need to --ignore-installed here to allow shadowing system packages
+    # from apt in /usr/lib/python3/dist-packages when the installed package
+    # needs newer versions. We just hope that doesn't break the Ubuntu system
+    # too badly when we're actually on the system Python, or if Toil needs to
+    # upgrade a distutils or setuptools dependency. On the deadsnakes Pythons,
+    # installations into the version-specific package directory won't be seen
+    # by the system Python which is a different version.
+    #
+    # TODO: Change to nested virtual environments and .pth files and teach Toil
+    # to just ship the user-level one for hot deploy.
+    RUN {pip} install --ignore-installed --upgrade 'virtualenv>=20.25.1,<21'
+
+    RUN {pip} install --ignore-installed --upgrade 'setuptools>=80,<81'
+
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
 
@@ -209,19 +226,7 @@ print(heredoc('''
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
-    # Install virtualenv (to deploy pipelines) at the same time as Toil, so
-    # that we can't be stuck with distutils-installed packages in the Docker
-    # cache that can't be uninstalled.
-    # We need to --ignore-installed here to allow shadowing system packages
-    # from apt in /usr/lib/python3/dist-packages when Toil needs newer
-    # versions. We just hope that doesn't break the Ubuntu system too badly
-    # when we're actually on the system Python. On the deadsnakes Pythons,
-    # installations into the version-specific package directory won't be seen
-    # by the system Python which is a different version.
-    #
-    # TODO: Change to nested virtual environments and .pth files and teach TOil
-    # to just ship the user-level one for hot deploy.
-    RUN {pip} install --ignore-installed --upgrade 'virtualenv>=20.25.1,<21' {sdistName}[all]
+    RUN {pip} install --ignore-installed --upgrade {sdistName}[all]
     RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect
