@@ -224,7 +224,7 @@ class WESBackend:
         )
 
     def collect_attachments(
-        self, run_id: Optional[str], temp_dir: Optional[str]
+        self, args: dict[str, Any], run_id: Optional[str], temp_dir: Optional[str]
     ) -> tuple[str, dict[str, Any]]:
         """
         Collect attachments from the current request by staging uploaded files
@@ -238,48 +238,26 @@ class WESBackend:
             temp_dir = mkdtemp()
         body: dict[str, Any] = {}
         has_attachments = False
-        for key, ls in connexion.request.files.lists():
-            try:
-                for value in ls:
-                    # uploaded files that are required to execute the workflow
-                    if key == "workflow_attachment":
-                        # guard against maliciously constructed filenames
-                        dest = os.path.join(temp_dir, self.secure_path(value.filename))
-                        if not os.path.isdir(os.path.dirname(dest)):
-                            os.makedirs(os.path.dirname(dest))
-                        self.log_for_run(
-                            run_id, f"Staging attachment '{value.filename}' to '{dest}'"
-                        )
-                        value.save(dest)
-                        has_attachments = True
-                        body[key] = (
-                            f"file://{temp_dir}"  # Reference to temp working dir.
-                        )
-
-                    elif key in (
-                        "workflow_params",
-                        "tags",
-                        "workflow_engine_parameters",
-                    ):
-                        content = value.read()
-                        body[key] = json.loads(content.decode("utf-8"))
-                    else:
-                        body[key] = value.read().decode()
-            except Exception as e:
-                raise MalformedRequestException(f"Error reading parameter '{key}': {e}")
-
-        for key, ls in connexion.request.form.lists():
-            try:
-                for value in ls:
-                    if not value:
-                        continue
-                    if key in ("workflow_params", "tags", "workflow_engine_parameters"):
-                        body[key] = json.loads(value)
-                    else:
-                        body[key] = value
-            except Exception as e:
-                raise MalformedRequestException(f"Error reading parameter '{key}': {e}")
-
+        for k, v in args.items():
+            if k == "workflow_attachment":
+                for file in (v or []):
+                    dest = os.path.join(temp_dir, self.secure_path(file.filename))
+                    if not os.path.isdir(os.path.dirname(dest)):
+                        os.makedirs(os.path.dirname(dest))
+                    self.log_for_run(
+                        run_id,
+                        f"Staging attachment '{file.filename}' to '{dest}'",
+                    )
+                    file.save(dest)
+                    has_attachments = True
+                    body["workflow_attachment"] = (
+                            "file://%s" % temp_dir
+                    )  # Reference to temp working dir.
+            elif k in ("workflow_params", "tags", "workflow_engine_parameters"):
+                if v is not None:
+                    body[k] = json.loads(v)
+            else:
+                body[k] = v
         if "workflow_url" in body:
             url, ref = urldefrag(body["workflow_url"])
             if ":" not in url:
