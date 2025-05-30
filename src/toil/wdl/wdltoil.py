@@ -3799,6 +3799,8 @@ class WDLTaskJob(WDLBaseJob):
                     "is not yet implemented in the MiniWDL Docker "
                     "containerization implementation."
                 )
+            if runtime_bindings.has_binding("memory") and human2bytes(runtime_bindings.resolve("memory").value) < 4_194_304:
+                    runtime_bindings.resolve("memory").value = "4MiB"
         else:
             raise RuntimeError(
                 f"Could not find a working container engine to use; told to use {self._wdl_options.get('container')}"

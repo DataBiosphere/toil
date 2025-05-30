@@ -157,21 +157,33 @@ Determining haplotype from mitochondria sequence
 
 Let's run a more realistic workflow with Toil. This workflow is mitochondrial variant calling: It will take the human reference genome and sequenced reads from an individual and determine how that person's mitochondrial DNA differs from the reference genome.
 
+First, grab the `workflow from Dockstore<https://dockstore.org/workflows/github.com/broadinstitute/gatk/MitochondriaPipeline:master?tab=info>`_::
+
+    (venv) $ wget https://dockstore.org/api/workflows/8801/zip/20321 -O MitochondriaExample.zip && unzip MitochondriaExample.zip
+
+Then grab an example workflow input::
+
+    (venv) $ wget https://toil-datasets.s3.us-west-2.amazonaws.com/MitochondriaInputs.zip && unzip MitochondriaInputs.zip
+
+Move the input files into the scripts directory and change your current working directory to that directory::
+
+    (venv) $ mv MitochondriaInputs/* scripts/mitochondria_m2_wdl/ && cd scripts/mitochondria_m2_wdl/
 
 This workflow will take approximately 30 minutes to run.
 
 To run this workflow, run the following command::
 
-      (venv) $ toil-wdl-runner MitochondriaPipeline.wdl -i ExampleInputsMitochondriaPipeline.json --logInfo --container docker --outputFile mitochondria.json
+      (venv) $ toil-wdl-runner MitochondriaPipeline.wdl -i ExampleInputsMitochondriaPipeline.json --logInfo --container docker --quantCheck false --outputFile mitochondria.json
 
 
 .. note::
         ``--logInfo`` runs the workflow with INFO level logging. For different levels of logging, see ``--logLevel``, ``--logCritical``, ``--logError``, ``--logWarning``, ``--logDebug``, and ``--logTrace``.
         ``--container docker`` uses Docker as the container backend. By default, Toil will run with Singularity. To set explicitly, use ``--container singularity``.
         ``--outputFile`` will put the workflow JSON outputs into a file. If omitted, Toil will put the workflow outputs onto the commandline.
+        ``--quantCheck false`` disables certain type checks. This is useful for Cromwell compatibility.
 
 Unless fakeroot support is set up for Singularity, this particular workflow must be run with Docker because it assumes commands in the container will run as root.
-WDL workflows sometimes depend on non-spec compliant behaviors. To see if Toil has an workaround option, see :ref:`wdlOptions`.
+Additionally, WDL workflows sometimes depend on non-spec compliant behaviors. To see if Toil has an workaround option, see :ref:`_wdlOptions`.
 
 Once the workflow is done running, you can look at your JSON output with ``jq . mitochondria.json``. For example, if we want the ``out_vcf`` output from the workflow, we can run ``jq -r '.["MitochondriaPipeline.out_vcf"]' mitochondria.json`` to get its path::
 
