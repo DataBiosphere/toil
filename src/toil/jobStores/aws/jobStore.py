@@ -75,6 +75,7 @@ from toil.lib.io import AtomicFileCreate
 from toil.lib.memoize import strict_bool
 from toil.lib.objects import InnerClass
 from toil.lib.retry import get_error_code, get_error_status, retry
+from toil.lib.url import URLAccess
 
 if TYPE_CHECKING:
     from mypy_boto3_sdb.type_defs import (
@@ -110,7 +111,7 @@ class DomainDoesNotExist(Exception):
         super().__init__(f"Expected domain {domain_name} to exist!")
 
 
-class AWSJobStore(AbstractJobStore):
+class AWSJobStore(AbstractJobStore, URLAccess):
     """
     A job store that uses Amazon's S3 for file storage and SimpleDB for storing job info and
     enforcing strong consistency on the S3 file storage. There will be SDB domains for jobs and

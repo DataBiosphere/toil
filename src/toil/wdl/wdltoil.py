@@ -111,6 +111,7 @@ from toil.lib.misc import get_user_name
 from toil.lib.resources import ResourceMonitor
 from toil.lib.threading import global_mutex
 from toil.provisioners.clusterScaler import JobTooBigError
+from toil.lib.url import URLAccess
 
 logger = logging.getLogger(__name__)
 
@@ -514,7 +515,7 @@ async def toil_read_source(
         tried.append(candidate_uri)
         try:
             # TODO: this is probably sync work that would be better as async work here
-            AbstractJobStore.read_from_url(candidate_uri, destination_buffer)
+            URLAccess.read_from_url(candidate_uri, destination_buffer)
         except Exception as e:
             if isinstance(e, SyntaxError) or isinstance(e, NameError):
                 # These are probably actual problems with the code and not
@@ -1240,7 +1241,7 @@ class NonDownloadingSize(WDL.StdLib._Size):
                 else:
                     # This is some other kind of remote file.
                     # We need to get its size from the URI.
-                    item_size = AbstractJobStore.get_size(uri)
+                    item_size = URLAccess.get_size(uri)
                     if item_size is None:
                         # User asked for the size and we can't figure it out efficiently, so bail out.
                         raise RuntimeError(f"Attempt to check the size of {uri} failed")
@@ -1391,7 +1392,7 @@ def convert_remote_files(
             tried.append(candidate_uri)
             try:
                 # Try polling existence first.
-                polled_existence = file_source.url_exists(candidate_uri)
+                polled_existence = URLAccess.url_exists(candidate_uri)
                 if polled_existence is False:
                     # Known not to exist
                     logger.debug("URL does not exist: %s", candidate_uri)
@@ -1789,7 +1790,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # Open it exclusively
             with open(dest_path, "xb") as dest_file:
                 # And save to it
-                size, executable = AbstractJobStore.read_from_url(filename, dest_file)
+                size, executable = URLAccess.read_from_url(filename, dest_file)
                 if executable:
                     # Set the execute bit in the file's permissions
                     os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)
@@ -2735,7 +2736,7 @@ def drop_if_missing(
 
     if filename is not None and is_any_url(filename):
         try:
-            if filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(
+            if filename.startswith(TOIL_URI_SCHEME) or URLAccess.url_exists(
                 filename
             ):
                 # We assume anything in the filestore actually exists.
