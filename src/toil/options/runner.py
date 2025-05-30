@@ -1,4 +1,4 @@
-from argparse import ArgumentParser
+from argparse import ArgumentParser, SUPPRESS
 
 from toil.lib.conversions import human2bytes
 
@@ -25,17 +25,23 @@ def add_runner_options(
         help="Run the file imports on a worker instead of the leader. This is useful if the leader is not optimized for high network performance. "
         "If set to true, the argument --importWorkersDisk must also be set."
     )
-    import_workers_threshold_argument = ["--importWorkersThreshold"]
+    import_workers_batchsize_argument = ["--importWorkersBatchSize"]
     if cwl:
-        import_workers_threshold_argument.append("--import-workers-threshold")
+        import_workers_batchsize_argument.append("--import-workers-batch-size")
     parser.add_argument(
-        *import_workers_threshold_argument,
-        dest="import_workers_threshold",
+        *import_workers_batchsize_argument,
+        dest="import_workers_batchsize",
         type=lambda x: human2bytes(str(x)),
         default="1 GiB",
-        help="Specify the file size threshold that determines how many files go into a batched import. As many files will go into a batch import job until this threshold "
-             "is reached. This should be set in conjunction with the argument --runImportsOnWorkers."
+        help="Specify the target total file size for file import batches. "
+        "As many files as can fit will go into each batch import job. This should be set in conjunction with the argument --runImportsOnWorkers."
     )
+
+    # Deprecated
+    parser.add_argument(
+        "--importWorkersThreshold", "--import-workers-threshold", dest="import_workers_batchsize",type=lambda x: human2bytes(str(x)), help=SUPPRESS
+    )
+
     import_workers_disk_argument = ["--importWorkersDisk"]
     if cwl:
         import_workers_disk_argument.append("--import-workers-disk")
@@ -46,5 +52,5 @@ def add_runner_options(
         default="1 MiB",
         help="Specify the disk size each import worker will get. This may be necessary when file streaming is not possible. For example, downloading from AWS to a GCE "
              "job store. If specified, this should be set to the largest file size of all files to import. This should be set in conjunction with the arguments "
-             "--runImportsOnWorkers and --importWorkersThreshold."
+             "--runImportsOnWorkers and --importWorkersBatchSize."
     )
