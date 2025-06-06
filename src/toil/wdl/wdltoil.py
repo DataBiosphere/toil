@@ -494,6 +494,20 @@ def remove_common_leading_whitespace(
     modified._type = expression._type
     return modified
 
+def convert_cromwell_pair(json_obj: Any) -> None:
+    """
+    Convert any instances of Cromwell specific pair definitions into Toil/MiniWDL compatible pair definitions.
+    """
+    if isinstance(json_obj, dict):
+        for k, v in json_obj.items():
+            # check if this is a cromwell pair definitions
+            if len(v) == 2 and set(v.keys()) == {"Left", "Right"}:
+                json_obj[k] = {"left": v["Left"], "right": v["Right"]}
+            else:
+                convert_cromwell_pair(json_obj[k])
+    elif isinstance(json_obj, list):
+        for json_elem in json_obj:
+            convert_cromwell_pair(json_elem)
 
 async def toil_read_source(
     uri: str, path: list[str], importer: WDL.Tree.Document | None
@@ -5809,6 +5823,7 @@ def main() -> None:
                 WDLTypeDeclBindings = Union[
                     WDL.Env.Bindings[WDL.Tree.Decl], WDL.Env.Bindings[WDL.Type.Base]
                 ]
+                convert_cromwell_pair(inputs)
                 input_bindings = WDL.values_from_json(
                     inputs,
                     cast(WDLTypeDeclBindings, target.available_inputs),
