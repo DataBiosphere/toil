@@ -157,23 +157,20 @@ Determining haplotype from mitochondria sequence
 
 Let's run a more realistic workflow with Toil. This workflow is mitochondrial variant calling: It will take the human reference genome and sequenced reads from an individual and determine how that person's mitochondrial DNA differs from the reference genome.
 
-First, grab the `workflow from Dockstore<https://dockstore.org/workflows/github.com/broadinstitute/gatk/MitochondriaPipeline:master?tab=info>`_::
-
-    (venv) $ wget https://dockstore.org/api/workflows/8801/zip/20321 -O MitochondriaExample.zip && unzip MitochondriaExample.zip
-
-Then grab an example workflow input::
+We will run an example `workflow from Dockstore<https://dockstore.org/workflows/github.com/broadinstitute/gatk/MitochondriaPipeline:master?tab=info>`_.
+First, grab an example workflow input::
 
     (venv) $ wget https://toil-datasets.s3.us-west-2.amazonaws.com/MitochondriaInputs.zip && unzip MitochondriaInputs.zip
 
-Move the input files into the scripts directory and change your current working directory to that directory::
+Then, change your current working directory::
 
-    (venv) $ mv MitochondriaInputs/* scripts/mitochondria_m2_wdl/ && cd scripts/mitochondria_m2_wdl/
+    (venv) $ cd MitochondriaInputs
 
 This workflow will take approximately 30 minutes to run.
 
-To run this workflow, run the following command::
+Since Toil supports Dockstore TRS IDs that allows the WDL runner to run any workflow on Dockstore, we will run it directly::
 
-      (venv) $ toil-wdl-runner MitochondriaPipeline.wdl -i ExampleInputsMitochondriaPipeline.json --logInfo --container docker --quantCheck false --outputFile mitochondria.json
+      (venv) $ toil-wdl-runner '#workflow/github.com/broadinstitute/gatk/MitochondriaPipeline:master' -i ExampleInputsMitochondriaPipeline.json --logInfo --container docker --quantCheck false --outputFile mitochondria.json
 
 
 .. note::

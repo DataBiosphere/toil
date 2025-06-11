@@ -95,12 +95,13 @@ By default, this is true.
 ``--runImportsOnWorkers``: Run file imports on workers. This is useful if the leader is not network optimized
 and lots of downloads are necessary. By default, this is false.
 
-``--importWorkersThreshold``: Requires ``--runImportsOnWorkers`` to be true. Specify the target batch size in bytes for batched imports.
+``--importWorkersBatchSize``: Requires ``--runImportsOnWorkers`` to be true. Specify the target batch size in bytes for batched imports.
 As many files as can fit will go into each batch import job. This also accepts abbreviations, such as ``G`` or ``Gi``.
 
 ``--importWorkersDisk``: Requires ``--runImportsOnWorkers`` to be true. Specify the disk size each import worker will get.
-This may be necessary when file streaming is not possible. For example, downloading from AWS to a GCE job store.
-If specified, this should be set to the largest file size of all files to import. By default, this is 1 MiB.
+This usually will not need to be set as Toil will attempt to use file streaming when downloading files.
+If not possible, for example, when downloading from AWS to a GCE job store,
+this should be set to the largest file size of all files to import. By default, this is 1 MiB.
 
 Any number of other Toil options may also be specified. For defined Toil options,
 see :ref:`commandRef`.

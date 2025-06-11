@@ -50,7 +50,8 @@ def add_runner_options(
         dest="import_workers_disk",
         type=lambda x: human2bytes(str(x)),
         default="1 MiB",
-        help="Specify the disk size each import worker will get. This may be necessary when file streaming is not possible. For example, downloading from AWS to a GCE "
-             "job store. If specified, this should be set to the largest file size of all files to import. This should be set in conjunction with the arguments "
+        help="Specify the disk size each import worker will get. This usually will not need to be set as Toil will attempt to use file streaming when downloading files. "
+             "If not possible, for example, when downloading from AWS to a GCE job store, "
+             "this should be set to the largest file size of all files to import. This should be set in conjunction with the arguments "
              "--runImportsOnWorkers and --importWorkersBatchSize."
     )

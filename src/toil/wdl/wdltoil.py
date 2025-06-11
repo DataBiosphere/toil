@@ -3800,7 +3800,7 @@ class WDLTaskJob(WDLBaseJob):
                     "is not yet implemented in the MiniWDL Docker "
                     "containerization implementation."
                 )
-            if runtime_bindings.has_binding("memory") and human2bytes(runtime_bindings.resolve("memory").value) < 4_194_304:
+            if runtime_bindings.has_binding("memory") and human2bytes(runtime_bindings.resolve("memory").value) < human2bytes("4MiB"):
                     runtime_bindings.resolve("memory").value = "4MiB"
         else:
             raise RuntimeError(
