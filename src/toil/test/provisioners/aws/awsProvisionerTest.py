@@ -526,7 +526,7 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
         runCommand = [
             self.python(),
             self.script(),
-            "--fileToSort=/home/s3am/bin/asadmin",
+            "--fileToSort=/etc/passwd",
             "--sortMemory=0.6G",
             "--mergeMemory=3.0G",
         ]
