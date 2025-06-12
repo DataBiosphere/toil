@@ -182,18 +182,22 @@ print(heredoc('''
     # The stock pip is too old and can't install from sdist with extras
     RUN curl -sS https://bootstrap.pypa.io/get-pip.py | {python}
 
-    # Include virtualenv, as it is still the recommended way to deploy pipelines
-    RUN {pip} install --upgrade virtualenv==20.25.1
+    # Include virtualenv, as it is still the recommended way to deploy
+    # pipelines.
+    #
+    # We need to --ignore-installed here to allow shadowing system packages
+    # from apt in /usr/lib/python3/dist-packages when the installed package
+    # needs newer versions. We just hope that doesn't break the Ubuntu system
+    # too badly when we're actually on the system Python, or if Toil needs to
+    # upgrade a distutils or setuptools dependency. On the deadsnakes Pythons,
+    # installations into the version-specific package directory won't be seen
+    # by the system Python which is a different version.
+    #
+    # TODO: Change to nested virtual environments and .pth files and teach Toil
+    # to just ship the user-level one for hot deploy.
+    RUN {pip} install --ignore-installed --upgrade 'virtualenv>=20.25.1,<21'
 
-    # Install s3am (--never-download prevents silent upgrades to pip, wheel and setuptools)
-    # Install setuptools within the virtual environment to properly access distutils due to PEP 632 and gh-95299 in Python 3.12 release notes
-    # https://docs.python.org/3/whatsnew/3.12.html#summary-release-highlights
-    RUN virtualenv --python {python} --never-download /home/s3am \
-        && /home/s3am/bin/pip install setuptools \
-        && /home/s3am/bin/pip install s3am==2.0 \
-        && ln -s /home/s3am/bin/s3am /usr/local/bin/
-    
-    RUN {pip} install --upgrade setuptools==69.2.0
+    RUN {pip} install --ignore-installed --upgrade 'setuptools>=80,<81'
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
@@ -222,7 +226,7 @@ print(heredoc('''
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
-    RUN {pip} install {sdistName}[all]
+    RUN {pip} install --ignore-installed --upgrade {sdistName}[all]
     RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect
