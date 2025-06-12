@@ -292,7 +292,7 @@ def trim_mounts_op_up(file_or_directory: "CWLObjectType", op_down_ret: None, chi
         if any(child_results):
             # one of the children was detected as not redundant
             return True
-        for secondary in cast(MutableSequence[MutableMapping[str, CWLOutputType]], file_or_directory.get('secondaryFiles', [])):
+        for secondary in cast(MutableSequence[MutableMapping[str, "CWLOutputType"]], file_or_directory.get('secondaryFiles', [])):
             # secondary files should already be flagged nonredundant if they don't have either a path or location
             secondary_path = sniff_location(secondary)
             secondary_basename = cast(str, secondary['basename'])
@@ -300,7 +300,7 @@ def trim_mounts_op_up(file_or_directory: "CWLObjectType", op_down_ret: None, chi
             if os.path.join(own_path[:-len(own_basename)], secondary_basename) != secondary_path:
                 return True
     else:
-        listings = cast(MutableSequence[MutableMapping[str, CWLOutputType]], file_or_directory.get('listing', []))
+        listings = cast(MutableSequence[MutableMapping[str, "CWLOutputType"]], file_or_directory.get('listing', []))
         if len(listings) == 0:
             return False
         # We assume child_results is in the same order as the directory listing
