@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2021 Regents of the University of California
+# Copyright (C) 2015-2025 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-from typing import Optional
+from typing import IO, Optional, Union
 
 from configargparse import ArgParser, ArgumentParser
 
@@ -59,17 +59,17 @@ class FakeURLPlugin(URLAccess):
         return ["file1.txt", "subdir/"]
 
     @classmethod
-    def _read_from_url(cls, url: ParseResult, writable: io.BytesIO) -> tuple[int, bool]:
+    def _read_from_url(cls, url: ParseResult, writable: IO[bytes]) -> tuple[int, bool]:
         content = b"hello world"
         writable.write(content)
         return len(content), False
 
     @classmethod
-    def _open_url(cls, url: ParseResult) -> io.BytesIO:
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
         return io.BytesIO(b"hello world")
 
     @classmethod
-    def _write_to_url(cls, readable, url: ParseResult, executable: bool = False) -> None:
+    def _write_to_url(cls, readable: Union[IO[bytes], IO[str]], url: ParseResult, executable: bool = False) -> None:
         pass
 
 
@@ -82,27 +82,27 @@ class TestURLAccess(ToilTest):
         remove_plugin("url_access", "fake")
         super().tearDown()
 
-    def test_url_exists(self):
+    def test_url_exists(self) -> None:
         assert URLAccess.url_exists("fake://exists/resource") == True
         assert URLAccess.url_exists("fake://missing/resource") == False
 
-    def test_get_size(self):
+    def test_get_size(self) -> None:
         assert URLAccess.get_size("fake://any/resource") == 1234
 
-    def test_get_is_directory(self):
+    def test_get_is_directory(self) -> None:
         assert URLAccess.get_is_directory("fake://any/folder/") == True
         assert URLAccess.get_is_directory("fake://any/file.txt") == False
 
-    def test_list_url(self):
+    def test_list_url(self) -> None:
         assert URLAccess.list_url("fake://any/folder/") == ["file1.txt", "subdir/"]
 
-    def test_read_from_url(self):
+    def test_read_from_url(self) -> None:
         output = io.BytesIO()
         size, _ = URLAccess.read_from_url("fake://any/resource", output)
         assert output.getvalue() == b"hello world"
         assert size == len("hello world")
 
-    def test_open_url(self):
+    def test_open_url(self) -> None:
         with URLAccess.open_url("fake://any/resource") as stream:
             content = stream.read()
             assert content == b"hello world"
