@@ -152,12 +152,13 @@ Toil's customization options are available in Python workflows. Run ``python3 he
 
 
 .. _mitochondriaExample:
-Determining haplotype from mitochondria sequence
---------------------
+
+Example: mitochondrial variant calling
+--------------------------------------
 
 Let's run a more realistic workflow with Toil. This workflow is mitochondrial variant calling: It will take the human reference genome and sequenced reads from an individual and determine how that person's mitochondrial DNA differs from the reference genome.
 
-We will run an example `workflow from Dockstore<https://dockstore.org/workflows/github.com/broadinstitute/gatk/MitochondriaPipeline:master?tab=info>`_.
+We will run an example `workflow from Dockstore <https://dockstore.org/workflows/github.com/broadinstitute/gatk/MitochondriaPipeline:master?tab=info>`_.
 First, grab an example workflow input::
 
     (venv) $ wget https://toil-datasets.s3.us-west-2.amazonaws.com/MitochondriaInputs.zip && unzip MitochondriaInputs.zip
@@ -174,13 +175,13 @@ Since Toil supports Dockstore TRS IDs that allows the WDL runner to run any work
 
 
 .. note::
-        ``--logInfo`` runs the workflow with INFO level logging. For different levels of logging, see ``--logLevel``, ``--logCritical``, ``--logError``, ``--logWarning``, ``--logDebug``, and ``--logTrace``.
-        ``--container docker`` uses Docker as the container backend. By default, Toil will run with Singularity. To set explicitly, use ``--container singularity``.
-        ``--outputFile`` will put the workflow JSON outputs into a file. If omitted, Toil will put the workflow outputs onto the commandline.
-        ``--quantCheck false`` disables certain type checks. This is useful for Cromwell compatibility.
+        * ``--logInfo`` runs the workflow with INFO level logging. For different levels of logging, see ``--logLevel``, ``--logCritical``, ``--logError``, ``--logWarning``, ``--logDebug``, and ``--logTrace``.
+        * ``--container docker`` uses Docker as the container backend. By default, Toil will run with Singularity. To set explicitly, use ``--container singularity``.
+        * ``--outputFile`` will put the workflow JSON outputs into a file. If omitted, Toil will put the workflow outputs onto the commandline.
+        * ``--quantCheck false`` disables certain type checks. This is useful for Cromwell compatibility.
 
 Unless fakeroot support is set up for Singularity, this particular workflow must be run with Docker because it assumes commands in the container will run as root.
-Additionally, WDL workflows sometimes depend on non-spec compliant behaviors. To see if Toil has an workaround option, see :ref:`_wdlOptions`.
+Additionally, WDL workflows sometimes depend on non-spec compliant behaviors. To see if Toil has an workaround option, see :ref:`wdlOptions`.
 
 Once the workflow is done running, you can look at your JSON output with ``jq . mitochondria.json``. For example, if we want the ``out_vcf`` output from the workflow, we can run ``jq -r '.["MitochondriaPipeline.out_vcf"]' mitochondria.json`` to get its path::
 
@@ -189,7 +190,7 @@ Once the workflow is done running, you can look at your JSON output with ``jq . 
 To open the VCF file, we can run ``less $(jq -r '.["MitochondriaPipeline.out_vcf"]' mitochondria.json)``
 
 .. note::
-        For outputs that aren't files, their values are directly in the JSON. For example, with ``jq '.["MitochondriaPipeline.median_coverage"]' mitochondria.json``::
+        For outputs that aren't files, their values are directly in the JSON. For example, with ``jq '.["MitochondriaPipeline.median_coverage"]' mitochondria.json`` you can fetch the ``median_coverage`` output's value::
 
             4183.5
 
@@ -205,7 +206,7 @@ Toil supports several batch systems. By default, Toil will use ``single_machine`
 
       (venv) $ toil-wdl-runner MitochondriaPipeline.wdl -i ExampleInputsMitochondriaPipeline.json --logInfo --container docker --outputFile mitochondria.json --jobStore mitochondriaJobstore --batchSystem slurm
 
-See :ref:``runningSlurm`` for more information, including how to specify time limits and partitions.
+See :ref:`runningSlurm` for more information, including how to specify time limits and partitions.
 
 Sometimes, a workflow may fail. If this is the case, the workflow can be restarted from the point of failure with ``--restart``, as long as you still have the jobstore::
 
@@ -214,8 +215,8 @@ Sometimes, a workflow may fail. If this is the case, the workflow can be restart
 
 .. _runningDetail:
 
-A (more) real-world example
----------------------------
+Example: sorting
+----------------
 
 For a more detailed example and explanation, we've developed a sample pipeline
 that merge-sorts a temporary file. This is not supposed to be an efficient
