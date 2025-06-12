@@ -25,9 +25,6 @@ from toil.batchSystems.options import OptionSetter
 from toil.batchSystems.registry import add_batch_system_factory
 from toil.common import Toil, addOptions
 from toil.job import JobDescription
-from toil.test import ToilTest
-from toil.lib.plugins import remove_plugin
-
 
 import io
 from urllib.parse import ParseResult
