@@ -33,7 +33,7 @@ except ImportError:
     # extra wasn't installed. We'll then skip them all.
     pass
 
-from toil.test import ToilTest, needs_aws_s3, needs_celery_broker, needs_server
+from toil.test import ToilTest, needs_aws_s3, needs_celery_broker, needs_cwl, needs_server, integrative
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -185,6 +185,7 @@ class FileStateStoreURLTest(hidden.AbstractStateStoreTest):
 
 
 @needs_aws_s3
+@integrative
 class BucketUsingTest(ToilTest):
     """
     Base class for tests that need a bucket.
@@ -268,6 +269,35 @@ class AWSStateStoreTest(hidden.AbstractStateStoreTest, BucketUsingTest):
         self.assertEqual(obj.content_length, len("testvalue"))
 
 
+# Problem: httpx (which the Connexion test client uses the API of)
+# automatically decides whether to send posts in
+# application/x-www-form-urlencoded or multipart/form-data format
+# based on whether they are uploading any files. But the GA4GH WES
+# API run workflow endpoint only accepts multipart/form-data. It takes
+# workflow_attachment as an array of binary strings officially, but this is
+# actually how Swagger takes multiple-file upload fields. See
+# <https://swagger.io/docs/specification/v2_0/file-upload/#multiple-upload>.
+# (httpx doesn't seem to support actually sending multiple files to one field
+# either, but if we send just one file it ends up as the only value in
+# Swagger's array.)
+#
+# The apparently-official workaround for forcing multipart encoding is to
+# construct an empty dict-saped data structure that is truthy, and pass that as
+# your file list. See
+# <https://github.com/encode/httpx/discussions/2399#discussioncomment-3814186>
+class TrueDict(dict):
+    """
+    Dict that is truthy even when empty.
+
+    Used as a workaround to set httpx post request encoding as recommended in
+    <https://github.com/encode/httpx/discussions/2399#discussioncomment-3814186>.
+    """
+    def __bool__(self) -> bool:
+        """
+        Always say the object is truthy.
+        """
+        return True
+
 @needs_server
 class AbstractToilWESServerTest(ToilTest):
     """
@@ -296,11 +326,12 @@ class AbstractToilWESServerTest(ToilTest):
         )
 
         # Make the FlaskApp
-        server_app = create_app(args)
+        self.app = create_app(args)
 
-        # Fish out the actual Flask
-        self.app: Flask = server_app.app
-        self.app.testing = True
+        # Neither <https://flask.palletsprojects.com/en/stable/testing/> nor
+        # <https://connexion.readthedocs.io/en/latest/testing.html#testing>
+        # suggests setting a testing flag on the Connexion app or its internal
+        # Flask app, so we don't.
 
         self.example_cwl = textwrap.dedent(
             """
@@ -345,7 +376,6 @@ class AbstractToilWESServerTest(ToilTest):
         """
         rv = client.get(f"/ga4gh/wes/v1/runs/{run_id}")
         self.assertEqual(rv.status_code, 200)
-        self.assertTrue(rv.is_json)
         return rv
 
     def _check_successful_log(self, client: "FlaskClient", run_id: str) -> None:
@@ -354,15 +384,16 @@ class AbstractToilWESServerTest(ToilTest):
         The workflow should succeed, it should have some tasks, and they should have all succeeded.
         """
         rv = self._fetch_run_log(client, run_id)
+        rv_json = rv.json()
         logger.debug("Log info: %s", rv.json)
-        run_log = rv.json.get("run_log")
+        run_log = rv_json.get("run_log")
         self.assertEqual(type(run_log), dict)
         if "exit_code" in run_log:
             # The workflow succeeded if it has an exit code
             self.assertEqual(run_log["exit_code"], 0)
         # The workflow is complete
-        self.assertEqual(rv.json.get("state"), "COMPLETE")
-        task_logs = rv.json.get("task_logs")
+        self.assertEqual(rv_json.get("state"), "COMPLETE")
+        task_logs = rv_json.get("task_logs")
         # There are tasks reported
         self.assertEqual(type(task_logs), list)
         self.assertGreater(len(task_logs), 0)
@@ -375,7 +406,7 @@ class AbstractToilWESServerTest(ToilTest):
         """Report the log for the given workflow run."""
         rv = self._fetch_run_log(client, run_id)
         logger.debug(f"Report log response: {rv.json}")
-        run_log = rv.json.get("run_log")
+        run_log = rv.json().get("run_log")
         self.assertEqual(type(run_log), dict)
         self.assertEqual(type(run_log.get("stdout")), str)
         self.assertEqual(type(run_log.get("stderr")), str)
@@ -395,12 +426,13 @@ class AbstractToilWESServerTest(ToilTest):
         logger.info("Fetch %s", url)
         rv = client.get(url)
         self.assertEqual(rv.status_code, 200)
-        logger.info("Got %s:\n%s", url, rv.data.decode("utf-8"))
+        logger.info("Got %s:\n%s", url, rv.content.decode("utf-8"))
 
     def _start_slow_workflow(self, client: "FlaskClient") -> str:
         """
         Start a slow workflow and return its ID.
         """
+
         rv = client.post(
             "/ga4gh/wes/v1/runs",
             data={
@@ -408,15 +440,18 @@ class AbstractToilWESServerTest(ToilTest):
                 "workflow_type": "CWL",
                 "workflow_type_version": "v1.0",
                 "workflow_params": json.dumps({"delay": "5"}),
-                "workflow_attachment": [
-                    (BytesIO(self.slow_cwl.encode()), "slow.cwl"),
-                ],
+            },
+            files={
+                "workflow_attachment": (
+                    "slow.cwl",
+                    BytesIO(self.slow_cwl.encode()),
+                    "application/octet-stream",
+                ),
             },
         )
         # workflow is submitted successfully
         self.assertEqual(rv.status_code, 200)
-        self.assertTrue(rv.is_json)
-        run_id = rv.json.get("run_id")
+        run_id = rv.json().get("run_id")
         self.assertIsNotNone(run_id)
 
         return run_id
@@ -428,11 +463,11 @@ class AbstractToilWESServerTest(ToilTest):
 
         rv = client.get(f"/ga4gh/wes/v1/runs/{run_id}/status")
         self.assertEqual(rv.status_code, 200)
-        self.assertTrue(rv.is_json)
-        self.assertIn("run_id", rv.json)
-        self.assertEqual(rv.json.get("run_id"), run_id)
-        self.assertIn("state", rv.json)
-        state = rv.json.get("state")
+        rv_json = rv.json()
+        self.assertIn("run_id", rv_json)
+        self.assertEqual(rv_json.get("run_id"), run_id)
+        self.assertIn("state", rv_json)
+        state = rv_json.get("state")
         self.assertIn(
             state,
             [
@@ -492,7 +527,10 @@ class ToilWESServerBenchTest(AbstractToilWESServerTest):
         """Test the homepage endpoint."""
         with self.app.test_client() as client:
             rv = client.get("/")
-        self.assertEqual(rv.status_code, 302)
+        # The client will follow the redirect and populate the url on the response
+        self.assertEqual(rv.url.path, "/ga4gh/wes/v1/service-info")
+        # We see the final 200 OK status code
+        self.assertEqual(rv.status_code, 200)
 
     def test_health(self) -> None:
         """Test the health check endpoint."""
@@ -505,7 +543,7 @@ class ToilWESServerBenchTest(AbstractToilWESServerTest):
         with self.app.test_client() as client:
             rv = client.get("/ga4gh/wes/v1/service-info")
         self.assertEqual(rv.status_code, 200)
-        service_info = json.loads(rv.data)
+        service_info = rv.json()
 
         self.assertIn("version", service_info)
         self.assertIn("workflow_type_versions", service_info)
@@ -519,7 +557,7 @@ class ToilWESServerBenchTest(AbstractToilWESServerTest):
         self.assertIn("system_state_counts", service_info)
         self.assertIn("tags", service_info)
 
-
+@needs_cwl
 class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
     """
     Tests of the WES server running workflows.
@@ -548,11 +586,10 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
                 {"message": "Hello, world!"} if include_message else {}
             )
         with self.app.test_client() as client:
-            rv = client.post("/ga4gh/wes/v1/runs", data=post_data)
+            rv = client.post("/ga4gh/wes/v1/runs", data=post_data, files=TrueDict())
             # workflow is submitted successfully
             self.assertEqual(rv.status_code, 200)
-            self.assertTrue(rv.is_json)
-            run_id = rv.json.get("run_id")
+            run_id = rv.json().get("run_id")
             self.assertIsNotNone(run_id)
 
             # Check status
@@ -571,11 +608,11 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
                     "workflow_type_version": "v1.0",
                     "workflow_params": "{}",
                 },
+                files=TrueDict(),
             )
             self.assertEqual(rv.status_code, 400)
-            self.assertTrue(rv.is_json)
             self.assertEqual(
-                rv.json.get("msg"),
+                rv.json().get("msg"),
                 "Relative 'workflow_url' but missing 'workflow_attachment'",
             )
 
@@ -589,20 +626,24 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
                     "workflow_type": "CWL",
                     "workflow_type_version": "v1.0",
                     "workflow_params": json.dumps({"message": "Hello, world!"}),
-                    "workflow_attachment": [
-                        (BytesIO(self.example_cwl.encode()), "example.cwl"),
-                    ],
+                },
+                files={
+                    "workflow_attachment": (
+                        "example.cwl",
+                        BytesIO(self.example_cwl.encode()),
+                        "application/octet-stream",
+                    ),
                 },
             )
             # workflow is submitted successfully
             self.assertEqual(rv.status_code, 200)
-            self.assertTrue(rv.is_json)
-            run_id = rv.json.get("run_id")
+            run_id = rv.json().get("run_id")
             self.assertIsNotNone(run_id)
 
             # Check status
             self._wait_for_success(client, run_id)
 
+    @integrative
     def test_run_workflow_https_url(self) -> None:
         """Test run example CWL workflow from the Internet."""
         with self.app.test_client() as client:
@@ -614,11 +655,11 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
                     "workflow_type_version": "v1.2",
                     "workflow_params": json.dumps({"message": "Hello, world!"}),
                 },
+                files=TrueDict(),
             )
             # workflow is submitted successfully
             self.assertEqual(rv.status_code, 200)
-            self.assertTrue(rv.is_json)
-            run_id = rv.json.get("run_id")
+            run_id = rv.json().get("run_id")
             self.assertIsNotNone(run_id)
 
             # Check status
@@ -730,6 +771,7 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
 
 
 @needs_celery_broker
+@integrative
 class ToilWESServerCeleryWorkflowTest(ToilWESServerWorkflowTest):
     """
     End-to-end workflow-running tests against Celery.

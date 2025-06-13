@@ -208,8 +208,8 @@ py39_main:
     python3.9 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
-    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
-    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
+    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
+    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 py310_appliance_build:
@@ -253,8 +253,8 @@ py310_main:
     python3.10 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10 && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
-    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
-    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
+    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
+    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 py311_appliance_build:
@@ -298,8 +298,8 @@ py311_main:
     python3.11 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && pip install -U pip wheel && make prepare && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
-    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
-    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
+    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
+    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 py312_appliance_build:
@@ -343,8 +343,8 @@ py312_main:
     python3.12 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && pip install -U pip wheel && make prepare && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
-    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
-    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
+    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
+    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 py313_appliance_build:
@@ -379,8 +379,8 @@ py313_main:
     python3.13 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.13 && pip install -U pip wheel && make prepare && make develop extras=[all]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
-    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
-    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
+    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
+    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 
@@ -642,6 +642,12 @@ server_integration:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        compare_to: 'refs/heads/master'
+        paths:
+          - 'src/toil/server/*'
+          - 'src/toil/test/server/*'
   stage: integration
   cache:
     key: cache-$MAIN_PYTHON_PKG
@@ -657,7 +663,7 @@ server_integration:
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
     # Test server and its integration with AWS
-    - make test threads="${TEST_THREADS}" tests="src/toil/test/server"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/server -k 'integrative'"
 
 provisioner_integration:
   rules:
