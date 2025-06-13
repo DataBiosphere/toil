@@ -42,8 +42,6 @@ from toil.batchSystems.registry import (
     add_batch_system_factory,
     get_batch_system,
     get_batch_systems,
-    restore_batch_system_plugin_state,
-    save_batch_system_plugin_state,
 )
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config, Toil
@@ -69,6 +67,7 @@ from toil.test import (
     pslow,
     pneeds_mesos,
 )
+from toil.lib.plugins import remove_plugin
 
 import pytest
 
@@ -97,15 +96,9 @@ class BatchSystemPluginTest(ToilTest):
     Class for testing batch system plugin functionality.
     """
 
-    def setUp(self) -> None:
-        # Save plugin state so our plugin doesn't stick around after the test
-        # (and create duplicate options)
-        self.__state = save_batch_system_plugin_state()
-        super().setUp()
-
     def tearDown(self) -> None:
         # Restore plugin state
-        restore_batch_system_plugin_state(self.__state)
+        remove_plugin("batch_system", "testBatchSystem")
         super().tearDown()
 
     def test_add_batch_system_factory(self) -> None:
