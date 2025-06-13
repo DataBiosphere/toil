@@ -26,6 +26,7 @@ from toil.batchSystems.registry import add_batch_system_factory
 from toil.common import Toil, addOptions
 from toil.job import JobDescription
 from toil.test import ToilTest
+from toil.lib.plugins import remove_plugin
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,11 @@ class FakeBatchSystem(BatchSystemCleanupSupport):
 
 
 class BatchSystemPluginTest(ToilTest):
+    def tearDown(self) -> None:
+        # Restore plugin state
+        remove_plugin("batch_system", "fake")
+        super().tearDown()
+
     def test_batchsystem_plugin_installable(self):
         """
         Test that installing a batch system plugin works.
@@ -76,6 +82,7 @@ class BatchSystemPluginTest(ToilTest):
 
         def fake_batch_system_factory() -> type[AbstractBatchSystem]:
             return FakeBatchSystem
+        
 
         add_batch_system_factory("fake", fake_batch_system_factory)
 
