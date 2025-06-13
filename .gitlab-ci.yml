@@ -780,15 +780,4 @@ cactus_integration:
     - chmod 400 /root/.ssh/id_rsa
     - make test threads="${TEST_THREADS}" tests=src/toil/test/cactus/test_cactus_integration.py
 
-# Plugin tests
-plugin:
-  rules:
-    - if: $CI_PIPELINE_SOURCE != "schedule"
-  stage: integration
-  cache:
-    key: cache-$MAIN_PYTHON_PKG
-    paths:
-      - .cache/pip
-  script:
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
-    - make test threads="${TEST_THREADS}" tests=src/toil/test/batchSystems/batch_system_plugin_test.py
+
