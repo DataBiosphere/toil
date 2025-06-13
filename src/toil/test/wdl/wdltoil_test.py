@@ -1110,7 +1110,7 @@ class TestWDLToilBench(unittest.TestCase):
                     assert "decl2" in result[0]
                     assert "successor" in result[1]
 
-    def make_string_expr(self, to_parse: str) -> WDL.Expr.String:
+    def make_string_expr(self, to_parse: str, expr_type: type[WDL.Expr.String] = WDL.Expr.String) -> WDL.Expr.String:
         """
         Parse pseudo-WDL for testing whitespace removal.
         """
@@ -1121,7 +1121,7 @@ class TestWDLToilBench(unittest.TestCase):
         for i in range(1, len(parts), 2):
             parts[i] = WDL.Expr.Placeholder(pos, {}, WDL.Expr.Null(pos))
 
-        return WDL.Expr.String(pos, parts)
+        return expr_type(pos, parts)
 
     def test_remove_common_leading_whitespace(self) -> None:
         """
@@ -1230,13 +1230,13 @@ class TestWDLToilBench(unittest.TestCase):
         assert trimmed.parts[0] == ""
         assert trimmed.parts[2] == ""
 
-        # The command flag is preserved
+        # The command status is preserved
         expr = self.make_string_expr(" a ~{b} c")
         trimmed = remove_common_leading_whitespace(expr)
-        assert trimmed.command == False
-        expr.command = True
+        assert not isinstance(trimmed, WDL.Expr.TaskCommand)
+        expr = self.make_string_expr(" a ~{b} c", expr_type=WDL.Expr.TaskCommand)
         trimmed = remove_common_leading_whitespace(expr)
-        assert trimmed.command == True
+        assert isinstance(trimmed, WDL.Expr.TaskCommand)
 
     def test_choose_human_readable_directory(self) -> None:
         """

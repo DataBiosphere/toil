@@ -487,8 +487,13 @@ def remove_common_leading_whitespace(
 
     if debug:
         logger.debug("New Parts Merged: %s", new_parts_merged)
-
-    modified = WDL.Expr.String(expression.pos, new_parts_merged, expression.command)
+    
+    # TODO: Now that TaskCommand exists, see if its own whitespace removal
+    # logic is adequate.
+    if isinstance(expression, WDL.Expr.TaskCommand):
+        modified: WDL.Expr.String = WDL.Expr.TaskCommand(expression.pos, new_parts_merged)
+    else:
+        modified = WDL.Expr.String(expression.pos, new_parts_merged)
     # Fake the type checking of the modified expression.
     # TODO: Make MiniWDL expose a real way to do this?
     modified._type = expression._type
