@@ -14,7 +14,7 @@ import ruamel.yaml
 import schema_salad
 from configargparse import ArgumentParser
 from wes_client.util import WESClient  # type: ignore
-from wes_client.util import wes_reponse as wes_response
+from wes_client.util import wes_response as wes_response
 
 from toil.lib.web import web_session
 from toil.wdl.utils import get_version as get_wdl_version
@@ -144,7 +144,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
             return "3.8"
         elif extension == "cwl":
             with open(workflow_file) as f:
-                yaml = ruamel.yaml.YAML(typ='safe', pure=True)
+                yaml = ruamel.yaml.YAML(typ="safe", pure=True)
                 return str(yaml.load(f)["cwlVersion"])
         elif extension == "wdl":
             with open(workflow_file) as f:
