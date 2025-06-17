@@ -341,7 +341,7 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
         runCommand = [
             "/home/venv/bin/python",
             "/home/sort.py",
-            "--fileToSort=/home/s3am/bin/asadmin",
+            "--fileToSort=/etc/passwd",
             "--sortMemory=0.6G",
             "--mergeMemory=3.0G",
         ]

@@ -45,6 +45,7 @@ from toil.cwl.utils import (
     download_structure,
     visit_cwl_class_and_reduce,
     visit_top_cwl_class,
+    remove_redundant_mounts
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -1910,6 +1911,134 @@ def test_visit_cwl_class_and_reduce() -> None:
     assert up_count == 3
     # Only 2 child relationships
     assert up_child_count == 2
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_trim_mounts_op_nonredundant() -> None:
+    """
+    Make sure we don't remove all non-duplicate listings
+    """
+    s: CWLObjectType = {"class": "Directory", "basename": "directory", "listing": [{"class": "File", "basename": "file", "contents": "hello world"}]}
+    remove_redundant_mounts(s)
+
+    # nothing should have been removed
+    assert isinstance(s['listing'], list)
+    assert len(s['listing']) == 1
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_trim_mounts_op_redundant() -> None:
+    """
+    Make sure we remove all duplicate listings
+    """
+    s: CWLObjectType = {
+        "class": "Directory",
+        "location": "file:///home/heaucques/Documents/toil/test_dir",
+        "basename": "test_dir",
+        "listing": [
+            {
+                "class": "Directory",
+                "location": "file:///home/heaucques/Documents/toil/test_dir/nested_dir",
+                "basename": "nested_dir",
+                "listing": [],
+                "path": "/home/heaucques/Documents/toil/test_dir/nested_dir"
+            },
+            {
+                "class": "File",
+                "location": "file:///home/heaucques/Documents/toil/test_dir/test_file",
+                "basename": "test_file",
+                "size": 0,
+                "nameroot": "test_file",
+                "nameext": "",
+                "path": "/home/heaucques/Documents/toil/test_dir/test_file",
+                "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709"
+            }
+        ],
+        "path": "/home/heaucques/Documents/toil/test_dir"
+    }
+    remove_redundant_mounts(s)
+
+    # everything should have been removed
+    assert isinstance(s['listing'], list)
+    assert len(s['listing']) == 0
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_trim_mounts_op_partially_redundant() -> None:
+    """
+    Make sure we remove only the redundant listings in the CWL object and leave nonredundant listings intact
+    """
+    s: CWLObjectType = {
+        "class": "Directory",
+        "location": "file:///home/heaucques/Documents/toil/test_dir",
+        "basename": "test_dir",
+        "listing": [
+            {
+                "class": "Directory",
+                "location": "file:///home/heaucques/Documents/thing",
+                "basename": "thing2",
+                "listing": [],
+                "path": "/home/heaucques/Documents/toil/thing2"
+            },
+            {
+                "class": "File",
+                "location": "file:///home/heaucques/Documents/toil/test_dir/test_file",
+                "basename": "test_file",
+                "size": 0,
+                "nameroot": "test_file",
+                "nameext": "",
+                "path": "/home/heaucques/Documents/toil/test_dir/test_file",
+                "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709"
+            }
+        ],
+        "path": "/home/heaucques/Documents/toil/test_dir"
+    }
+    remove_redundant_mounts(s)
+
+    # everything except the nested directory should be removed
+    assert isinstance(s['listing'], list)
+    assert len(s['listing']) == 1
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_trim_mounts_op_mixed_urls_and_paths() -> None:
+    """
+    Ensure we remove redundant listings in certain edge cases
+    """
+    # Edge cases around encoding:
+    # Ensure URL decoded file URIs match the bare path equivalent. Both of these paths should have the same shared directory
+    s: CWLObjectType = {"class": "Directory", "basename": "123", "location": "file:///tmp/%25/123", "listing": [{"class": "File", "path": "/tmp/%/123/456", "basename": "456"}]}
+    remove_redundant_mounts(s)
+    assert isinstance(s['listing'], list)
+    assert len(s['listing']) == 0
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_trim_mounts_op_decodable_paths() -> None:
+    """"""
+    # Ensure path names don't get unnecessarily decoded
+    s: CWLObjectType = {"class": "Directory", "basename": "dir", "path": "/tmp/cat%2Ftag/dir", "listing": [{"class": "File", "path": "/tmp/cat/tag/dir/file", "basename": "file"}]}
+    remove_redundant_mounts(s)
+    assert isinstance(s['listing'], list)
+    assert len(s['listing']) == 1
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_trim_mounts_op_multiple_encodings() -> None:
+    # Ensure differently encoded URLs are properly decoded
+    s: CWLObjectType = {"class": "Directory", "basename": "dir", "location": "file:///tmp/cat%2Ftag/dir", "listing": [{"class": "File", "location": "file:///tmp/cat%2ftag/dir/file", "basename": "file"}]}
+    remove_redundant_mounts(s)
+    assert isinstance(s['listing'], list)
+    assert len(s['listing']) == 0
+
+
 
 
 @needs_cwl
