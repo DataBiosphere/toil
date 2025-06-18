@@ -467,7 +467,7 @@ def needs_google_storage(test_item: MT) -> MT:
     """
     test_item = _mark_test("google_storage", needs_online(test_item))
     try:
-        from google.cloud import storage  # type: ignore[import-untyped]
+        import google.clould.storage  # type: ignore[import-untyped]
     except ImportError:
         return unittest.skip(
             "Install Toil with the 'google' extra to include this test."
