@@ -115,9 +115,10 @@ class TestWDLConformance:
     @slow
     def test_unit_tests_v11(self, wdl_conformance_test_repo: Path) -> None:
         # There are still some bugs with the WDL spec, use a fixed version until
-        # See comments of https://github.com/openwdl/wdl/pull/669
+        # TODO: Using a branch lets Toil commits that formerly passed start to
+        # fail CI when the branch moves.
         os.chdir(wdl_conformance_test_repo)
-        repo_url = "https://github.com/stxue1/wdl.git"
+        repo_url = "https://github.com/adamnovak/wdl.git"
         repo_branch = "wdl-1.1.3-fixes"
         commands1 = [
             exactPython,
