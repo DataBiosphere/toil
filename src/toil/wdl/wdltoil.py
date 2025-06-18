@@ -842,7 +842,7 @@ def pack_toil_uri(
         [
             quote(file_id.pack(), safe=""),
             quote(task_path, safe=""),
-            quote(dir_path, safe=""),
+            quote(parent, safe=""),
             quote(file_basename, safe=""),
         ]
     )
@@ -1886,7 +1886,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         if not os.path.exists(dir_path):
             # Make sure the chosen directory exists
-            os.mkdir(dir_path)
+            os.makedirs(dir_path, exist_ok=True)
         # And decide the file goes in it.
         dest_path = os.path.join(dir_path, file_basename)
 
@@ -2896,7 +2896,7 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
                 container_path += "/"
             assert (
                 container_path not in task_container.input_path_map_rev
-            ), f"{container_path}, {task_container.input_path_map_rev}"
+            ), f"{container_path} should not already be in {task_container.input_path_map_rev}"
             task_container.input_path_map[host_path] = container_path
             task_container.input_path_map_rev[container_path] = host_path
 
