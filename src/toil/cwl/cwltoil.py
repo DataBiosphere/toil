@@ -2584,7 +2584,7 @@ class CWLJob(CWLNamedJob):
                 resources={},
                 mutation_manager=runtime_context.mutation_manager,
                 formatgraph=tool.formatgraph,
-                make_fs_access=cast(type[StdFsAccess], runtime_context.make_fs_access),
+                make_fs_access=runtime_context.make_fs_access,
                 fs_access=runtime_context.make_fs_access(""),
                 job_script_provider=runtime_context.job_script_provider,
                 timeout=runtime_context.eval_timeout,
