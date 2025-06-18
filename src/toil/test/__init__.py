@@ -395,6 +395,8 @@ def _aws_s3_avail() -> bool:
         boto3_credentials = session.get_credentials()
     except ImportError:
         return False
+    except ProxyConnectionError:
+        return False
     from toil.lib.aws import running_on_ec2
 
     if not (

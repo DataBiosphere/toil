@@ -158,6 +158,7 @@ def broken_job(job, num):
 
 if __name__ == "__main__":
     jobStorePath = sys.argv[1] if len(sys.argv) > 1 else mkdtemp("debugWorkflow")
+    tmp: str = mkdtemp("debugWorkflow_tmp")
     options = Job.Runner.getDefaultOptions(jobStorePath)
     options.clean = "never"
     options.stats = True
@@ -178,10 +179,9 @@ if __name__ == "__main__":
         job1 = Job.wrapJobFn(writeA, file_maker)
         job2 = Job.wrapJobFn(writeB, file_maker, B_file)
         job3 = Job.wrapJobFn(writeC)
-        with get_data("test/utils/ABCWorkflowDebug/ABC.txt") as filepath:
-            job4 = Job.wrapJobFn(
-                writeABC, job1.rv(), job2.rv(), job3.rv(), str(filepath)
-            )
+        job4 = Job.wrapJobFn(
+            writeABC, job1.rv(), job2.rv(), job3.rv(), os.path.join(tmp, "ABC.txt")
+        )
         job5 = Job.wrapJobFn(finalize_jobs, 1)
         job6 = Job.wrapJobFn(finalize_jobs, 2)
         job7 = Job.wrapJobFn(finalize_jobs, 3)
