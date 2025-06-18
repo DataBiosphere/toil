@@ -327,6 +327,12 @@ def _has_rsync3() -> bool:
             return False
     except subprocess.CalledProcessError:
         return False
+    except ValueError:
+        # Don't have an int where we looked
+        return False
+    except IndexError:
+        # Don't have the field to look in
+        return False
     return True
 
 
@@ -461,7 +467,7 @@ def needs_google_storage(test_item: MT) -> MT:
     """
     test_item = _mark_test("google_storage", needs_online(test_item))
     try:
-        from google.cloud import storage  # type: ignore[import-untyped]
+        import google.clould.storage  # type: ignore[import-untyped]
     except ImportError:
         return unittest.skip(
             "Install Toil with the 'google' extra to include this test."
@@ -613,7 +619,7 @@ def needs_htcondor(test_item: MT) -> MT:
     """Use a decorator before test classes or methods to run only if the HTCondor is installed."""
     test_item = _mark_test("htcondor", test_item)
     try:
-        import htcondor  # type: ignore[import-not-found]
+        import htcondor  # type: ignore
 
         htcondor.Collector(os.getenv("TOIL_HTCONDOR_COLLECTOR")).query(
             constraint="False"

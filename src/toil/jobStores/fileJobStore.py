@@ -42,11 +42,12 @@ from toil.lib.io import (
     mkdtemp,
     robust_rmtree,
 )
+from toil.lib.url import URLAccess
 
 logger = logging.getLogger(__name__)
 
 
-class FileJobStore(AbstractJobStore):
+class FileJobStore(AbstractJobStore, URLAccess):
     """
     A job store that uses a directory on a locally attached file system. To be compatible with
     distributed batch systems, that file system must be shared by all worker nodes.
@@ -395,6 +396,7 @@ class FileJobStore(AbstractJobStore):
 
     @classmethod
     def _url_exists(cls, url: ParseResult) -> bool:
+        # Note that broken symlinks will not be shown to exist.
         return os.path.exists(cls._extract_path_from_url(url))
 
     @classmethod

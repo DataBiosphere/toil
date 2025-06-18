@@ -23,6 +23,7 @@ from toil.test import (
     needs_docker,
     needs_docker_cuda,
     needs_google_storage,
+    needs_online,
     needs_singularity_or_docker,
     needs_wdl,
     slow,
@@ -264,6 +265,27 @@ class TestWDL:
             assert isinstance(result["url_to_file.first_line"], str)
             assert result["url_to_file.first_line"] == "chr1\t248387328"
 
+    def test_string_file_coercion(self, tmp_path: Path) -> None:
+        """
+        Test if input Files can be coerced to string and back.
+        """
+        with get_data("test/wdl/testfiles/string_file_coercion.wdl") as wdl:
+            with get_data("test/wdl/testfiles/string_file_coercion.json") as json_file:
+                result_json = subprocess.check_output(
+                    self.base_command
+                    + [
+                        str(wdl),
+                        str(json_file),
+                        "-o",
+                        str(tmp_path),
+                        "--logInfo",
+                        "--retryCount=0"
+                    ]
+                )
+                result = json.loads(result_json)
+
+                assert "StringFileCoercion.output_file" in result
+
     @needs_docker
     def test_wait(self, tmp_path: Path) -> None:
         """
@@ -286,6 +308,59 @@ class TestWDL:
             assert "wait.result" in result
             assert isinstance(result["wait.result"], str)
             assert result["wait.result"] == "waited"
+
+    def test_restart(self, tmp_path: Path) -> None:
+        """
+        Test if a WDL workflow can be restarted and finish successfully.
+        """
+        with get_data("test/wdl/testfiles/read_file.wdl") as wdl:
+            out_dir = tmp_path / "out"
+            file_path = tmp_path / "file"
+            jobstore_path = tmp_path / "tree"
+            command = (
+                self.base_command
+                + [
+                    str(wdl),
+                    "-o",
+                    str(out_dir),
+                    "-i",
+                    json.dumps({"read_file.input_string": str(file_path)}),
+                    "--jobStore",
+                    str(jobstore_path),
+                    "--retryCount=0"
+                ]
+            )
+            with pytest.raises(subprocess.CalledProcessError):
+                # The first time we run it, it should fail because it's trying
+                # to work on a nonexistent file from a string path.
+                result_json = subprocess.check_output(
+                    command + ["--logCritical"]
+                )
+
+            # Then create the file
+            with open(file_path, "w") as f:
+                f.write("This is a line\n")
+                f.write("This is a different line")
+            
+            # Now it should work
+            result_json = subprocess.check_output(
+                    command + ["--restart"]
+                )
+            result = json.loads(result_json)
+
+            assert "read_file.lines" in result
+            assert isinstance(result["read_file.lines"], list)
+            assert result["read_file.lines"] == [
+                "This is a line",
+                "This is a different line"
+            ]
+
+            # Since we were catching
+            # <https://github.com/DataBiosphere/toil/issues/5247> at file
+            # export, make sure we actually exported a file.
+            assert "read_file.remade_file" in result
+            assert isinstance(result["read_file.remade_file"], str)
+            assert os.path.exists(result["read_file.remade_file"])
 
     @needs_singularity_or_docker
     def test_workflow_file_deletion(self, tmp_path: Path) -> None:
@@ -576,6 +651,7 @@ class TestWDL:
                 != result_not_cached["random.value_written"]
             )
 
+    @needs_online
     def test_url_to_optional_file(self, tmp_path: Path) -> None:
         """
         Test if missing and error-producing URLs are handled correctly for optional File? values.

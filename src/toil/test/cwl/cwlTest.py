@@ -45,9 +45,11 @@ from toil.cwl.utils import (
     download_structure,
     visit_cwl_class_and_reduce,
     visit_top_cwl_class,
+    remove_redundant_mounts
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.job import WorkerImportJob
 from toil.lib.threading import cpu_count
 from toil.test import (
     get_data,
@@ -1112,12 +1114,13 @@ def cwl_v1_0_spec(tmp_path: Path) -> Generator[Path]:
     finally:
         pass  # no cleanup
 
-
+@pytest.mark.integrative
+@pytest.mark.conformance
 @needs_cwl
 @needs_online
 @pytest.mark.cwl
 @pytest.mark.online
-class TestCWLv10:
+class TestCWLv10Conformance:
     """
     Run the CWL 1.0 conformance tests in various environments.
     """
@@ -1295,11 +1298,13 @@ def cwl_v1_1_spec(tmp_path: Path) -> Generator[Path]:
         pass  # no cleanup
 
 
+@pytest.mark.integrative
+@pytest.mark.conformance
 @needs_cwl
 @needs_online
 @pytest.mark.cwl
 @pytest.mark.online
-class TestCWLv11:
+class TestCWLv11Conformance:
     """
     Run the CWL 1.1 conformance tests in various environments.
     """
@@ -1383,11 +1388,13 @@ def cwl_v1_2_spec(tmp_path: Path) -> Generator[Path]:
         pass  # no cleanup
 
 
+@pytest.mark.integrative
+@pytest.mark.conformance
 @needs_cwl
 @needs_online
 @pytest.mark.cwl
 @pytest.mark.online
-class TestCWLv12:
+class TestCWLv12Conformance:
     """
     Run the CWL 1.2 conformance tests in various environments.
     """
@@ -1525,7 +1532,7 @@ class TestCWLv12:
         TOIL_WES_ENDPOINT=http://localhost:8080 \
         TOIL_WES_USER=test \
         TOIL_WES_PASSWORD=password \
-        python -m pytest src/toil/test/cwl/cwlTest.py::TestCWLv12::test_wes_server_cwl_conformance -vv --log-level INFO --log-cli-level INFO
+        python -m pytest src/toil/test/cwl/cwlTest.py::TestCWLv12Conformance::test_wes_server_cwl_conformance -vv --log-level INFO --log-cli-level INFO
         """
         endpoint = os.environ.get("TOIL_WES_ENDPOINT")
         extra_args = [f"--wes_endpoint={endpoint}"]
@@ -1909,6 +1916,134 @@ def test_visit_cwl_class_and_reduce() -> None:
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
+def test_trim_mounts_op_nonredundant() -> None:
+    """
+    Make sure we don't remove all non-duplicate listings
+    """
+    s: CWLObjectType = {"class": "Directory", "basename": "directory", "listing": [{"class": "File", "basename": "file", "contents": "hello world"}]}
+    remove_redundant_mounts(s)
+
+    # nothing should have been removed
+    assert isinstance(s['listing'], list)
+    assert len(s['listing']) == 1
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_trim_mounts_op_redundant() -> None:
+    """
+    Make sure we remove all duplicate listings
+    """
+    s: CWLObjectType = {
+        "class": "Directory",
+        "location": "file:///home/heaucques/Documents/toil/test_dir",
+        "basename": "test_dir",
+        "listing": [
+            {
+                "class": "Directory",
+                "location": "file:///home/heaucques/Documents/toil/test_dir/nested_dir",
+                "basename": "nested_dir",
+                "listing": [],
+                "path": "/home/heaucques/Documents/toil/test_dir/nested_dir"
+            },
+            {
+                "class": "File",
+                "location": "file:///home/heaucques/Documents/toil/test_dir/test_file",
+                "basename": "test_file",
+                "size": 0,
+                "nameroot": "test_file",
+                "nameext": "",
+                "path": "/home/heaucques/Documents/toil/test_dir/test_file",
+                "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709"
+            }
+        ],
+        "path": "/home/heaucques/Documents/toil/test_dir"
+    }
+    remove_redundant_mounts(s)
+
+    # everything should have been removed
+    assert isinstance(s['listing'], list)
+    assert len(s['listing']) == 0
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_trim_mounts_op_partially_redundant() -> None:
+    """
+    Make sure we remove only the redundant listings in the CWL object and leave nonredundant listings intact
+    """
+    s: CWLObjectType = {
+        "class": "Directory",
+        "location": "file:///home/heaucques/Documents/toil/test_dir",
+        "basename": "test_dir",
+        "listing": [
+            {
+                "class": "Directory",
+                "location": "file:///home/heaucques/Documents/thing",
+                "basename": "thing2",
+                "listing": [],
+                "path": "/home/heaucques/Documents/toil/thing2"
+            },
+            {
+                "class": "File",
+                "location": "file:///home/heaucques/Documents/toil/test_dir/test_file",
+                "basename": "test_file",
+                "size": 0,
+                "nameroot": "test_file",
+                "nameext": "",
+                "path": "/home/heaucques/Documents/toil/test_dir/test_file",
+                "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709"
+            }
+        ],
+        "path": "/home/heaucques/Documents/toil/test_dir"
+    }
+    remove_redundant_mounts(s)
+
+    # everything except the nested directory should be removed
+    assert isinstance(s['listing'], list)
+    assert len(s['listing']) == 1
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_trim_mounts_op_mixed_urls_and_paths() -> None:
+    """
+    Ensure we remove redundant listings in certain edge cases
+    """
+    # Edge cases around encoding:
+    # Ensure URL decoded file URIs match the bare path equivalent. Both of these paths should have the same shared directory
+    s: CWLObjectType = {"class": "Directory", "basename": "123", "location": "file:///tmp/%25/123", "listing": [{"class": "File", "path": "/tmp/%/123/456", "basename": "456"}]}
+    remove_redundant_mounts(s)
+    assert isinstance(s['listing'], list)
+    assert len(s['listing']) == 0
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_trim_mounts_op_decodable_paths() -> None:
+    """"""
+    # Ensure path names don't get unnecessarily decoded
+    s: CWLObjectType = {"class": "Directory", "basename": "dir", "path": "/tmp/cat%2Ftag/dir", "listing": [{"class": "File", "path": "/tmp/cat/tag/dir/file", "basename": "file"}]}
+    remove_redundant_mounts(s)
+    assert isinstance(s['listing'], list)
+    assert len(s['listing']) == 1
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_trim_mounts_op_multiple_encodings() -> None:
+    # Ensure differently encoded URLs are properly decoded
+    s: CWLObjectType = {"class": "Directory", "basename": "dir", "location": "file:///tmp/cat%2Ftag/dir", "listing": [{"class": "File", "location": "file:///tmp/cat%2ftag/dir/file", "basename": "file"}]}
+    remove_redundant_mounts(s)
+    assert isinstance(s['listing'], list)
+    assert len(s['listing']) == 0
+
+
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
 def test_download_structure(tmp_path: Path) -> None:
     """
     Make sure that download_structure makes the right calls to what it thinks is the file store.
@@ -2010,12 +2145,16 @@ def test_import_on_workers() -> None:
 
     with get_data("test/cwl/download.cwl") as cwl_file:
         with get_data("test/cwl/directory/directory/file.txt") as file_path:
+            # To make sure we see every job issued with a leader log message
+            # that we can then detect for the test, we need to turn off
+            # chaining.
             args = [
                 "--runImportsOnWorkers",
                 "--importWorkersDisk=10MiB",
                 "--realTimeLogging=True",
                 "--logLevel=INFO",
                 "--logColors=False",
+                "--disableChaining=True",
                 str(cwl_file),
                 "--input",
                 str(file_path),
@@ -2024,6 +2163,29 @@ def test_import_on_workers() -> None:
 
         assert detector.detected is True
 
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_missing_tmpdir_and_tmp_outdir(tmp_path: Path) -> None:
+    """
+    tmpdir_prefix and tmp_outdir_prefix do not need to exist prior to running the workflow
+    """
+    tmpdir_prefix = os.path.join(tmp_path, "tmpdir/blah")
+    tmp_outdir_prefix = os.path.join(tmp_path, "tmp_outdir/blah")
+
+    assert not os.path.exists(os.path.dirname(tmpdir_prefix))
+    assert not os.path.exists(os.path.dirname(tmp_outdir_prefix))
+    with get_data("test/cwl/echo_string.cwl") as cwl_file:
+        cmd = [
+            "toil-cwl-runner",
+            f"--jobStore=file:{tmp_path / 'jobstore'}",
+            "--strict-memory-limit",
+            f'--tmpdir-prefix={tmpdir_prefix}',
+            f'--tmp-outdir-prefix={tmp_outdir_prefix}',
+            str(cwl_file),
+        ]
+        p = subprocess.run(cmd)
+        assert p.returncode == 0
 
 # StreamHandler is generic, _typeshed doesn't exist at runtime, do a bit of typing trickery, see https://github.com/python/typeshed/issues/5680
 if TYPE_CHECKING:
@@ -2036,7 +2198,7 @@ else:
 
 class ImportWorkersMessageHandler(_stream_handler):
     """
-    Detect the import workers log message and set a flag.
+    Detect whether any WorkerImportJob jobs ran during a workflow.
     """
 
     def __init__(self) -> None:
@@ -2045,7 +2207,9 @@ class ImportWorkersMessageHandler(_stream_handler):
         super().__init__(sys.stderr)
 
     def emit(self, record: logging.LogRecord) -> None:
+        # We get the job name from the class since we already started failing
+        # this test once due to it being renamed.
         if (record.msg % record.args).startswith(
-            "Issued job 'CWLImportJob' CWLImportJob"
+            f"Issued job '{WorkerImportJob.__name__}'"
         ):
             self.detected = True

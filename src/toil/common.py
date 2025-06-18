@@ -86,6 +86,7 @@ from toil.provisioners import add_provisioner_options, cluster_factory
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import add_logging_options, set_logging_from_options
 from toil.version import dockerRegistry, dockerTag, version, baseVersion
+from toil.lib.url import URLAccess
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
@@ -403,7 +404,7 @@ class Config:
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
         set_option("write_messages")
-        
+
         # Data Publishing Options
         set_option("publish_workflow_metrics")
 
@@ -658,7 +659,7 @@ def update_config(filepath: str, key: str, new_value: Union[str, bool, int, floa
     :param key: Setting to set. Must be the command-line option name, not the
         destination variable name.
     """
-    
+
     yaml = YAML(typ="rt")
     data = yaml.load(open(filepath))
 
@@ -1397,7 +1398,7 @@ class Toil(ContextManager["Toil"]):
             self._batchSystem.setUserScript(userScriptResource)
 
     def url_exists(self, src_uri: str) -> bool:
-        return self._jobStore.url_exists(self.normalize_uri(src_uri))
+        return URLAccess.url_exists(self.normalize_uri(src_uri))
 
     # Importing a file with a shared file name returns None, but without one it
     # returns a file ID. Explain this to MyPy.
@@ -1505,21 +1506,33 @@ class Toil(ContextManager["Toil"]):
         self._jobStore.export_file(file_id, dst_uri)
 
     @staticmethod
-    def normalize_uri(uri: str, check_existence: bool = False) -> str:
+    def normalize_uri(uri: str, check_existence: bool = False, dir_path: Optional[str] = None) -> str:
         """
-        Given a URI, if it has no scheme, prepend "file:".
+        Given a URI, if it has no scheme, make it a properly quoted file: URI.
 
         :param check_existence: If set, raise FileNotFoundError if a URI points to
                a local file that does not exist.
+
+        :param dir_path: If specified, interpret relative paths relative to the
+            given directory path instead of the current one.
         """
-        if urlparse(uri).scheme == "file":
+
+        parsed = urlparse(uri)
+        if parsed.scheme == "file":
             uri = unquote(
-                urlparse(uri).path
+                parsed.path
             )  # this should strip off the local file scheme; it will be added back
+            parsed = urlparse(uri)
 
         # account for the scheme-less case, which should be coerced to a local absolute path
-        if urlparse(uri).scheme == "":
-            abs_path = os.path.abspath(uri)
+        if parsed.scheme == "":
+            if dir_path is not None:
+                # To support relative paths from a particular directory, join
+                # the directory on. If uri is already an abs path, join() will
+                # not do anything
+                abs_path = os.path.join(dir_path, uri)
+            else:
+                abs_path = os.path.abspath(uri)
             if not os.path.exists(abs_path) and check_existence:
                 raise FileNotFoundError(
                     f'Could not find local file "{abs_path}" when importing "{uri}".\n'

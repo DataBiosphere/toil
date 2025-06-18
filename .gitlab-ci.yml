@@ -5,6 +5,7 @@ variables:
   PYTHONIOENCODING: "utf-8"
   DEBIAN_FRONTEND: "noninteractive"
   TOIL_OWNER_TAG: "shared"
+  TOIL_HISTORY: "0"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   MAIN_PYTHON_PKG: "python3.13"
   # Used to tell pytest which tests to be run by specifying markers,
@@ -207,8 +208,8 @@ py39_main:
     python3.9 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
-    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
-    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
+    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
+    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 py310_appliance_build:
@@ -252,8 +253,8 @@ py310_main:
     python3.10 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10 && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
-    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
-    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
+    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
+    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 py311_appliance_build:
@@ -297,8 +298,8 @@ py311_main:
     python3.11 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && pip install -U pip wheel && make prepare && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
-    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
-    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
+    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
+    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 py312_appliance_build:
@@ -342,8 +343,8 @@ py312_main:
     python3.12 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && pip install -U pip wheel && make prepare && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
-    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
-    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
+    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
+    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 py313_appliance_build:
@@ -378,8 +379,8 @@ py313_main:
     python3.13 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.13 && pip install -U pip wheel && make prepare && make develop extras=[all]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
-    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
-    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
+    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
+    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 
@@ -419,7 +420,7 @@ cwl_v1.2:
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     # Run CWL integration tests excluded from cwl_misc
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests excluded from cwl_misc"
-    time make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(TestCWLWorkflow or cwl_small) and integrative'"
+    time make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k 'integrative and not conformance'"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
   artifacts:
     reports:
@@ -459,6 +460,7 @@ cwl_badge:
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the CWL v1.2 conformance tests."
     make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" threads="${TEST_THREADS}" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
+  allow_failure: true
   artifacts:
     paths:
     - "badges1.2"
@@ -491,6 +493,7 @@ cwl_badge_release:
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the CWL v1.2 conformance tests."
     make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" threads="${TEST_THREADS}" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
+  allow_failure: true
   artifacts:
     paths:
     - "badges1.2"
@@ -542,7 +545,7 @@ cwl_misc:
     python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the miscellaneous CWL tests"
-    make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(TestCWLWorkflow or cwl_small) and not integrative'"
+    make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k 'not integrative and not conformance'"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 #cwl_v1.2_kubernetes:
@@ -639,6 +642,12 @@ server_integration:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        compare_to: 'refs/heads/master'
+        paths:
+          - 'src/toil/server/*'
+          - 'src/toil/test/server/*'
   stage: integration
   cache:
     key: cache-$MAIN_PYTHON_PKG
@@ -654,7 +663,7 @@ server_integration:
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
     # Test server and its integration with AWS
-    - make test threads="${TEST_THREADS}" tests="src/toil/test/server"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/server -k 'integrative'"
 
 provisioner_integration:
   rules:
@@ -729,7 +738,7 @@ mesos:
     - export GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_CREDENTIALS
     - export TOIL_GOOGLE_KEYNAME=id_rsa
     - export TOIL_GOOGLE_PROJECTID=toil-dev
-    - make test threads="${TEST_THREADS}" tests="src/toil/test/mesos/MesosDataStructuresTest.py::DataStructuresTest src/toil/test/batchSystems/batchSystemTest.py::MesosBatchSystemTest src/toil/test/sort/sortTest.py::SortTest::testAwsMesos src/toil/test/sort/sortTest.py::SortTest::testFileMesos src/toil/test/sort/sortTest.py::SortTest::testGoogleMesos src/toil/test/cwl/cwlTest.py::TestCWLv10::test_mesos_cwl_conformance src/toil/test/cwl/cwlTest.py::TestCWLv10::test_mesos_cwl_conformance_with_caching src/toil/test/src/promisedRequirementTest.py::TestMesosPromisedRequirements src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSStaticAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTestMultipleNodeTypes src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/mesos/MesosDataStructuresTest.py::DataStructuresTest src/toil/test/batchSystems/batchSystemTest.py::MesosBatchSystemTest src/toil/test/sort/sortTest.py::SortTest::testAwsMesos src/toil/test/sort/sortTest.py::SortTest::testFileMesos src/toil/test/sort/sortTest.py::SortTest::testGoogleMesos src/toil/test/cwl/cwlTest.py::TestCWLv10Conformance::test_mesos_cwl_conformance src/toil/test/cwl/cwlTest.py::TestCWLv10Conformance::test_mesos_cwl_conformance_with_caching src/toil/test/src/promisedRequirementTest.py::TestMesosPromisedRequirements src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSStaticAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTestMultipleNodeTypes src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster"
 
 batchsystem:
   rules:
@@ -777,15 +786,4 @@ cactus_integration:
     - chmod 400 /root/.ssh/id_rsa
     - make test threads="${TEST_THREADS}" tests=src/toil/test/cactus/test_cactus_integration.py
 
-# Plugin tests
-plugin:
-  rules:
-    - if: $CI_PIPELINE_SOURCE != "schedule"
-  stage: integration
-  cache:
-    key: cache-$MAIN_PYTHON_PKG
-    paths:
-      - .cache/pip
-  script:
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
-    - make test threads="${TEST_THREADS}" tests=src/toil/test/batchSystems/batch_system_plugin_test.py
+

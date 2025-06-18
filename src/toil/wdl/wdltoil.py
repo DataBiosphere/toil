@@ -62,7 +62,7 @@ else:
 
 from functools import partial
 from urllib.error import HTTPError
-from urllib.parse import quote, unquote, urljoin, urlsplit, urlparse
+from urllib.parse import quote, unquote, urljoin, urlsplit
 
 import WDL.Error
 import WDL.runtime.config
@@ -111,6 +111,7 @@ from toil.lib.misc import get_user_name
 from toil.lib.resources import ResourceMonitor
 from toil.lib.threading import global_mutex
 from toil.provisioners.clusterScaler import JobTooBigError
+from toil.lib.url import URLAccess
 
 logger = logging.getLogger(__name__)
 
@@ -514,7 +515,7 @@ async def toil_read_source(
         tried.append(candidate_uri)
         try:
             # TODO: this is probably sync work that would be better as async work here
-            AbstractJobStore.read_from_url(candidate_uri, destination_buffer)
+            URLAccess.read_from_url(candidate_uri, destination_buffer)
         except Exception as e:
             if isinstance(e, SyntaxError) or isinstance(e, NameError):
                 # These are probably actual problems with the code and not
@@ -1142,17 +1143,29 @@ def evaluate_decls_to_bindings(
     standard_library: ToilWDLStdLibBase,
     include_previous: bool = False,
     drop_missing_files: bool = False,
+    expressions_are_defaults: bool = False,
 ) -> WDLBindings:
     """
     Evaluate decls with a given bindings environment and standard library.
+    
     Creates a new bindings object that only contains the bindings from the given decls.
     Guarantees that each decl in `decls` can access the variables defined by the previous ones.
+    
     :param all_bindings: Environment to use when evaluating decls
     :param decls: Decls to evaluate
     :param standard_library: Standard library
-    :param include_previous: Whether to include the existing environment in the new returned environment. This will be false for outputs where only defined decls should be included
-    :param drop_missing_files: Whether to coerce nonexistent files to null. The coerced elements will be checked that the transformation is valid.
-    Currently should only be enabled in output sections, see https://github.com/openwdl/wdl/issues/673#issuecomment-2248828116
+    :param include_previous: Whether to include the existing environment in the
+        new returned environment. This will be false for outputs where only
+        defined decls should be included
+    :param drop_missing_files: Whether to coerce nonexistent files to null. The
+        coerced elements will be checked that the transformation is valid.
+        Currently should only be enabled in output sections, see
+        https://github.com/openwdl/wdl/issues/673#issuecomment-2248828116.
+    :param expressions_are_defaults: If True, value expressions in decls are
+        treated as default values, and there may be existing values in the
+        incoming environment that take precedence. If False, each decl is taken
+        to be a fresh definition, and expressions are always evaluated and
+        used.
     :return: New bindings object
     """
     # all_bindings contains current bindings + previous all_bindings
@@ -1162,9 +1175,14 @@ def evaluate_decls_to_bindings(
         drop_if_missing, standard_library=standard_library
     )
     for each_decl in decls:
-        output_value = evaluate_defaultable_decl(
-            each_decl, all_bindings, standard_library
-        )
+        if expressions_are_defaults:
+            output_value = evaluate_defaultable_decl(
+                each_decl, all_bindings, standard_library
+            )
+        else:
+            output_value = evaluate_decl(
+                each_decl, all_bindings, standard_library
+            )
         if drop_missing_files:
             dropped_output_value = map_over_typed_files_in_value(
                 output_value, drop_if_missing_with_workdir
@@ -1223,7 +1241,7 @@ class NonDownloadingSize(WDL.StdLib._Size):
                 else:
                     # This is some other kind of remote file.
                     # We need to get its size from the URI.
-                    item_size = AbstractJobStore.get_size(uri)
+                    item_size = URLAccess.get_size(uri)
                     if item_size is None:
                         # User asked for the size and we can't figure it out efficiently, so bail out.
                         raise RuntimeError(f"Attempt to check the size of {uri} failed")
@@ -1374,7 +1392,7 @@ def convert_remote_files(
             tried.append(candidate_uri)
             try:
                 # Try polling existence first.
-                polled_existence = file_source.url_exists(candidate_uri)
+                polled_existence = URLAccess.url_exists(candidate_uri)
                 if polled_existence is False:
                     # Known not to exist
                     logger.debug("URL does not exist: %s", candidate_uri)
@@ -1660,6 +1678,15 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             logger.debug("File has no virtualized value so not changing value")
         return file
 
+    def _resolve_devirtualized_to_uri(self, devirtualized: str) -> str:
+        """
+        Get a URI pointing to whatever URI or divirtualized file path is provided.
+
+        Handles resolving symlinks using in-container paths if necessary.
+        """
+        
+        return Toil.normalize_uri(devirtualized, dir_path=self.execution_dir)
+        
     def _virtualize_file(
         self, file: WDL.Value.File, enforce_existence: bool = True
     ) -> WDL.Value.File:
@@ -1669,25 +1696,17 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         logger.debug("Virtualizing %s", file)
 
-        # If enforce_existence is true, then if a file is detected as
-        # nonexistent, raise an error. Else, let it pass through
-        if enforce_existence is False:
-            # We only want to error on a nonexistent file in the output section
-            # Since we need to virtualize on task boundaries, don't enforce existence if on a boundary
-            if is_standard_url(file.value):
-                file_uri = Toil.normalize_uri(file.value)
+        try:
+            # Let the actual virtualization implementation signal a missing file
+            virtualized_filename = self._virtualize_filename(file.value)
+        except FileNotFoundError:
+            if enforce_existence:
+                raise
             else:
-                abs_filepath = (
-                    os.path.join(self.execution_dir, file.value)
-                    if self.execution_dir is not None
-                    else os.path.abspath(file.value)
-                )
-                file_uri = Toil.normalize_uri(abs_filepath)
-
-            if not AbstractJobStore.url_exists(file_uri):
                 logger.debug("File appears nonexistent so marking it nonexistent")
+                # Mark the file nonexistent.
                 return set_file_nonexistent(file, True)
-        virtualized_filename = self._virtualize_filename(file.value)
+
         logger.debug(
             "For file %s got virtualized filename %s", file, virtualized_filename
         )
@@ -1771,7 +1790,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # Open it exclusively
             with open(dest_path, "xb") as dest_file:
                 # And save to it
-                size, executable = AbstractJobStore.read_from_url(filename, dest_file)
+                size, executable = URLAccess.read_from_url(filename, dest_file)
                 if executable:
                     # Set the execute bit in the file's permissions
                     os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)
@@ -1870,9 +1889,12 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     @memoize
     def _virtualize_filename(self, filename: str) -> str:
         """
-        from a local path in write_dir, 'virtualize' into the filename as it should present in a File value
+        from a local path or other URL, 'virtualize' into the filename as it should present in a File value.
+
+        New in Toil: the path or URL may not actually exist.
 
         :param filename: Can be a local file path, URL (http, https, s3, gs), or toilfile
+        :raises FileNotFoundError: if the file doesn't actually exist (new addition in Toil over MiniWDL)
         """
 
         if is_toil_url(filename):
@@ -1892,7 +1914,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             try:
                 imported = self._file_store.import_file(filename)
             except FileNotFoundError:
-                logger.error(
+                # This might happen because we're also along the code path for
+                # optional file outputs.
+                logger.info(
                     "File at URL %s does not exist or is inaccessible." % filename
                 )
                 raise
@@ -1903,9 +1927,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     filename,
                     e.code,
                 )
+                # We don't need to handle translating error codes for not
+                # found; import_file does it already. 
                 raise
             if imported is None:
-                # Satisfy mypy, this should never happen though as we don't pass a shared file name (which is the only way import_file returns None)
+                # Satisfy mypy. This should never happen though as we don't
+                # pass a shared file name (which is the only way import_file
+                # returns None)
                 raise RuntimeError("Failed to import URL %s into jobstore." % filename)
             file_basename = os.path.basename(urlsplit(filename).path)
             # Get the URL to the parent directory and use that.
@@ -1914,23 +1942,19 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             dir_id = self._parent_dir_to_ids.setdefault(parent_dir, uuid.uuid4())
             result = pack_toil_uri(imported, self.task_path, dir_id, file_basename)
             logger.debug("Virtualized %s as WDL file %s", filename, result)
-            # We can't put the Toil URI in the virtualized_to_devirtualized cache because it would point to the URL instead of a
-            # local file on the machine, so only store the forward mapping
+            # We can't put the Toil URI in the virtualized_to_devirtualized
+            # cache because it would point to the URL instead of a local file
+            # on the machine, so only store the forward mapping
             self._devirtualized_to_virtualized[filename] = result
             return result
         else:
-            # Otherwise this is a local file and we want to fake it as a Toil file store file
-            # Make it an absolute path
-            parsed = urlparse(filename)
-            if parsed.scheme == "file":
-                # conversion was already done by normalize_uri
-                abs_filename = unquote(parsed.path)
-            elif self.execution_dir is not None:
-                # To support relative paths from execution directory, join the execution dir and filename
-                # If filename is already an abs path, join() will not do anything
-                abs_filename = os.path.join(self.execution_dir, filename)
-            else:
-                abs_filename = os.path.abspath(filename)
+            # Otherwise this is a local file name or URI and we want to fake it
+            # as a Toil file store file
+
+            # Convert to a properly-absolutized file URI
+            file_uri = Toil.normalize_uri(filename, dir_path=self.execution_dir)
+            # Extract the absolute path name
+            abs_filename = unquote(urlsplit(file_uri).path)
 
             if abs_filename in self._devirtualized_to_virtualized:
                 # This is a previously devirtualized thing so we can just use the
@@ -1940,6 +1964,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     "Re-using virtualized WDL file %s for %s", result, filename
                 )
                 return result
+
+            if not os.path.exists(abs_filename):
+                raise FileNotFoundError(abs_filename)
 
             file_id = self._file_store.writeGlobalFile(abs_filename)
 
@@ -1969,6 +1996,51 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
         super().__init__(*args, **kwargs)
 
         self._miniwdl_cache: Optional[WDL.runtime.cache.CallCache] = None
+
+    def _virtualize_file(
+        self, file: WDL.Value.File, enforce_existence: bool = True
+    ) -> WDL.Value.File:
+        # When a workflow coerces a string path or file: URI to a File at
+        # workflow scope, we need to fill in the cache filesystem path.
+        if (
+            get_file_virtualized_value(file) is None
+            and get_shared_fs_path(file) is None
+            and (
+                not is_any_url(file.value)
+                or is_file_url(file.value)
+            )
+        ):
+            # This is a never-virtualized file that is a file path or URI and
+            # has no shared FS path associated with it. We just made it at
+            # workflow scope. (If it came from a task, it would have a
+            # virtualized value already.)
+
+            # If we are loading it at workflow scope, the file path can be used
+            # as the cache path.
+
+            if not is_any_url(file.value):
+                # Handle file path
+                cache_path = file.value
+            else:
+                # Handle pulling path out of file URI
+                cache_path = unquote(urlsplit(file.value).path)
+
+            # Apply the path
+            file = set_shared_fs_path(file, cache_path)
+
+            logger.info(
+                "Applied shared filesystem path %s to File %s that appears to "
+                "have been coerced from String at workflow scope.",
+                cache_path,
+                file
+            )
+
+        # Do the virtualization
+        return super()._virtualize_file(file, enforce_existence)
+
+        # TODO: If the workflow coerces a File to a String and back again, we
+        # should have some way to recover the toilfile: URL it had in the job
+        # store to avoid re-importing it.
 
     # This needs to be hash-compatible with MiniWDL.
     # MiniWDL hooks _virtualize_filename
@@ -2370,6 +2442,8 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         filenames.
         """
 
+        logger.debug("WDL task outputs stdlib asked to virtualize %s", filename)
+
         if not is_any_url(filename) and not filename.startswith("/"):
             # We are getting a bare relative path on the supposedly devirtualized side.
             # Find a real path to it relative to the current directory override.
@@ -2418,8 +2492,12 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
                 logger.error(
                     "Handling broken symlink %s ultimately to %s", filename, here
                 )
+                # This should produce a FileNotFoundError since we think of
+                # broken symlinks as nonexistent.
+                raise FileNotFoundError(filename)
             filename = here
-
+        
+        logger.debug("WDL task outputs stdlib thinks we really need to virtualize %s", filename)
         return super()._virtualize_filename(filename)
 
 
@@ -2474,11 +2552,15 @@ def evaluate_decl(
     """
     Evaluate the expression of a declaration node, or raise an error.
     """
-
-    return evaluate_named_expression(
-        node, node.name, node.type, node.expr, environment, stdlib
-    )
-
+    try:
+        return evaluate_named_expression(
+            node, node.name, node.type, node.expr, environment, stdlib
+        )
+    except Exception:
+        # If something goes wrong, dump.
+        logger.exception("Evaluation failed for %s", node)
+        log_bindings(logger.error, "Statement was evaluated in:", [environment])
+        raise
 
 def evaluate_call_inputs(
     context: WDL.Error.SourceNode | WDL.Error.SourcePosition,
@@ -2521,33 +2603,28 @@ def evaluate_defaultable_decl(
     If the name of the declaration is already defined in the environment, return its value. Otherwise, return the evaluated expression.
     """
 
-    try:
-        if (
-            node.name in environment
-            and not isinstance(environment[node.name], WDL.Value.Null)
-        ) or (
-            isinstance(environment.get(node.name), WDL.Value.Null)
-            and node.type.optional
-        ):
-            logger.debug("Name %s is already defined, not using default", node.name)
-            if not isinstance(environment[node.name].type, type(node.type)):
-                return environment[node.name].coerce(node.type)
-            else:
-                return environment[node.name]
+    if (
+        node.name in environment
+        and not isinstance(environment[node.name], WDL.Value.Null)
+    ) or (
+        isinstance(environment.get(node.name), WDL.Value.Null)
+        and node.type.optional
+    ):
+        logger.debug("Name %s is already defined, not using default", node.name)
+        if not isinstance(environment[node.name].type, type(node.type)):
+            return environment[node.name].coerce(node.type)
         else:
-            if node.type is not None and not node.type.optional and node.expr is None:
-                # We need a value for this but there isn't one.
-                raise WDL.Error.EvalError(
-                    node,
-                    f"Value for {node.name} was not provided and no default value is available",
-                )
-            logger.info("Defaulting %s to %s", node.name, node.expr)
-            return evaluate_decl(node, environment, stdlib)
-    except Exception:
-        # If something goes wrong, dump.
-        logger.exception("Evaluation failed for %s", node)
-        log_bindings(logger.error, "Statement was evaluated in:", [environment])
-        raise
+            return environment[node.name]
+    else:
+        if node.type is not None and not node.type.optional and node.expr is None:
+            # We need a value for this but there isn't one.
+            raise WDL.Error.EvalError(
+                node,
+                f"Value for {node.name} was not provided and no default value is available",
+            )
+        logger.info("Defaulting %s to %s", node.name, node.expr)
+        return evaluate_decl(node, environment, stdlib)
+    
 
 
 # TODO: make these stdlib methods???
@@ -2659,7 +2736,7 @@ def drop_if_missing(
 
     if filename is not None and is_any_url(filename):
         try:
-            if filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(
+            if filename.startswith(TOIL_URI_SCHEME) or URLAccess.url_exists(
                 filename
             ):
                 # We assume anything in the filestore actually exists.
@@ -3150,7 +3227,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
             cached_bindings = virtualize_files(
                 cached_result, standard_library, enforce_existence=False
             )
-            
+
             # Throw away anything input but not available outside the call or
             # output.
             delete_dead_files(
@@ -3158,7 +3235,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
                 [cached_bindings, self._enclosing_bindings],
                 file_store
             )
-            
+
             # Postprocess and ship the output bindings.
             return self.postprocess(
                 cached_bindings
@@ -3168,7 +3245,11 @@ class WDLTaskWrapperJob(WDLBaseJob):
             logger.debug("Evaluating task code")
             # Evaluate all the inputs that aren't pre-set
             bindings = evaluate_decls_to_bindings(
-                self._task.inputs, bindings, standard_library, include_previous=True
+                self._task.inputs,
+                bindings,
+                standard_library,
+                include_previous=True,
+                expressions_are_defaults=True
             )
         if self._task.postinputs:
             # Evaluate all the postinput decls.
@@ -5184,6 +5265,7 @@ class WDLWorkflowJob(WDLSectionJob):
                     bindings,
                     standard_library,
                     include_previous=True,
+                    expressions_are_defaults=True,
                 )
             finally:
                 # Report all files are downloaded now that all expressions are evaluated.
@@ -5235,7 +5317,7 @@ class WDLOutputsJob(WDLBaseJob):
 
         :param enclosing_bindings: Bindings outside the workflow call, with
             files that should not be cleaned up at the end of the workflow.
-    
+
         :param cache_key: If set and storing into the call cache is on, will
                cache the workflow execution result under the given key in a
                MiniWDL-compatible way.
@@ -5259,9 +5341,8 @@ class WDLOutputsJob(WDLBaseJob):
 
         try:
             if self._workflow.outputs is not None:
-                # Output section is declared and is nonempty, so evaluate normally
-
-                # Combine the bindings from the previous job
+                # Output section is declared and is nonempty, so evaluate normally.
+                # Don't drop nonexistent files here; we do that later.
                 output_bindings = evaluate_decls_to_bindings(
                     self._workflow.outputs, unwrap(self._bindings), standard_library
                 )
@@ -5272,7 +5353,8 @@ class WDLOutputsJob(WDLBaseJob):
             if self._workflow.outputs is None or self._wdl_options.get(
                 "all_call_outputs", False
             ):
-                # The output section is not declared, or we want to keep task outputs anyway.
+                # The output section is not declared, or we want to keep task
+                # outputs anyway on top of an already-evaluated output section.
 
                 # Get all task outputs and return that
                 # First get all task output names
@@ -5303,16 +5385,6 @@ class WDLOutputsJob(WDLBaseJob):
                         output_bindings = output_bindings.bind(
                             binding.name, binding.value
                         )
-            else:
-                # Output section is declared and is nonempty, so evaluate normally
-
-                # Combine the bindings from the previous job
-                output_bindings = evaluate_decls_to_bindings(
-                    self._workflow.outputs,
-                    unwrap(self._bindings),
-                    standard_library,
-                    drop_missing_files=True,
-                )
         finally:
             # We don't actually know when all our files are downloaded since
             # anything we evaluate might devirtualize inside any expression.
@@ -5330,6 +5402,13 @@ class WDLOutputsJob(WDLBaseJob):
         output_bindings = drop_missing_files(
             output_bindings, standard_library=standard_library
         )
+
+        # TODO: Unify the rest of this with task output managment somehow
+
+        # Upload any files in the outputs if not uploaded already.
+        # We need this because it's possible to create new files in a workflow
+        # outputs section.
+        output_bindings = virtualize_files(output_bindings, standard_library)
 
         if self._cache_key is not None:
             output_bindings = fill_execution_cache(
@@ -5572,8 +5651,8 @@ def main() -> None:
             # can't start.
 
             # Both start and restart need us to have the workflow and the
-            # wdl_options WDLContext. 
-            
+            # wdl_options WDLContext.
+
             # MiniWDL load code internally uses asyncio.get_event_loop()
             # which might not get an event loop if somebody has ever called
             # set_event_loop. So we need to make sure an event loop is
@@ -5584,6 +5663,7 @@ def main() -> None:
             document: WDL.Tree.Document = WDL.load(
                 wdl_uri,
                 read_source=toil_read_source,
+                check_quant=options.quant_check
             )
 
             # See if we're going to run a workflow or a task
