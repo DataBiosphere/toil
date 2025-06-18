@@ -101,7 +101,7 @@ Besides the normal Toil options and the options supported by cwltool, toil-cwl-r
   --disable-streaming   Do not allow streaming of job input files. By default, files marked with ``streamable`` True are streamed from remote job stores.
   --cwl-default-ram     Apply CWL specification default ramMin.
   --no-cwl-default-ram  Do not apply CWL specification default ramMin, so that Toil --defaultMemory applies.
-  --cwl-min-ram BYTES   Specify a minimum memory allocation for all tasks except those using the Toil --defaultMemory
+  --cwl-min-ram BYTES   Specify a minimum memory allocation for all tasks except those using the Toil --defaultMemory. This applies a minimum memory allocation for tools that have an explicit memory requirement.
 
 Running CWL in the Cloud
 ------------------------

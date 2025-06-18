@@ -422,7 +422,8 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         action=make_open_interval_action(1),
         help=suppress_help
         or "Specify a minimum memory allocation for all tasks "
-        " except those using the Toil --defaultMemory",
+        "except those using the Toil --defaultMemory. This applies a minimum memory "
+        "allocation for tools that have an explicit memory requirement.",
     )
     parser.add_argument(
         "--destBucket",
