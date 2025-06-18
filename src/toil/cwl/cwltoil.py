@@ -34,7 +34,6 @@ import stat
 import sys
 import textwrap
 import uuid
-from collections.abc import Iterator, Mapping, MutableMapping, MutableSequence
 from tempfile import NamedTemporaryFile, TemporaryFile, gettempdir
 from threading import Thread
 from typing import (
@@ -127,6 +126,7 @@ from toil.cwl.utils import (
     download_structure,
     get_from_structure,
     visit_cwl_class_and_reduce,
+    remove_redundant_mounts
 )
 from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
@@ -2516,7 +2516,7 @@ class CWLJob(CWLNamedJob):
                 resources={},
                 mutation_manager=runtime_context.mutation_manager,
                 formatgraph=tool.formatgraph,
-                make_fs_access=cast(type[StdFsAccess], runtime_context.make_fs_access),
+                make_fs_access=runtime_context.make_fs_access,
                 fs_access=runtime_context.make_fs_access(""),
                 job_script_provider=runtime_context.job_script_provider,
                 timeout=runtime_context.eval_timeout,
@@ -2683,6 +2683,9 @@ class CWLJob(CWLNamedJob):
         logger.debug("Loaded order:\n%s", self.cwljob)
 
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
+
+        # Deletes duplicate listings
+        remove_redundant_mounts(cwljob)
 
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
