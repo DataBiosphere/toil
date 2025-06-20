@@ -3,8 +3,8 @@ from argparse import ArgumentParser
 
 from configargparse import SUPPRESS
 
-from toil.src.toil.lib.conversions import human2bytes
-from toil.src.toil.options.common import make_open_interval_action
+from toil.lib.conversions import human2bytes
+from toil.options.common import make_open_interval_action
 from toil.version import baseVersion
 
 
