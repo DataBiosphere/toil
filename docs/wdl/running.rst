@@ -48,6 +48,8 @@ workflow, you can do::
 .. _`5.12.0`: https://github.com/DataBiosphere/toil/releases/tag/releases%2F5.12.0
 .. _`Cromwell`: https://github.com/broadinstitute/cromwell#readme
 
+.. _wdlOptions:
+
 Toil WDL Runner Options
 -----------------------
 
@@ -83,6 +85,23 @@ should be included alongside the outputs from the ``output`` section, when an
 the `Cromwell Output Organizer (croo)`_, will default to ``True``.
 
 .. _`Cromwell Output Organizer (croo)`: https://github.com/ENCODE-DCC/croo
+
+``--strict``: Specifies whether Toil should immediately exit on a lint warning. By default, this is false.
+
+``--quantCheck``: Specifies whether quantifier validation type checking should be enabled.
+Disabling this is useful for workflows which Cromwell can run but don't fully comply with the WDL spec.
+By default, this is true.
+
+``--runImportsOnWorkers``: Run file imports on workers. This is useful if the leader is not network optimized
+and lots of downloads are necessary. By default, this is false.
+
+``--importWorkersBatchSize``: Requires ``--runImportsOnWorkers`` to be true. Specify the target batch size in bytes for batched imports.
+As many files as can fit will go into each batch import job. This also accepts abbreviations, such as ``G`` or ``Gi``.
+
+``--importWorkersDisk``: Requires ``--runImportsOnWorkers`` to be true. Specify the disk size each import worker will get.
+This usually will not need to be set as Toil will attempt to use file streaming when downloading files.
+If not possible, for example, when downloading from AWS to a GCE job store,
+this should be set to the largest file size of all files to import. By default, this is 1 MiB.
 
 Any number of other Toil options may also be specified. For defined Toil options,
 see :ref:`commandRef`.
@@ -121,6 +140,21 @@ The final number is a sequential counter: if a step has to be retried, or if
 you run the workflow multiple times without clearing out the logs directory, it
 will increment.
 
+Enabling WDL Call Cache
+-----------------------
 
+Toil can cache the task and workflow outputs to use outputs of already ran tasks and workflows.
+This can save time when debugging long running workflows where a later task fails. However, this is only guaranteed for
+running locally and can use up a considerable amount of disk space.
 
+To use, set the following environment variables before running the workflow::
 
+    export MINIWDL__CALL_CACHE__PUT=True
+    export MINIWDL__CALL_CACHE__GET=True
+    export MINIWDL__CALL_CACHE__DIR=/absolute_path/to/cache
+
+The path to the cache directory must be an absolute path.
+
+For setting up call cache permanently, see the `MiniWDL call cache`_ documentation.
+
+.. _MiniWDL call cache: https://miniwdl.readthedocs.io/en/latest/runner_reference.html#call-cache
