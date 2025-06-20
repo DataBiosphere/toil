@@ -101,7 +101,7 @@ def encode_directory(contents: DirectoryContents, name: Optional[str] = None, so
 
     check_directory_dict_invariants(contents)
 
-    parts = [toildir]
+    parts = ["toildir"]
 
     if name is not None:
         parts.append(quote(name, safe=""))
@@ -141,10 +141,10 @@ def get_directory_contents_item(contents: DirectoryContents, remaining_path: Opt
     for part in remaining_path.split("/"):
         if not isinstance(here, dict):
             # We're trying to go inside a file
-            raise FileNotFoundError(dir_path)
+            raise FileNotFoundError(remaining_path)
         if part not in here:
             # We've hit a nonexistent path component
-            raise FileNotFoundError(dir_path)
+            raise FileNotFoundError(remaining_path)
         here = here[part]
     # If we get here we successfully looked up the thing in the structure
     return here
@@ -156,8 +156,11 @@ def get_directory_item(dir_path: str) -> Union[DirectoryContents, str]:
 
     contents, remaining_path, _ = decode_directory(dir_path)
     
-    return get_directory_contents_item(contents, remaining_path)
-    
+    try:
+        return get_directory_contents_item(contents, remaining_path)
+    except FileNotFoundError:
+        # Rewrite file not found to be about the full thing we went to look up.
+        raise FileNotFoundError(dir_path)
 
 def directory_contents_items(contents: DirectoryContents) -> Iterator[tuple[str, Union[str, None]]]:
     """

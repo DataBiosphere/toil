@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import collections
 import errno
 import hashlib
 import io
@@ -117,6 +118,7 @@ from toil.lib.directory import (
     directory_item_exists,
     get_directory_contents_item,
     get_directory_item,
+    directory_items,
     directory_contents_items,
 )
 from toil.lib.trs import resolve_workflow
@@ -1336,6 +1338,26 @@ def extract_inode_virtualized_values(environment: WDLBindings) -> list[str]:
     map_over_inodes_in_bindings(environment, add_value)
     return values
 
+def extract_toil_file_uris(environment: WDLBindings) -> Iterable[str]:
+    """
+    Get the toilfile: URIs in the given bindings.
+
+    Looks at for all Files in the given bindings, and all files inside
+    Directories in the given bindings.
+    """
+
+    for stored_uri in extract_inode_virtualized_values(environment):
+        if is_toil_file_url(stored_uri):
+            # It's actually a file
+            yield stored_uri
+        elif is_toil_dir_url(stored_uri):
+            # It's a directory and may have file children.
+            for _, child_uri in directory_items(stored_uri):
+                if child_uri is not None and is_toil_file_url(child_uri):
+                    # This is a Toil file within a Directory.
+                    yield child_uri
+    
+
 def virtualize_inodes_in_bindings(
     environment: WDLBindings,
     file_to_id: Dict[str, FileID],
@@ -1825,7 +1847,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     if item_value is None:
                         # Make directories to hold things (and empty directories).
                         # OK if it has been downloaded already.
-                        os.makedirs(item_path, exist_ok=true)
+                        os.makedirs(item_path, exist_ok=True)
                     else:
                         # Download files
                         if os.path.exists(item_path):
@@ -2307,7 +2329,6 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
                     virtualized_file.value,
                     output_directory,
                     self._file_store,
-                    {},
                     self._wdl_options,
                     {},
                     {},
@@ -2427,6 +2448,13 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
 
         if filename not in self.container.input_path_map:
             # Mount the file.
+            #
+            # TODO: we assume this overload only actually handles
+            # dynamically-created Files, and doesn't have to deal with putting
+            # things in their parent Directories or Directories around their
+            # children. But we might want some asserts here to enforce that.
+            # Most assignment of container paths should happen in the free
+            # function add_paths().
             self.container.add_paths([filename])
 
         result = self.container.input_path_map[filename]
@@ -2831,69 +2859,143 @@ def virtualize_inodes(
 
 def delete_dead_files(internal_bindings: WDLBindings, live_bindings_list: list[WDLBindings], file_store: AbstractFileStore) -> None:
     """
-    Delete any files that in the given bindings but not in the live list.
+    Delete any files that are in the given bindings but not in the live list.
 
-    Operates on the virtualized values of File objects anywhere in the bindings.
+    Scans the virtualized values of File and Directory objects anywhere
+    in the bindings. Only tries to delete leaf files, not whole directories.
     """
 
     # Get all the files in the first bindings and not any of the others.
     unused_files = set(
-        extract_inode_virtualized_values(internal_bindings)
+        extract_toil_file_uris(internal_bindings)
     ).difference(
         *(
-            extract_inode_virtualized_values(bindings)
+            extract_toil_file_uris(bindings)
             for bindings in live_bindings_list
         )
     )
 
     for file_uri in unused_files:
         # Delete them
-        if is_toil_url(file_uri):
-            logger.debug("Delete file %s that is not needed", file_uri)
-            file_id, _, _, _ = unpack_toil_uri(file_uri)
-            file_store.deleteGlobalFile(file_id)
+        assert is_toil_url(file_uri), f"Trying to clean up file {file_uri} not managed by Toil"
+        logger.debug("Delete file %s that is not needed", file_uri)
+        file_id, _, _, _ = unpack_toil_uri(file_uri)
+        file_store.deleteGlobalFile(file_id)
+
+def all_parents(path: str) -> Iterable[str]:
+    """
+    Yield all parents of the given path, up to the filesystem root.
+
+    All yielded parents will end in "/".
+
+    If the path is "/", yields the path itself.
+
+    Otherwise, if the path ends in "/", does not yield the path itself.
+    """
+
+    # Track where we are without a trailing slash, with "" for the filesystem
+    # root.
+    here = path.rstrip("/")
+
+    if here == "":
+        # Special case for the root.
+        # I couldn't work out a neat way to do this with while...else
+        yield "/"
+    else:
+        while here != "":
+            # Yield up to and including the root
+            here = os.path.dirname(here).rstrip("/")
+            yield here + "/"
 
 def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     """
     Based off of WDL.runtime.task_container.add_paths from miniwdl
-    Maps the host path to the container paths.
+    
+    Comes up with a container path for each host path and fils in input_path_map
+    and input_path_map_rev on the TaskContainer to map from host path to
+    container path and visa versa.
+
     Makes sure directories have trailing slashes.
+
+    Because of File and Directory sibling constraints, anything that's a child
+    of something on the host needs to remain a child of the same thing in the
+    container. MiniWDL's add_paths didn't do this.
+
+    TODO: Deduplicate with the similar CWL mount deduplication code that's
+    based on a notion of nonredundant mounts? But unlike that code, we want to
+    list every File or Directory mentioned in the input, even if a mount is
+    redundant. Probably. Because I'm not sure when/if the mappings we fill in
+    are used for reverse lookups.
     """
-    # partition the paths by host directory
-    host_paths_by_dir: dict[str, set[str]] = {}
-    for host_path in host_paths:
-        if os.path.isdir(host_path) and not host_path.endswith("/"):
-            # We need the mount to have a trailing slash or Docker won't be
-            # able to mount a directory.
-            host_path = host_path + "/"
-        host_path_strip = host_path.rstrip("/")
-        if (
-            host_path not in task_container.input_path_map
-            and host_path_strip not in task_container.input_path_map
-        ):
-            if not os.path.exists(host_path_strip):
-                raise WDL.Error.InputError("input path not found: " + host_path)
-            host_paths_by_dir.setdefault(os.path.dirname(host_path_strip), set()).add(
-                host_path
-            )
+
+    # Organize paths by top-level parent within the set that has multiple
+    # children or is named explicitly. This is the "ultimate parent".
+    #
+    # TODO: I wish I had a BWT here but that seems fiddly.
+
+    paths_with_slashes = (host_path + "/" if not host_path.endswith("/") and os.path.isdir(host_path) else host_path for host_path in host_paths)
+    paths_by_length = list(sorted(paths_with_slashes, key=len))
+    
+    # This stores all the paths that need to be mounted, organized by ultimate
+    # parent.
+    paths_by_ultimate_parent: dict[str, list[str]] = {}
+    for path in paths_by_length:
+        # Having sorted by length, when we encounter a path that doesn't have a
+        # parent stored already, it (if a directory) or its parent (if a file)
+        # is a new ultimate parent.
+        for parent in all_parents(path):
+            if parent in paths_by_ultimate_parent:
+                # We found the ultimate parent, so list this value under it.
+                paths_by_ultimate_parent[parent].append(path)
+                break
+        else:
+            # No parent is listed already.
+            if path.endswith("/"):
+                # This is a directory and so becomes a new ultimate parent with only itself under it.
+                paths_by_ultimate_parent[path] = [path]
+            else:
+                # This is the first file under its patrent or anything above
+                # it, so its parent is the ultimate parent.
+                # Make sure to add the trailing / after a dirname call that
+                # won't produce it, but to strip it off first in case the
+                # dirname is "/".
+                paths_by_ultimate_parent[os.path.dirname(path).rstrip("/") + "/"] = [path]
+    
+    logger.debug("Paths by length: %s", paths_by_length)
+    logger.debug("Paths by ultimate parent: %s", paths_by_ultimate_parent)
+
     # for each such partition of paths
     # - if there are no basename collisions under input subdirectory 0, then mount them there.
     # - otherwise, mount them in a fresh subdirectory
-    subd = 0
-    id_to_subd: dict[str, str] = {}
-    for paths in host_paths_by_dir.values():
+    id_to_subd: dict[str, int] = collections.Counter()
+    for ultimate_parent, paths in paths_by_ultimate_parent.items():
+        assert ultimate_parent.endswith("/"), f"Ultimate parent {ultimate_parent} is missing its trailing slash"
         based = os.path.join(task_container.container_dir, "work/_miniwdl_inputs")
+        parent_id = os.path.basename(ultimate_parent.rstrip("/"))
+        if parent_id == "":
+            # The ultimate parent was the filesystem root.
+            # This must not have been a Directory, so don't try and preserve its basename.
+            parent_id = "_root"
+        host_path_subd = str(id_to_subd[parent_id])
+        id_to_subd[parent_id] += 1
+        logger.debug("Handling ultimate parent with basename %s; we have seen this basename %s times already.", parent_id, host_path_subd)
+        # Get the parent path in the container, with trailing slash so that
+        # joining "" on ends in slash.
+        container_parent = os.path.join(
+            based, host_path_subd, parent_id
+        ) + "/"
+        logger.debug("Handlng ultimate patent %s containing %s", ultimate_parent, paths) 
         for host_path in paths:
-            parent_id = os.path.basename(os.path.dirname(host_path))
-            if id_to_subd.get(parent_id, None) is None:
-                id_to_subd[parent_id] = str(subd)
-                subd += 1
-            host_path_subd = id_to_subd[parent_id]
+            # Get the path within the ultimate parent ("" if mounting that
+            # Directory itself) and join it on to the ultimate parent's
+            # assigned location in the container.
             container_path = os.path.join(
-                based, host_path_subd, os.path.basename(host_path.rstrip("/"))
+                container_parent, host_path[len(ultimate_parent):]
             )
-            if host_path.endswith("/"):
-                container_path += "/"
+            assert container_path.startswith(container_parent), f"Joining {host_path[len(ultimate_parent):]} from {host_path} under {ultimate_parent} onto {container_parent} gave {container_path} not under the container parent."
+            assert (
+                container_path.endswith("/") == host_path.endswith("/")
+            ), f"{container_path} should end in slash only when {host_path} does."
             assert (
                 container_path not in task_container.input_path_map_rev
             ), f"{container_path} should not already be in {task_container.input_path_map_rev}"

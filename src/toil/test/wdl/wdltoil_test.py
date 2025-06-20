@@ -1248,15 +1248,12 @@ class TestWDLToilBench(unittest.TestCase):
         """
 
         from toil.wdl.wdltoil import (
-            DirectoryNamingStateDict,
             choose_human_readable_directory,
         )
 
-        state: DirectoryNamingStateDict = {}
-
         # The first time we should get  apath with the task name and without the ID
         first_chosen = choose_human_readable_directory(
-            "root", "taskname", "111-222-333", state
+            "root", "taskname", "111-222-333" 
         )
         assert first_chosen.startswith("root")
         assert "taskname" in first_chosen
@@ -1264,13 +1261,13 @@ class TestWDLToilBench(unittest.TestCase):
 
         # If we use the same ID we should get the same result
         same_id = choose_human_readable_directory(
-            "root", "taskname", "111-222-333", state
+            "root", "taskname", "111-222-333"
         )
         assert same_id == first_chosen
 
         # If we use a different ID we should get a different result still obeying the constraints
         diff_id = choose_human_readable_directory(
-            "root", "taskname", "222-333-444", state
+            "root", "taskname", "222-333-444"
         )
         assert diff_id != first_chosen
         assert diff_id.startswith("root")
@@ -1291,7 +1288,7 @@ class TestWDLToilBench(unittest.TestCase):
         file_basename = "thefile.txt"
 
         # Pack and unpack it
-        uri = pack_toil_uri(file_id, task_path, dir_id, file_basename)
+        uri = pack_toil_uri(file_id, task_path, str(dir_id), file_basename)
         unpacked = unpack_toil_uri(uri)
 
         # Make sure we got what we put in
