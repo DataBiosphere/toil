@@ -413,7 +413,7 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         "--no-cwl-default-ram",
         action="store_false",
         help=suppress_help
-        or "Do not apply CWL specification default ramMin, so that Toil --defaultMemory applies.",
+        or "Do not apply CWL specification default ramMin, so that Toil --defaultMemory applies. This can help jobs get to Slurm with no memory limit assigned.",
         dest="cwl_default_ram",
     )
     parser.add_argument(
@@ -422,8 +422,7 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         action=make_open_interval_action(1),
         help=suppress_help
         or "Specify a minimum memory allocation for all tasks "
-        "except those using the Toil --defaultMemory. This applies a minimum memory "
-        "allocation for tools that have an explicit memory requirement.",
+        "except for tools that do not specify a memory requirement and when `--no-cwl-default-ram` is passed, which is when `--defaultMemory` is used instead."
     )
     parser.add_argument(
         "--destBucket",
