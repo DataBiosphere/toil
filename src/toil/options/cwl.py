@@ -423,7 +423,7 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         help=suppress_help
         or "Specify a minimum memory allocation for all tasks ."
         "If --no-cwl-default-ram is passed, this does not apply to tools that do not "
-        "specify a memory requirement; `--defaultMemory` is used for those tools"
+        "specify a memory requirement; --defaultMemory is used for those tools"
         "in that case."
     )
     parser.add_argument(
