@@ -343,207 +343,6 @@ def report_wdl_errors(
     return decorator
 
 
-def remove_common_leading_whitespace(
-    expression: WDL.Expr.String,
-    tolerate_blanks: bool = True,
-    tolerate_dedents: bool = False,
-    tolerate_all_whitespace: bool = True,
-    debug: bool = False,
-) -> WDL.Expr.String:
-    """
-    Remove "common leading whitespace" as defined in the WDL 1.1 spec.
-
-    See <https://github.com/openwdl/wdl/blob/main/versions/1.1/SPEC.md#stripping-leading-whitespace>.
-
-    Operates on a WDL.Expr.String expression that has already been parsed.
-
-    :param tolerate_blanks: If True, don't allow totally blank lines to zero
-        the common whitespace.
-
-    :param tolerate_dedents: If True, remove as much of the whitespace on the
-        first indented line as is found on subesquent lines, regardless of
-        whether later lines are out-dented relative to it.
-
-    :param tolerate_all_whitespace: If True, don't allow all-whitespace lines
-        to reduce the common whitespace prefix.
-
-    :param debug: If True, the function will show its work by logging at debug
-        level.
-    """
-
-    # The expression has a "parts" list consisting of interleaved string
-    # literals and placeholder expressions.
-    #
-    # TODO: We assume that there are no newlines in the placeholders.
-    #
-    # TODO: Look at the placeholders and their line and end_line values and try
-    # and guess if they should reduce the amount of common whitespace.
-
-    if debug:
-        logger.debug("Parts: %s", expression.parts)
-
-    # We split the parts list into lines, which are also interleaved string
-    # literals and placeholder expressions.
-    lines: list[list[str | WDL.Expr.Placeholder]] = [[]]
-    for part in expression.parts:
-        if isinstance(part, str):
-            # It's a string. Split it into lines.
-            part_lines = part.split("\n")
-            # Part before any newline goes at the end of the current line
-            lines[-1].append(part_lines[0])
-            for part_line in part_lines[1:]:
-                # Any part after a newline starts a new line
-                lines.append([part_line])
-        else:
-            # It's a placeholder. Put it at the end of the current line.
-            lines[-1].append(part)
-
-    if debug:
-        logger.debug("Lines: %s", lines)
-
-    # Then we compute the common amount of leading whitespace on all the lines,
-    # looking at the first string literal.
-    # This will be the longest common whitespace prefix, or None if not yet detected.
-    common_whitespace_prefix: str | None = None
-    for line in lines:
-        if len(line) == 0:
-            # TODO: how should totally empty lines be handled? Not in the spec!
-            if not tolerate_blanks:
-                # There's no leading whitespace here!
-                common_whitespace_prefix = ""
-            continue
-        elif isinstance(line[0], WDL.Expr.Placeholder):
-            # TODO: How can we convert MiniWDL's column numbers into space/tab counts or sequences?
-            #
-            # For now just skip these too.
-            continue
-        else:
-            # The line starts with a string
-            assert isinstance(line[0], str)
-            if len(line[0]) == 0:
-                # Still totally empty though!
-                if not tolerate_blanks:
-                    # There's no leading whitespace here!
-                    common_whitespace_prefix = ""
-                continue
-            if (
-                len(line) == 1
-                and tolerate_all_whitespace
-                and all(x in (" ", "\t") for x in line[0])
-            ):
-                # All-whitespace lines shouldn't count
-                continue
-            # TODO: There are good algorithms for common prefixes. This is a bad one.
-            # Find the number of leading whitespace characters
-            line_whitespace_end = 0
-            while line_whitespace_end < len(line[0]) and line[0][
-                line_whitespace_end
-            ] in (" ", "\t"):
-                line_whitespace_end += 1
-            # Find the string of leading whitespace characters
-            line_whitespace_prefix = line[0][:line_whitespace_end]
-
-            if " " in line_whitespace_prefix and "\t" in line_whitespace_prefix:
-                # Warn and don't change anything if spaces and tabs are mixed, per the spec.
-                logger.warning(
-                    "Line in command at %s mixes leading spaces and tabs! Not removing leading whitespace!",
-                    expression.pos,
-                )
-                return expression
-
-            if common_whitespace_prefix is None:
-                # This is the first line we found, so it automatically has the common prefic
-                common_whitespace_prefix = line_whitespace_prefix
-            elif not tolerate_dedents:
-                # Trim the common prefix down to what we have for this line
-                if not line_whitespace_prefix.startswith(common_whitespace_prefix):
-                    # Shorten to the real shared prefix.
-                    # Hackily make os.path do it for us,
-                    # character-by-character. See
-                    # <https://stackoverflow.com/a/6718435>
-                    common_whitespace_prefix = os.path.commonprefix(
-                        [common_whitespace_prefix, line_whitespace_prefix]
-                    )
-
-    if common_whitespace_prefix is None:
-        common_whitespace_prefix = ""
-
-    if debug:
-        logger.debug("Common Prefix: '%s'", common_whitespace_prefix)
-
-    # Then we trim that much whitespace off all the leading strings.
-    # We tolerate the common prefix not *actually* being common and remove as
-    # much of it as is there, to support tolerate_dedents.
-
-    def first_mismatch(prefix: str, value: str) -> int:
-        """
-        Get the index of the first character in value that does not match the corresponding character in prefix, or the length of the shorter string.
-        """
-        for n, (c1, c2) in enumerate(zip(prefix, value)):
-            if c1 != c2:
-                return n
-        return min(len(prefix), len(value))
-
-    # Trim up to the first mismatch vs. the common prefix if the line starts with a string literal.
-    stripped_lines = [
-        (
-            (
-                cast(
-                    list[Union[str, WDL.Expr.Placeholder]],
-                    [line[0][first_mismatch(common_whitespace_prefix, line[0]) :]],
-                )
-                + line[1:]
-            )
-            if len(line) > 0 and isinstance(line[0], str)
-            else line
-        )
-        for line in lines
-    ]
-    if debug:
-        logger.debug("Stripped Lines: %s", stripped_lines)
-
-    # Then we reassemble the parts and make a new expression.
-    # Build lists and turn the lists into strings later
-    new_parts: list[list[str] | WDL.Expr.Placeholder] = []
-    for i, line in enumerate(stripped_lines):
-        if i > 0:
-            # This is a second line, so we need to tack on a newline.
-            if len(new_parts) > 0 and isinstance(new_parts[-1], list):
-                # Tack on to existing string collection
-                new_parts[-1].append("\n")
-            else:
-                # Make a new string collection
-                new_parts.append(["\n"])
-        if len(line) > 0 and isinstance(line[0], str) and i > 0:
-            # Line starts with a string we need to merge with the last string.
-            # We know the previous line now ends with a string collection, so tack it on.
-            assert isinstance(new_parts[-1], list)
-            new_parts[-1].append(line[0])
-            # Make all the strings into string collections in the rest of the line
-            new_parts += [([x] if isinstance(x, str) else x) for x in line[1:]]
-        else:
-            # No string merge necessary
-            # Make all the strings into string collections in the whole line
-            new_parts += [([x] if isinstance(x, str) else x) for x in line]
-
-    if debug:
-        logger.debug("New Parts: %s", new_parts)
-
-    # Now go back to the alternating strings and placeholders that MiniWDL wants
-    new_parts_merged: list[str | WDL.Expr.Placeholder] = [
-        ("".join(x) if isinstance(x, list) else x) for x in new_parts
-    ]
-
-    if debug:
-        logger.debug("New Parts Merged: %s", new_parts_merged)
-
-    modified = WDL.Expr.String(expression.pos, new_parts_merged, expression.command)
-    # Fake the type checking of the modified expression.
-    # TODO: Make MiniWDL expose a real way to do this?
-    modified._type = expression._type
-    return modified
-
-
 async def toil_read_source(
     uri: str, path: list[str], importer: WDL.Tree.Document | None
 ) -> ReadSourceResult:
@@ -4099,6 +3898,8 @@ class WDLTaskJob(WDLBaseJob):
                     "is not yet implemented in the MiniWDL Docker "
                     "containerization implementation."
                 )
+            if runtime_bindings.has_binding("memory") and human2bytes(runtime_bindings.resolve("memory").value) < human2bytes("4MiB"):
+                    runtime_bindings.resolve("memory").value = "4MiB"
         else:
             raise RuntimeError(
                 f"Could not find a working container engine to use; told to use {self._wdl_options.get('container')}"
@@ -4335,7 +4136,7 @@ class WDLTaskJob(WDLBaseJob):
                     self._task,
                     "command",
                     WDL.Type.String(),
-                    remove_common_leading_whitespace(self._task.command),
+                    self._task.command,
                     contained_bindings,
                     command_library,
                 )
@@ -5834,7 +5635,7 @@ class WDLImportWrapper(WDLSectionJob):
         wdl_options: WDLContext,
         inputs_search_path: list[str],
         import_remote_files: bool,
-        import_workers_threshold: ParseableIndivisibleResource,
+        import_workers_batchsize: ParseableIndivisibleResource,
         import_workers_disk: ParseableIndivisibleResource,
         **kwargs: Any,
     ):
@@ -5848,7 +5649,7 @@ class WDLImportWrapper(WDLSectionJob):
         self._target = target
         self._inputs_search_path = inputs_search_path
         self._import_remote_files = import_remote_files
-        self._import_workers_threshold = import_workers_threshold
+        self._import_workers_batchsize = import_workers_batchsize
         self._import_workers_disk = import_workers_disk
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
@@ -5860,7 +5661,7 @@ class WDLImportWrapper(WDLSectionJob):
             include_remote_files=self._import_remote_files,
             execution_dir=self._wdl_options.get("execution_dir")
         )
-        imports_job = ImportsJob(file_to_metadata, self._import_workers_threshold, self._import_workers_disk)
+        imports_job = ImportsJob(file_to_metadata, self._import_workers_batchsize, self._import_workers_disk)
         self.addChild(imports_job)
         install_imports_job = WDLInstallImportsJob(
             self._target.name, self._inputs, imports_job.rv()
@@ -5892,7 +5693,7 @@ def make_root_job(
             wdl_options=wdl_options,
             inputs_search_path=inputs_search_path,
             import_remote_files=options.reference_inputs,
-            import_workers_threshold=options.import_workers_threshold,
+            import_workers_batchsize=options.import_workers_batchsize,
             import_workers_disk=options.import_workers_disk
         )
     else:

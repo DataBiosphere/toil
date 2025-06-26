@@ -3644,7 +3644,7 @@ class CWLImportWrapper(CWLNamedJob):
             worker.
         :param imported_files: Files already imported on the leader.
         """
-        super().__init__(local=False, disk=options.import_workers_threshold)
+        super().__init__(local=False, disk=options.import_workers_batchsize)
         self.initialized_job_order = initialized_job_order
         self.tool = tool
         self.runtime_context = runtime_context
@@ -3656,7 +3656,7 @@ class CWLImportWrapper(CWLNamedJob):
         # Do the worker-based imports
         imports_job = ImportsJob(
             self.file_to_data,
-            self.options.import_workers_threshold,
+            self.options.import_workers_batchsize,
             self.options.import_workers_disk,
         )
         self.addChild(imports_job)
