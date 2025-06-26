@@ -1292,7 +1292,7 @@ class ToilFsAccess(StdFsAccess):
 
             # Decode its contents, the path inside it to the file (if any), and
             # the key to use for caching the directory.
-            contents, subpath, cache_key = decode_directory(path)
+            contents, subpath, cache_key, _, _ = decode_directory(path)
             logger.debug("Decoded directory contents: %s", contents)
 
             if cache_key not in self.dir_to_download:
@@ -1394,7 +1394,7 @@ class ToilFsAccess(StdFsAccess):
             # Handle local files
             return open(self._abs(fn), mode)
         elif parse.scheme == "toildir":
-            contents, subpath, cache_key = decode_directory(fn)
+            contents, subpath, cache_key, _, _ = decode_directory(fn)
             if cache_key in self.dir_to_download:
                 # This is already available locally, so fall back on the local copy
                 return open(self._abs(fn), mode)
@@ -1435,7 +1435,7 @@ class ToilFsAccess(StdFsAccess):
             except NoSuchFileException:
                 return False
         elif parse.scheme == "toildir":
-            contents, subpath, cache_key = decode_directory(path)
+            contents, subpath, cache_key, _, _ = decode_directory(path)
             if subpath is None:
                 # The toildir directory itself exists
                 return True
@@ -1462,7 +1462,7 @@ class ToilFsAccess(StdFsAccess):
         elif parse.scheme == "toildir":
             # Decode its contents, the path inside it to the file (if any), and
             # the key to use for caching the directory.
-            contents, subpath, cache_key = decode_directory(path)
+            contents, subpath, cache_key, _, _ = decode_directory(path)
 
             # We can't get the size of just a directory.
             if subpath is None:
@@ -1496,7 +1496,7 @@ class ToilFsAccess(StdFsAccess):
             # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
             return True
         elif parse.scheme == "toildir":
-            contents, subpath, cache_key = decode_directory(fn)
+            contents, subpath, cache_key, _, _ = decode_directory(fn)
             if subpath is None:
                 # This is the toildir directory itself
                 return False
@@ -1515,7 +1515,7 @@ class ToilFsAccess(StdFsAccess):
         elif parse.scheme == "toilfile":
             return False
         elif parse.scheme == "toildir":
-            contents, subpath, cache_key = decode_directory(fn)
+            contents, subpath, cache_key, _, _ = decode_directory(fn)
             if subpath is None:
                 # This is the toildir directory itself.
                 # TODO: We assume directories can't be deleted.
@@ -1543,7 +1543,7 @@ class ToilFsAccess(StdFsAccess):
         elif parse.scheme == "toilfile":
             raise RuntimeError(f"Cannot list a file: {fn}")
         elif parse.scheme == "toildir":
-            contents, subpath, cache_key = decode_directory(fn)
+            contents, subpath, cache_key, _, _ = decode_directory(fn)
             here = contents
             if subpath is not None:
                 got = get_from_structure(contents, subpath)
@@ -2334,7 +2334,7 @@ def toilStageFiles(
 
                     if file_id_or_contents.startswith("toildir:"):
                         # Get the directory contents and the path into them, if any
-                        here, subpath, _ = decode_directory(file_id_or_contents)
+                        here, subpath, _, _, _ = decode_directory(file_id_or_contents)
                         if subpath is not None:
                             for part in subpath.split("/"):
                                 here = cast(DirectoryContents, here[part])

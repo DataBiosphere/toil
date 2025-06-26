@@ -633,7 +633,8 @@ def pack_toil_uri(
     The URI will start with the scheme in TOIL_URI_SCHEME.
 
     :param parent: bare path or URI to the parent of the file. Only one unique
-        value will be used for a given parent location.
+        value may be used for a given parent location. Must be the same as the
+        name parameter of :meth:`toil.lib.directory.encode_directory`.
     """
 
     # We urlencode everything, including any slashes. We need to use a slash to
@@ -1615,8 +1616,14 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         """
         if is_toil_dir_url(filename):
             # This is either a directory or an indirect reference to something.
+            
+            logger.debug("Trying to devirtualize from Directory: %s", filename)
+            base_dir_decoded, remaining_path, _, base_dir_source_uri, source_task = decode_directory(filename)
+            
+            # We always set the directory URI and source task.
+            assert base_dir_source_uri is not None
+            assert source_task is not None
 
-            base_dir_decoded, remaining_path, base_dir_source_uri = decode_directory(filename)
             found = get_directory_contents_item(base_dir_decoded, remaining_path)
             if isinstance(found, str):
                 # This is a leaf file, so just devirtualize that
@@ -1628,9 +1635,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # Work out where the root uploaded directory would go
                 dir_basename = os.path.basename(urlsplit(base_dir_source_uri).path)
                 parent_url = urljoin(base_dir_source_uri, ".")
-                # TODO: Track source task for a directory
                 dir_path = os.path.join(choose_human_readable_directory(
-                    dest_dir, "TODO", parent_url
+                    dest_dir, source_task, parent_url
                 ), dir_basename)
 
                 # And where this particular subdirectory we're fetching goes
@@ -1894,7 +1900,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
             contents = handle_directory(normalized_uri)
             
-            result = encode_directory(contents, name=normalized_uri)
+            result = encode_directory(contents, name=normalized_uri, source=self.task_path)
             self._devirtualized_to_virtualized[normalized_uri] = result
             return result
         elif is_standard_url(normalized_uri):

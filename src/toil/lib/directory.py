@@ -41,13 +41,14 @@ def check_directory_dict_invariants(contents: DirectoryContents) -> None:
 
 def decode_directory(
     dir_path: str,
-) -> tuple[DirectoryContents, Optional[str], str]:
+) -> tuple[DirectoryContents, Optional[str], str, Optional[str], Optional[str]]:
     """
     Decode a directory from a "toildir:" path to a directory (or a file in it).
 
     :returns: the decoded directory dict, the remaining part of the path (which
-        may be None), and an identifier string for the directory, which is the
-        stored name/source URI if one was provided.
+        may be None), an identifier string for the directory (which is the
+        stored name URI if one was provided), and the name URI and source task
+        info.
     """
     if not dir_path.startswith("toildir:"):
         raise RuntimeError(f"Cannot decode non-directory path: {dir_path}")
@@ -55,18 +56,18 @@ def decode_directory(
     # We will decode the directory and then look inside it
 
     # Since this was encoded by upload_directory we know the
-    # next piece is encoded source URL and JSON describing the directory structure,
-    # and it can't contain any slashes.
+    # next pieces are encoded source URL, encoded source task, and JSON
+    # describing the directory structure, and it can't contain any slashes.
+    #
+    # So split on slash to separate all that from the path components within
+    # the directory to whatever we're trying to get.
     parts = dir_path[len("toildir:") :].split("/", 1)
 
     # Before the first slash is the encoded data describing the directory contents
-    dir_data = parts[0]
-    if ":" in dir_data:
-        # We also have a known name (source path/URI)
-        encoded_name, dir_data = dir_data.split(":")
-        name: Optional[str] = unquote(encoded_name)
-    else:
-        name = None
+    encoded_name, encoded_source, dir_data = parts[0].split(":")
+    # Decode the name and source, replacing empty string with None again.
+    name: Optional[str] = unquote(encoded_name) or None
+    source: Optional[str] = unquote(encoded_source) or None
     
     # We need the unique key identifying this directory, which is where it came
     # from if stored, or the encoded data itself otherwise.
@@ -82,10 +83,10 @@ def decode_directory(
 
     if len(parts) == 1 or parts[1] == "/":
         # We didn't have any subdirectory
-        return contents, None, directory_identifier
+        return contents, None, directory_identifier, name, source
     else:
         # We have a path below this
-        return contents, parts[1], directory_identifier
+        return contents, parts[1], directory_identifier, name, source
 
 def encode_directory(contents: DirectoryContents, name: Optional[str] = None, source: Optional[str] = None) -> str:
     """
@@ -94,23 +95,21 @@ def encode_directory(contents: DirectoryContents, name: Optional[str] = None, so
     :param contents: the directory dict, which is a dict from name to URI for a
         file or dict for a subdirectory.
     :param name: the path or URI the directory belongs at, including its
-        basename.
+        basename. May not be empty if set.
     :param source: the name of a workflow component that uploaded the
-        directory.
+        directory. May not be empty if set.
     """
 
     check_directory_dict_invariants(contents)
 
-    parts = ["toildir"]
-
-    if name is not None:
-        parts.append(quote(name, safe=""))
-
-    parts.append(
+    parts = [
+        "toildir",
+        quote(name or "", safe=""),
+        quote(source or "", safe=""),
         base64.urlsafe_b64encode(
             json.dumps(contents).encode("utf-8")
-        ).decode("utf-8")
-    )
+        ).decode("utf-8"),
+    ]
 
     return ":".join(parts)
 
@@ -154,7 +153,7 @@ def get_directory_item(dir_path: str) -> Union[DirectoryContents, str]:
     Get a subdirectory or file from a URL pointing to or into a toildir: directory.
     """
 
-    contents, remaining_path, _ = decode_directory(dir_path)
+    contents, remaining_path, _, _, _ = decode_directory(dir_path)
     
     try:
         return get_directory_contents_item(contents, remaining_path)
