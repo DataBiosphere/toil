@@ -4806,7 +4806,7 @@ class WDLScatterJob(WDLSectionJob):
 
         # Set the exprs of the WDL values to WDL.Expr.Null to reduce the memory footprint. This got set from evaluate_named_expression
         # because any evaluation on an expression will mutate child values of the result values of the expression, and we had not
-        # processed it yet by this point as the bindings from WDLWorkflowJob and the input environment do not get processing and postprocessing
+        # processed it yet by this point as the bindings from input environment and WDLWorkflowJob do not get processing and postprocessing
         # ran respectively
         bindings = self.remove_expr_from_bindings(bindings)
 
