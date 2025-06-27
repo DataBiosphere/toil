@@ -100,8 +100,8 @@ Besides the normal Toil options and the options supported by cwltool, toil-cwl-r
   --reference-inputs    Do not copy remote inputs into Toil's file store and assume they are accessible in place from all nodes.
   --disable-streaming   Do not allow streaming of job input files. By default, files marked with ``streamable`` True are streamed from remote job stores.
   --cwl-default-ram     Apply CWL specification default ramMin.
-  --no-cwl-default-ram  Do not apply CWL specification default ramMin, so that Toil --defaultMemory applies.
-
+  --no-cwl-default-ram  Do not apply CWL specification default ramMin, so that Toil --defaultMemory applies. This can help jobs get to Slurm with no memory limit assigned.
+  --cwl-min-ram BYTES   Specify a minimum memory allocation for all tasks. If ``--no-cwl-default-ram`` is passed, this does not apply to tools that do not specify a memory requirement; ``--defaultMemory`` is used for those tools in that case.
 
 Running CWL in the Cloud
 ------------------------
