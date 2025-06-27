@@ -2663,6 +2663,11 @@ def remove_expr_from_value(value: WDL.Value.Base) -> WDL.Value.Base:
         # Do a shallow copy to preserve immutability
         new_value = copy.copy(value)
         if value.expr:
+            # We use a Null expr instead of None here, because when evaluating an expression, 
+            # MiniWDL applies that expression to the result value *and* all values it contains that
+            # have None expressions. Using a Null expression here protects nested values that 
+            # didn't really get created by the current expression from being attributed to it, while
+            # still cutting the reference to the parsed WDL document.
             new_value._expr = WDL.Expr.Null(value.expr.pos)
         else:
             new_value._expr = value.expr
