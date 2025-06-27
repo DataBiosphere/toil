@@ -4804,8 +4804,10 @@ class WDLScatterJob(WDLSectionJob):
                 [(p, p) for p in standard_library.get_local_paths()]
             )
 
-        # We need to remove the exprs from the WDL values since any evaluation on an expression will mutate child values
-        # of the result values of the expression
+        # Set the exprs of the WDL values to WDL.Expr.Null to reduce the memory footprint. This got set from evaluate_named_expression
+        # because any evaluation on an expression will mutate child values of the result values of the expression, and we had not
+        # processed it yet by this point as the bindings from WDLWorkflowJob and the input environment do not get processing and postprocessing
+        # ran respectively
         bindings = self.remove_expr_from_bindings(bindings)
 
         if not isinstance(scatter_value, WDL.Value.Array):
