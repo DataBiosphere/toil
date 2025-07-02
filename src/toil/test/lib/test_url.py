@@ -14,6 +14,8 @@
 import getpass
 import logging
 
+from pytest_httpserver import HTTPServer
+
 from toil.lib.misc import get_user_name
 from toil.lib.url import URLAccess
 from toil.test import needs_aws_s3, needs_online
@@ -28,9 +30,10 @@ class TestURLAccess():
     and checking the size/existence of resources at given URL
     """
 
-    @needs_online
-    def test_get_url_access(self) -> None:
-        assert URLAccess.url_exists("https://httpstat.us/200")
+    def test_get_url_access(self, httpserver: HTTPServer) -> None:
+        httpserver.expect_request("/some_url").respond_with_data("Yep that's a URL")
+        file_url = httpserver.url_for("/some_url")
+        assert URLAccess.url_exists(file_url)
 
     @needs_aws_s3
     def test_get_size(self) -> None:

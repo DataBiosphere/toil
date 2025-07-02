@@ -13,6 +13,8 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+from pytest_httpserver import HTTPServer
+
 import WDL.Error
 import WDL.Expr
 
@@ -249,6 +251,7 @@ class TestWDL:
                 assert os.path.exists(result["ga4ghMd5.value"])
                 assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
 
+    @needs_online
     def test_url_to_file(self, tmp_path: Path) -> None:
         """
         Test if web URL strings can be coerced to usable Files.
@@ -650,8 +653,7 @@ class TestWDL:
                 != result_not_cached["random.value_written"]
             )
 
-    @needs_online
-    def test_url_to_optional_file(self, tmp_path: Path) -> None:
+    def test_url_to_optional_file(self, tmp_path: Path, httpserver: HTTPServer) -> None:
         """
         Test if missing and error-producing URLs are handled correctly for optional File? values.
         """
@@ -664,7 +666,15 @@ class TestWDL:
                 Return the parsed output.
                 """
                 logger.info("Test optional file with HTTP code %s", code)
-                json_value = '{"url_to_optional_file.http_code": %d}' % code
+                httpserver.expect_request(
+                    "/" + str(code)
+                ).respond_with_data(
+                    "Some data",
+                    status=code,
+                    content_type="text/plain"
+                )
+                base_url = httpserver.url_for("/")
+                json_value = '{"url_to_optional_file.http_code": %d, "url_to_optional_file.base_url": "%s"}' % (code, base_url)
                 result_json = subprocess.check_output(
                     self.base_command
                     + [
