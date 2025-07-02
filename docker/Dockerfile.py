@@ -72,6 +72,21 @@ dependencies = ' '.join(python_packages[python] +
                          # Dependencies for singularity on kubernetes
                          'tzdata'])
 
+# pymesos's http-parser dependency can't build on Python later than 3.10, as
+# released in 0.9.0. The upstream pymesos can, but we write it out of Toil's
+# dependencies on later Python versions, since a working http-parser is not
+# available in PyPI. So we need to manually inject a working http-parser, and
+# pymesos, into the Docker images.
+extra_mesos_python_modules = {
+    'python3.9': [],
+    'python3.10': [],
+    'python3.11': ['http-parser@git://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15'],
+    'python3.12': ['http-parser@git://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15'],
+    'python3.13': ['http-parser@git://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15']
+}
+
+extra_python_modules = " ".join(extra_mesos_python_modules[python])
+
 
 def heredoc(s):
     s = textwrap.dedent(s).format(**globals())
@@ -197,7 +212,7 @@ print(heredoc('''
     # to just ship the user-level one for hot deploy.
     RUN {pip} install --ignore-installed --upgrade 'virtualenv>=20.25.1,<21'
 
-    RUN {pip} install --ignore-installed --upgrade 'setuptools>=80,<81'
+    RUN {pip} install --ignore-installed --upgrade 'setuptools>=80,<81' {extra_python_modules}
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
