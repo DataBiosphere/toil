@@ -80,9 +80,9 @@ dependencies = ' '.join(python_packages[python] +
 extra_mesos_python_modules = {
     'python3.9': [],
     'python3.10': [],
-    'python3.11': ['http-parser@git://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15'],
-    'python3.12': ['http-parser@git://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15'],
-    'python3.13': ['http-parser@git://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15']
+    'python3.11': ['http-parser@git+https://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15'],
+    'python3.12': ['http-parser@git+https://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15'],
+    'python3.13': ['http-parser@git+https://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15']
 }
 
 extra_python_modules = " ".join(extra_mesos_python_modules[python])
@@ -212,7 +212,7 @@ print(heredoc('''
     # to just ship the user-level one for hot deploy.
     RUN {pip} install --ignore-installed --upgrade 'virtualenv>=20.25.1,<21'
 
-    RUN {pip} install --ignore-installed --upgrade 'setuptools>=80,<81' {extra_python_modules}
+    RUN {pip} install --ignore-installed --upgrade 'setuptools>=80,<81'
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
@@ -241,7 +241,7 @@ print(heredoc('''
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
-    RUN {pip} install --ignore-installed --upgrade {sdistName}[all]
+    RUN {pip} install --ignore-installed --upgrade {sdistName}[all] {extra_python_modules}
     RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect
