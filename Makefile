@@ -207,7 +207,7 @@ endef
 
 docker: toil_docker prometheus_docker grafana_docker mtail_docker
 
-toil_docker: docker/Dockerfile
+toil_docker: docker/Dockerfile src/toil/version.py
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd docker \
