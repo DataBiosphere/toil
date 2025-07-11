@@ -1167,7 +1167,7 @@ class AWSProvisioner(AbstractProvisioner):
             workerInstances = [
                 i
                 for i in workerInstances
-                if preemptible == (i["SpotInstanceRequestId"] is not None)
+                if preemptible == (i.get("SpotInstanceRequestId") is not None)
             ]
             logger.debug(
                 "%spreemptible workers found in cluster: %s",
@@ -1184,7 +1184,7 @@ class AWSProvisioner(AbstractProvisioner):
                 name=i["InstanceId"],
                 launchTime=i["LaunchTime"],
                 nodeType=i["InstanceType"],
-                preemptible=i["SpotInstanceRequestId"] is not None,
+                preemptible=i.get("SpotInstanceRequestId") is not None,
                 tags=collapse_tags(i["Tags"]),
             )
             for i in workerInstances
