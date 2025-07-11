@@ -954,7 +954,6 @@ def choose_human_readable_directory(
     :param source_task_path: The dotted WDL name of whatever generated the
         file. We assume this is an acceptable filename component.
     :param parent: Directory path or parent URI that the file came from,
-    :param state: A state dict that must be passed to repeated calls.
     """
 
     logger.debug(

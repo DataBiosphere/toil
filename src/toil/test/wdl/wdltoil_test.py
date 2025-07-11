@@ -1135,28 +1135,26 @@ class TestWDLToilBench(unittest.TestCase):
             choose_human_readable_directory,
         )
 
-        # The first time we should get a path with the task name and without the ID
+        # The first time we should get a path with the task name
         first_chosen = choose_human_readable_directory(
-            "root", "taskname", "111-222-333" 
+            "root", "taskname", "https://example.com/some/directory"
         )
         assert first_chosen.startswith("root")
         assert "taskname" in first_chosen
-        assert "111-222-333" not in first_chosen
 
-        # If we use the same ID we should get the same result
+        # If we use the same parent we should get the same result
         same_id = choose_human_readable_directory(
-            "root", "taskname", "111-222-333"
+            "root", "taskname", "https://example.com/some/directory"
         )
         assert same_id == first_chosen
 
-        # If we use a different ID we should get a different result still obeying the constraints
+        # If we use a different parent we should get a different result still obeying the constraints
         diff_id = choose_human_readable_directory(
-            "root", "taskname", "222-333-444"
+            "root", "taskname", "/data/tmp/files/somewhere"
         )
         assert diff_id != first_chosen
         assert diff_id.startswith("root")
         assert "taskname" in diff_id
-        assert "222-333-444" not in diff_id
 
     def test_uri_packing(self) -> None:
         """
