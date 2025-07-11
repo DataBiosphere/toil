@@ -963,18 +963,26 @@ def choose_human_readable_directory(
         root_dir,
     )
     
+    if is_file_url(parent):
+        # Convert files back to paths.
+        parent = unquote(urlsplit(parent).path) 
     if is_any_url(parent):
         # Parent might contain exciting things like "/../" or "///". The spec
         # says the parent is everything up to the last / so we just encode the
         # URL.
-        parent = quote(parent, safe="")
+        parent_component = "_toil_url/" + quote(parent, safe="")
     elif parent.startswith("/"):
         # Make sure we can handle both absolute and relative paths in a sort of
         # sensible way.
         # TODO: Will they always be absolute?
-        parent = f"_toil_root{parent}"
-
-    result = os.path.join(root_dir, source_task_path, parent)
+        parent_component = f"_toil_root{parent}"
+    
+    if is_any_url(parent):
+        # Don't include task name because it's from a URL and invariant across
+        # tasks.
+        result = os.path.join(root_dir, parent_component)
+    else:
+        result = os.path.join(root_dir, source_task_path, parent_component)
     
     logger.debug("Picked path %s", result)
     return result

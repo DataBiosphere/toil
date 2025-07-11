@@ -1140,21 +1140,49 @@ class TestWDLToilBench(unittest.TestCase):
             "root", "taskname", "https://example.com/some/directory"
         )
         assert first_chosen.startswith("root")
-        assert "taskname" in first_chosen
 
         # If we use the same parent we should get the same result
-        same_id = choose_human_readable_directory(
+        same_parent = choose_human_readable_directory(
             "root", "taskname", "https://example.com/some/directory"
         )
-        assert same_id == first_chosen
+        assert same_parent == first_chosen
+
+        # If we use a lower parent with a URL, we do not necessarily need to be
+        # inside the higher parent.
+
+        # If we use a URL with a creative number of slashes, it should be distinct.
+        slash_parent = choose_human_readable_directory(
+            "root", "taskname", "https://example.com/some/directory//////"
+        )
+        assert slash_parent != first_chosen
+
+        # If we use the same parent URL but a different task we should get the same result
+        other_task = choose_human_readable_directory(
+            "root", "taskname2", "https://example.com/some/directory"
+        )
+        assert other_task == first_chosen
 
         # If we use a different parent we should get a different result still obeying the constraints
-        diff_id = choose_human_readable_directory(
+        diff_parent = choose_human_readable_directory(
             "root", "taskname", "/data/tmp/files/somewhere"
         )
-        assert diff_id != first_chosen
-        assert diff_id.startswith("root")
-        assert "taskname" in diff_id
+        assert diff_parent != first_chosen
+        assert diff_parent.startswith("root")
+        assert "taskname" in diff_parent
+
+        # If we use a subpath parent with a filename we should get a path inside it.
+        diff_parent_subpath = choose_human_readable_directory(
+            "root", "taskname", "/data/tmp/files/somewhere/else"
+        )
+        assert os.path.dirname(diff_parent_subpath) == diff_parent
+
+        # If we use the same parent path but a different task we should get a different result.
+        other_task_directory = choose_human_readable_directory(
+            "root", "taskname2", "/data/tmp/files/somewhere"
+        )
+        assert other_task_directory != diff_parent
+        assert other_task_directory.startswith("root")
+        assert "taskname2" in other_task_directory
 
     def test_uri_packing(self) -> None:
         """
