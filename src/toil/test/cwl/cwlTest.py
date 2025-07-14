@@ -2210,7 +2210,7 @@ class ImportWorkersMessageHandler(_stream_handler):
         # We get the job name from the class since we already started failing
         # this test once due to it being renamed.
         try:
-            formatted = record.msg % record.args
+            formatted = record.getMessage()
         except TypeError as e:
             # The log message has the wrong number of items for its fields.
             # Complain in a way we could figure out.
