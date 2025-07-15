@@ -3,7 +3,6 @@ import os
 from toil.common import Toil
 from toil.job import Job
 from toil.lib.io import mkdtemp
-from toil.test import get_data
 
 class HelloWorld(Job):
     def __init__(self, id):
@@ -30,9 +29,22 @@ if __name__ == "__main__":
 
     with Toil(options) as toil:
         if not toil.options.restart:
-            with get_data("test/docs/scripts/stagingExampleFiles/in.txt") as path:
-                inputFileID = toil.importFile(f"file://{path}")
-                outputFileID = toil.start(HelloWorld(inputFileID))
+            # Prepare an input file
+            path = os.path.join(tmp, "in.txt")
+            with open(path, "w") as f:
+                f.write("Hello,\n")
+            # In a real workflow, you would obtain an input file path from the
+            # user.
+
+            # Stage it into the Toil job store.
+            #
+            # Note: this may create a symlink depending on the value of the
+            # --linkImports command line option, in which case the original
+            # input file needs to still exist if the workflow is restarted.
+            inputFileID = toil.importFile(f"file://{path}")
+
+            # Run the workflow
+            outputFileID = toil.start(HelloWorld(inputFileID))
         else:
             outputFileID = toil.restart()
 
