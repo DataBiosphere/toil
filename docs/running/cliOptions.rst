@@ -527,7 +527,8 @@ systems have issues!).
 
 **Miscellaneous Options**
 
-  --disableChaining     Disables chaining of jobs (chaining uses one job's
+  --disableChaining BOOL
+                        Disables chaining of jobs (chaining uses one job's
                         resource allocation for its successor job if
                         possible).
   --disableJobStoreChecksumVerification

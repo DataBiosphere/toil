@@ -86,6 +86,7 @@ from toil.provisioners import add_provisioner_options, cluster_factory
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import add_logging_options, set_logging_from_options
 from toil.version import dockerRegistry, dockerTag, version, baseVersion
+from toil.lib.url import URLAccess
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
@@ -449,6 +450,11 @@ class Config:
 
         self.check_configuration_consistency()
 
+        # Check for deprecated Toil built-in autoscaling
+        # --provisioner is guaranteed to be set
+        if self.provisioner is not None and self.batchSystem == "mesos":
+            logger.warning("Toil built-in autoscaling with Mesos is deprecated as Mesos is no longer active. Please use Kubernetes-based autoscaling instead.")
+
     def check_configuration_consistency(self) -> None:
         """Old checks that cannot be fit into an action class for argparse"""
         if self.writeLogs and self.writeLogsGzip:
@@ -545,6 +551,19 @@ def generate_config(filepath: str) -> None:
         "enableCaching",
         "disableCaching",
         "version",
+        # Toil built-in autoscaling with mesos is deprecated as mesos has not been updated since Python 3.10
+        "provisioner",
+        "nodeTypes"
+        "minNodes",
+        "maxNodes",
+        "targetTime",
+        "betaInertia",
+        "scaleInterval",
+        "preemtibleCompensation",
+        "nodeStorage",
+        "nodeStorageOverrides",
+        "metrics",
+        "assumeZeroOverhead"
     )
 
     def create_config_dict_from_parser(parser: ArgumentParser) -> CommentedMap:
@@ -1397,7 +1416,7 @@ class Toil(ContextManager["Toil"]):
             self._batchSystem.setUserScript(userScriptResource)
 
     def url_exists(self, src_uri: str) -> bool:
-        return self._jobStore.url_exists(self.normalize_uri(src_uri))
+        return URLAccess.url_exists(self.normalize_uri(src_uri))
 
     # Importing a file with a shared file name returns None, but without one it
     # returns a file ID. Explain this to MyPy.
