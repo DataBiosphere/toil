@@ -109,6 +109,11 @@ _INSTANCE_PROFILE_ROLE_NAME = "toil"
 _TAG_KEY_TOIL_NODE_TYPE = "ToilNodeType"
 # The tag that specifies the cluster name on all nodes
 _TAG_KEY_TOIL_CLUSTER_NAME = "clusterName"
+# The tag we use to store the SSH key name.
+# TODO: Get rid of this once
+# <https://github.com/adamchainz/ec2-metadata/pull/562> is merged and we can
+# get the SSH key name from the instance metadata.
+_TAG_KEY_TOIL_SSH_KEY = "sshKeyName"
 # How much storage on the root volume is expected to go to overhead and be
 # unavailable to jobs when the node comes up?
 # TODO: measure
@@ -309,10 +314,27 @@ class AWSProvisioner(AbstractProvisioner):
         for tag in instance["Tags"]:
             if tag.get("Key") == "Name":
                 self.clusterName = tag["Value"]
+            elif tag.get("Key") == _TAG_KEY_TOIL_SSH_KEY:
+                # If we can't get an SSH key from the instance metadata, we
+                # might be able to use this one from the tags.
+                self._keyName = tag["Value"]
         # Determine what subnet we, the leader, are in
         self._leader_subnet = instance["SubnetId"]
         # Determine where to deploy workers.
         self._worker_subnets_by_zone = self._get_good_subnets_like(self._leader_subnet)
+
+        # Find the SSH key name to use to start instances
+        if hasattr(ec2_metadata, 'public_keys') and isinstance(ec2_metadata.public_keys, dict):
+            key_names = list(ec2_metadata.public_keys.keys())
+            if len(key_names) > 0 and isinstance(key_names[0], str):
+                # We have a key name from the EC2 metadata. This should always
+                # be the case once
+                # <https://github.com/adamchainz/ec2-metadata/pull/562> is
+                # merged. Override anything from the tags.
+                self._keyName = key_names[0]
+
+        if not hasattr(self, '_keyName'):
+            raise RuntimeError("Unable to determine the SSH key name the cluster is using")
 
         self._leaderPrivateIP = ec2_metadata.private_ipv4  # this is PRIVATE IP
         self._tags = {
@@ -495,6 +517,7 @@ class AWSProvisioner(AbstractProvisioner):
         # Make tags for the leader specifically
         leader_tags = dict(self._tags)
         leader_tags[_TAG_KEY_TOIL_NODE_TYPE] = "leader"
+        leader_tags[_TAG_KEY_TOIL_SSH_KEY] = self._keyName
         logger.debug("Launching leader with tags: %s", leader_tags)
 
         instances: list[Instance] = create_instances(
@@ -1144,7 +1167,7 @@ class AWSProvisioner(AbstractProvisioner):
             workerInstances = [
                 i
                 for i in workerInstances
-                if preemptible == (i["SpotInstanceRequestId"] is not None)
+                if preemptible == (i.get("SpotInstanceRequestId") is not None)
             ]
             logger.debug(
                 "%spreemptible workers found in cluster: %s",
@@ -1161,7 +1184,7 @@ class AWSProvisioner(AbstractProvisioner):
                 name=i["InstanceId"],
                 launchTime=i["LaunchTime"],
                 nodeType=i["InstanceType"],
-                preemptible=i["SpotInstanceRequestId"] is not None,
+                preemptible=i.get("SpotInstanceRequestId") is not None,
                 tags=collapse_tags(i["Tags"]),
             )
             for i in workerInstances

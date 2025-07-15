@@ -1,7 +1,7 @@
 connexion[swagger-ui]>=3,<4
 flask>=3,<4
 werkzeug>=3,<4
-flask-cors>=5.0.1,<6
+flask-cors>=5.0.1,<7
 gunicorn>=23.0.0,<24
 celery>=5.4.0,<6
 wes-service>=5.0.0,<6

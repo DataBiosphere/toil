@@ -224,12 +224,17 @@ def unstick_worker(interval: float = 120, timeout: float = 120) -> None:
         # We also want to handle the case where the child process gets so
         # gummed up that it can't exit when killed.
 
-        # Preserve errors form child process but not output
-        child = subprocess.Popen(
-            ["lsof", "-p", str(pid)],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-        )
+        try:
+            child = subprocess.Popen(
+                ["lsof", "-p", str(pid)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except FileNotFoundError:
+            # If there isn't an lsof, don't try and use it.
+            logger.info("lsof is not available. We will not be able to use it to unstick a stuck Toil leader.")
+            return
         try:
             child.wait(timeout=timeout)
         except subprocess.TimeoutExpired:

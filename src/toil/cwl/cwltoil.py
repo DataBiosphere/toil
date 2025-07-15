@@ -2614,6 +2614,12 @@ class CWLJob(CWLNamedJob):
             else:
                 # We use a None requirement and the Toil default applies.
                 memory = None
+        
+        # Imposing a minimum memory limit
+        min_ram = getattr(runtime_context, "cwl_min_ram")
+        if min_ram is not None and memory is not None:
+            # Note: if the job is using the toil default memory, it won't be increased
+            memory = max(memory, min_ram)
 
         accelerators: Optional[list[AcceleratorRequirement]] = None
         if req.get("cudaDeviceCount", 0) > 0:
@@ -3712,7 +3718,7 @@ class CWLImportWrapper(CWLNamedJob):
             worker.
         :param imported_files: Files already imported on the leader.
         """
-        super().__init__(local=False, disk=options.import_workers_threshold)
+        super().__init__(local=False, disk=options.import_workers_batchsize)
         self.initialized_job_order = initialized_job_order
         self.tool = tool
         self.runtime_context = runtime_context
@@ -3724,7 +3730,7 @@ class CWLImportWrapper(CWLNamedJob):
         # Do the worker-based imports
         imports_job = ImportsJob(
             self.file_to_data,
-            self.options.import_workers_threshold,
+            self.options.import_workers_batchsize,
             self.options.import_workers_disk,
         )
         self.addChild(imports_job)
@@ -4297,6 +4303,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.workdir = workdir  # type: ignore[attr-defined]
     runtime_context.outdir = outdir
     setattr(runtime_context, "cwl_default_ram", options.cwl_default_ram)
+    setattr(runtime_context, "cwl_min_ram", options.cwl_min_ram)
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
     runtime_context.streaming_allowed = not options.disable_streaming
