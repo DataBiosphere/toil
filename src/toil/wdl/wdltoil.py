@@ -1704,6 +1704,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     result,
                 )
                 return result
+            else:
+                logger.debug("Virtualized filename %s is not any of the %s cached items", filename, len(virtualized_to_devirtualized))
 
             if is_directory_url(filename):
                 # This points to a directory, so handle it as a tree.
@@ -1780,7 +1782,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # Now we know we have filename (the directory), dest_path (the
                 # desired local path), and contents (all the files and
                 # subdirectories we need to materialize).
-                logger.debug("Devirtualizing %s contained items", len(contents))
+                logger.debug("Devirtualizing %s directly contained items, and their children", len(contents))
 
                 for relative_path, item_value in directory_contents_items(contents):
                     # Recursively visit the directory itself and its contents.
@@ -1801,6 +1803,17 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                         # entries with the directory URL *and* the base file ID
                         # URL for files.
                         assert os.path.exists(item_devirtualized_path)
+                    elif item_value is not None and item_value in virtualized_to_devirtualized:
+                        # The target file is already downloaded.
+                        # TODO: Are there circumstances where we're going to
+                        # need multiple copies, such as distinct base
+                        # directories that can't be nested?
+                        logger.debug("%s points to %s which is already cached", item_virtualized_path, item_value)
+                        assert virtualized_to_devirtualized[item_value] == item_devirtualized_path, f"Directory item {item_virtualized_path} points to file {item_value}, which was already devirtualized to {virtualized_to_devirtualized[item_value]}, but for the directory we need it to be at {item_devirtualized_path} instead!"
+                        assert os.path.exists(item_devirtualized_path)
+                        # Cache the file's devirtualized version also under the directory-based path.
+                        virtualized_to_devirtualized[item_virtualized_path] = virtualized_to_devirtualized[item_value]
+                        logger.debug("Cache now has %s items", len(virtualized_to_devirtualized))
                     else:
                         # We need to download this now and cache it.
                         if item_value is None:
@@ -1809,14 +1822,23 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                             # have already downloaded something in a subpath
                             # but not the whole subpath yet.
                             os.makedirs(item_devirtualized_path, exist_ok=True)
+
+                            # Cache the directory
+                            logger.debug("Add %s to cache at %s", item_virtualized_path, item_devirtualized_path)
+                            virtualized_to_devirtualized[item_virtualized_path] = item_devirtualized_path
+                            devirtualized_to_virtualized[item_devirtualized_path] = item_virtualized_path
                         else:
                             # Download files from their stored locations.
-                            assert not os.path.exists(item_devirtualized_path), f"Virtualized file {item_virtualized_path} already exists at {item_devirtualized_path}, but is not in cache."
+                            assert not os.path.exists(item_devirtualized_path), f"Virtualized file {item_virtualized_path} pointing to {item_value} already exists at {item_devirtualized_path}, but is not in cache. Back-cache says: {devirtualized_to_virtualized.get(item_devirtualized_path)}"
                             cls._write_uri_to(item_value, item_devirtualized_path, file_source, export)
-                        # Save to cache
-                        logger.debug("Add %s to cache", item_virtualized_path)
-                        virtualized_to_devirtualized[item_virtualized_path] = item_devirtualized_path
-                        devirtualized_to_virtualized[item_devirtualized_path] = item_virtualized_path
+                            logger.debug("Add %s pointing to %s to cache at %s", item_virtualized_path, item_value, item_devirtualized_path)
+                            # Cache the file in its own right
+                            virtualized_to_devirtualized[item_value] = item_devirtualized_path
+                            devirtualized_to_virtualized[item_devirtualized_path] = item_value
+                            # And the directory entry as pointing to the file.
+                            virtualized_to_devirtualized[item_virtualized_path] = virtualized_to_devirtualized[item_value]
+                        
+                        logger.debug("Cache now has %s items", len(virtualized_to_devirtualized))
 
                 # We should now have it in the cache.
                 assert virtualized_to_devirtualized[filename] == dest_path, f"Cached devirtualized path for {filename} should be {dest_path} but is {virtualized_to_devirtualized[filename]} instead!"
@@ -1874,12 +1896,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 os.makedirs(parent_path, exist_ok=True)
                 # Download the file into it.
                 cls._write_uri_to(filename, dest_path, file_source, export)
+                
+                logger.debug("Devirtualized %s as openable file %s", filename, dest_path)
 
                 # Store it in the cache
                 virtualized_to_devirtualized[filename] = dest_path
                 devirtualized_to_virtualized[dest_path] = filename
-                
-                logger.debug("Devirtualized %s as openable file %s", filename, dest_path)
+                logger.debug("Cache now has %s items", len(virtualized_to_devirtualized))
                 return dest_path
         else:
             # This is a local file or file URL
