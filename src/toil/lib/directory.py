@@ -19,6 +19,9 @@ from urllib.parse import quote, unquote
 
 from typing import Iterator, Optional, Union
 
+TOIL_DIR_URI_SCHEME = "toildir:"
+
+
 DirectoryContents = dict[str, Union[str, "DirectoryContents"]]
 
 
@@ -50,7 +53,7 @@ def decode_directory(
         stored name URI if one was provided), and the name URI and source task
         info.
     """
-    if not dir_path.startswith("toildir:"):
+    if not dir_path.startswith(TOIL_DIR_URI_SCHEME):
         raise RuntimeError(f"Cannot decode non-directory path: {dir_path}")
 
     # We will decode the directory and then look inside it
@@ -61,7 +64,7 @@ def decode_directory(
     #
     # So split on slash to separate all that from the path components within
     # the directory to whatever we're trying to get.
-    parts = dir_path[len("toildir:") :].split("/", 1)
+    parts = dir_path[len(TOIL_DIR_URI_SCHEME) :].split("/", 1)
 
     # Before the first slash is the encoded data describing the directory contents
     encoded_name, encoded_source, dir_data = parts[0].split(":")
@@ -103,7 +106,7 @@ def encode_directory(contents: DirectoryContents, name: Optional[str] = None, so
     check_directory_dict_invariants(contents)
 
     parts = [
-        "toildir",
+        TOIL_DIR_URI_SCHEME[:-1],
         quote(name or "", safe=""),
         quote(source or "", safe=""),
         base64.urlsafe_b64encode(

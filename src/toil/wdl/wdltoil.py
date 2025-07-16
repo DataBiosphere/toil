@@ -123,7 +123,7 @@ from toil.lib.directory import (
     directory_contents_items,
 )
 from toil.lib.trs import resolve_workflow
-from toil.lib.io import mkdtemp, is_any_url, is_file_url, TOIL_URI_SCHEME, is_standard_url, is_toil_url, is_toil_file_url, is_toil_dir_url, is_remote_url
+from toil.lib.io import mkdtemp, is_any_url, is_file_url, TOIL_URI_SCHEME, is_standard_url, is_toil_url, is_toil_file_url, is_toil_dir_url, is_remote_url, is_directory_url
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
 from toil.lib.resources import ResourceMonitor
@@ -1602,137 +1602,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         )
         return result
 
-    # TODO: Make this populate the caches for internal entries in directories.
-    # TODO: Make a One True Filesystem Hierarchy so we don't have to worry
-    # about the same file/subtree existing in different places but also all
-    # subtrees can exist. Otherwise populating the cache doesn't really make
-    # sense since the same file can exist in multiple directory trees.
-    @classmethod
-    def _devirtualize_uri(
-        cls,
-        filename: str,
-        dest_dir: str,
-        file_source: AbstractFileStore | Toil,
-        export: Optional[bool] = None,
-    ) -> str:
-        """
-        Given a filename, either return the devirtualized path or the filename itself if not a virtualized URI.
-
-        Places it somewhere under dest_dir.
-
-        :param export: Always create exported copies of files rather than views that a FileStore might clean up.
-        """
-        if is_toil_dir_url(filename):
-            # This is either a directory or an indirect reference to something.
-            
-            logger.debug("Trying to devirtualize from Directory: %s", filename)
-            base_dir_decoded, remaining_path, _, base_dir_source_uri, source_task = decode_directory(filename)
-            
-            # We always set the directory URI and source task.
-            assert base_dir_source_uri is not None
-            assert source_task is not None
-
-            found = get_directory_contents_item(base_dir_decoded, remaining_path)
-            if isinstance(found, str):
-                # This is a leaf file, so just devirtualize that
-                # TODO: Aren't we packing the source dir name into all these files???
-                return cls._devirtualize_uri(found, dest_dir, file_source, export)
-            else:
-                # This is a directory and we have its decoded structure.
-
-                # Work out where the root uploaded directory would go
-                dir_basename = os.path.basename(urlsplit(base_dir_source_uri).path)
-                parent_url = urljoin(base_dir_source_uri, ".")
-                dir_path = os.path.join(choose_human_readable_directory(
-                    dest_dir, source_task, parent_url
-                ), dir_basename)
-
-                # And where this particular subdirectory we're fetching goes
-                dest_path = os.path.join(dir_path, remaining_path) if remaining_path is not None else dir_path
-
-                for relative_path, item_value in directory_contents_items(found):
-                    # Work out where this item goes relative to the uploaded
-                    # directory's destination path
-                    if remaining_path is not None:
-                        item_path = os.path.join(dir_path, remaining_path, relative_path)
-                    else:
-                        item_path = os.path.join(dir_path, relative_path)
-                    if item_value is None:
-                        # Make directories to hold things (and empty directories).
-                        # OK if it has been downloaded already.
-                        os.makedirs(item_path, exist_ok=True)
-                    else:
-                        # Download files
-                        if os.path.exists(item_path):
-                            logger.debug("Skipping already-downloaded %s", item_path)
-                        else:
-                            cls._write_uri_to(item_value, item_path, file_source, export)
-                    
-                logger.info("Successfully devirtualized directory to %s", dest_path)
-
-                # Don't do the file download stuff because this is a directory
-                return dest_path
-        
-        elif is_toil_file_url(filename):
-            # This is a reference to the Toil filestore.
-            # Deserialize the metadata about where the file came from
-            _, task_path, parent, file_basename = unpack_toil_uri(filename)
-
-            # Decide where it should be put.
-            dir_path = choose_human_readable_directory(
-                dest_dir, task_path, parent
-            )
-        else:
-            # This is a standard URI to a file or directory.
-
-            # TODO: We have the same sibling problem here when mixing directory
-            # trees and individual files.
-
-            # Parse the URL and extract the basename
-            file_basename = os.path.basename(urlsplit(filename).path)
-            # Get the URL to the directory this thing came from. Remember
-            # URLs are interpreted relative to the directory the thing is
-            # in, not relative to the thing.
-            parent_url = urljoin(filename, ".")
-            # Turn it into a string we can make a directory for
-            dir_path = os.path.join(dest_dir, quote(parent_url, safe=""))
-
-            if URLAccess.get_is_directory(filename):
-                # Download recursively
-
-                def download_recursively(url: str, dest: str) -> None:
-                    """
-                    Recursively download the given URL to the given path.
-
-                    The URL will end in / if it is a directory.
-                    """
-                    if url.endswith("/"):
-                        os.makedirs(dest, exist_ok=True)
-                        for child in URLAccess.list_url(url.rstrip("/")):
-                            download_recursively(f"{url}/{child}", os.path.join(dest, child.rstrip("/")))
-                    else:
-                        cls._write_uri_to(url, dest, file_source, export)
-
-                dest_path = os.path.join(dir_path, file_basename)
-                download_recursively(filename.rstrip("/") + "/", dest_path)
-
-                # We did the directory, don't do any file logic
-                return dest_path
-
-        if not os.path.exists(dir_path):
-            # Make sure the chosen directory exists
-            os.makedirs(dir_path, exist_ok=True)
-        # And decide the file goes in it.
-        dest_path = os.path.join(dir_path, file_basename)
-
-        # Actually do the download
-        cls._write_uri_to(filename, dest_path, file_source, export)
-
-        # Return where we put it
-        return dest_path
-    
-    
-
     @classmethod
     def _write_uri_to(
         cls,
@@ -1789,8 +1658,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         dest_dir: str,
         file_source: AbstractFileStore | Toil,
         wdl_options: WDLContext,
-        devirtualized_to_virtualized: dict[str, str] | None = None,
-        virtualized_to_devirtualized: dict[str, str] | None = None,
+        devirtualized_to_virtualized: dict[str, str],
+        virtualized_to_devirtualized: dict[str, str],
         export: bool | None = None,
     ) -> str:
         """
@@ -1802,8 +1671,10 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         time.
 
         Makes sure sibling files stay siblings and files with the same name
-        don't clobber each other. Called from within this class for tasks, and
-        statically at the end of the workflow for outputs.
+        don't clobber each other. Makes sure Files or Directories within
+        Directories stay at their proper place in the hierarchy. Called from
+        within this class for tasks, and statically at the end of the workflow
+        for outputs.
 
         Returns the local path to the file. If the file is already a local
         path, or if it already has an entry in virtualized_to_devirtualized,
@@ -1823,12 +1694,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 f"Cannot devirtualize {filename} into nonexistent directory {dest_dir}"
             )
 
-        # TODO: Support people doing path operations (join, split, get parent directory) on the virtualized filenames.
         if is_remote_url(filename):
-            if (
-                virtualized_to_devirtualized is not None
-                and filename in virtualized_to_devirtualized
-            ):
+            if filename in virtualized_to_devirtualized:
                 # The virtualized file is in the cache, so grab the already devirtualized result
                 result = virtualized_to_devirtualized[filename]
                 logger.debug(
@@ -1837,17 +1704,183 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     result,
                 )
                 return result
-            # Actually need to download/put in place/export
-            result = cls._devirtualize_uri(
-                filename, dest_dir, file_source, export=export
-            )
-            if devirtualized_to_virtualized is not None:
-                # Store the back mapping
-                devirtualized_to_virtualized[result] = filename
-            if virtualized_to_devirtualized is not None:
-                # And the other way
-                virtualized_to_devirtualized[filename] = result
-            logger.debug("Devirtualized %s as openable file %s", filename, result)
+
+            if is_directory_url(filename):
+                # This points to a directory, so handle it as a tree.
+                # Because WDL identifies URL-based Directories by everything up
+                # to the last slash, even in places like S3 where they may have
+                # subtrees addressable by other URLs, we need to do the whole
+                # download in the context of a base URL and can't recurse back
+                # to ourselves.
+                logger.debug("Trying to devirtualize from Directory: %s", filename)
+
+                if is_toil_dir_url(filename):
+                    # This is a Toil directory URL directory. 
+                    base_dir_decoded, remaining_path, _, base_dir_source_uri, source_task = decode_directory(filename)
+                    # We always set the directory URI and source task.
+                    assert base_dir_source_uri is not None
+                    assert source_task is not None
+
+                    contents = get_directory_contents_item(base_dir_decoded, remaining_path)
+                    
+                    # This is a directory and we have its decoded structure.
+                    assert not isinstance(contents, str)
+
+                    # Work out where the root uploaded directory would go
+                    dir_basename = os.path.basename(urlsplit(base_dir_source_uri).path)
+                    parent_url = urljoin(base_dir_source_uri, ".")
+                    parent_path = os.path.join(choose_human_readable_directory(
+                        dest_dir, source_task, parent_url
+                    ), dir_basename)
+
+                    # And where this particular subdirectory we're fetching goes
+                    dest_path = os.path.join(parent_path, remaining_path) if remaining_path is not None else parent_path
+
+                    # contents is already a dict from basename to sub-dict or full URL.
+                else:
+                    # This is a non-toildir: URL but still a directory to recursively handle.
+                    
+                    # Parse the URL and extract the basename
+                    dir_basename = os.path.basename(urlsplit(filename).path)
+                    # Get the URL to the directory this thing came from. Since
+                    # the WDL Directory's parent is ID'd by everything up to
+                    # the last /, we need to track that parent.
+                    parent_url = urljoin(filename, ".")
+                    # Turn it into a string we can make a directory for
+                    parent_path = os.path.join(dest_dir, quote(parent_url, safe=""))
+
+                    # And work out where the directory we're fetching goes inside its parent.
+                    dest_path = os.path.join(parent_path, dir_basename)
+
+                    # Synthesize a contents dict
+                    contents = {}
+
+                    def list_recursively(url: str, contents_to_fill: DirectoryContents) -> None:
+                        """
+                        Recursively list the given URL into the given dict.
+
+                        The URL must correspond to a directory and end in /.
+
+                        Mutates the contents dict.
+                        """
+                        assert url.endswith("/"), f"URL to list {url} must end in /"
+                        for child in URLAccess.list_url(url[:-1]):
+                            if child.endswith("/"):
+                                # This is a subdirectory
+                                subdir_contents: DirectoryContents = {}
+                                contents_to_fill[child[:-1]] = subdir_contents
+                                list_recursively(f"{url}/{child}", subdir_contents)
+                            else:
+                                # This is a file
+                                contents_to_fill[child] = f"{url}/{child}"
+
+                    # Fill in a contents dict recursively.
+                    list_recursively(urljoin(parent_url, dir_basename) + "/", contents)
+
+                # Now we know we have filename (the directory), dest_path (the
+                # desired local path), and contents (all the files and
+                # subdirectories we need to materialize).
+                logger.debug("Devirtualizing %s contained items", len(contents))
+
+                for relative_path, item_value in directory_contents_items(contents):
+                    # Recursively visit the directory itself and its contents.
+                    logger.debug("Devirtualizing relative path: %s", relative_path)
+
+                    # Work out what this item is relative to the directory, and where it goes..
+                    if relative_path == "":
+                        # Joining "" onto the end adds a trailing slash we don't want.
+                        item_virtualized_path = filename
+                        item_devirtualized_path = dest_path
+                    else:
+                        item_virtualized_path = os.path.join(filename, relative_path)
+                        item_devirtualized_path = os.path.join(dest_path, relative_path)
+                    if item_virtualized_path in virtualized_to_devirtualized:
+                        # This has been downloaded already
+                        assert virtualized_to_devirtualized[item_virtualized_path] == item_devirtualized_path, f"Devirtualized version of {item_virtualized_path} expected at {item_devirtualized_path} but is actually already at {virtualized_to_devirtualized[item_virtualized_path]}"
+                        # We don't do the back-check because we will have
+                        # entries with the directory URL *and* the base file ID
+                        # URL for files.
+                        assert os.path.exists(item_devirtualized_path)
+                    else:
+                        # We need to download this now and cache it.
+                        if item_value is None:
+                            # Make directories to hold things (and empty directories).
+                            # We don't enforce nonexistence here because we may
+                            # have already downloaded something in a subpath
+                            # but not the whole subpath yet.
+                            os.makedirs(item_devirtualized_path, exist_ok=True)
+                        else:
+                            # Download files from their stored locations.
+                            assert not os.path.exists(item_devirtualized_path), f"Virtualized file {item_virtualized_path} already exists at {item_devirtualized_path}, but is not in cache."
+                            cls._write_uri_to(item_value, item_devirtualized_path, file_source, export)
+                        # Save to cache
+                        logger.debug("Add %s to cache", item_virtualized_path)
+                        virtualized_to_devirtualized[item_virtualized_path] = item_devirtualized_path
+                        devirtualized_to_virtualized[item_devirtualized_path] = item_virtualized_path
+
+                # We should now have it in the cache.
+                assert virtualized_to_devirtualized[filename] == dest_path, f"Cached devirtualized path for {filename} should be {dest_path} but is {virtualized_to_devirtualized[filename]} instead!"
+                logger.debug("Devirtualized %s as local directory %s", filename, dest_path)
+                # Return where we put it.
+                return dest_path
+
+            else:
+                if is_toil_dir_url(filename):
+                    # This refers into a Toil directory but to a leaf file.
+                    # Download it by its stored URL.
+                    #
+                    # TODO: This assumes the item also knows shere it came
+                    # from, internally. But that means we're breaking
+                    # no-forgery by storing its source both internally and in
+                    # its location in the structure.
+                    leaf_filename = get_directory_item(filename)
+                    assert isinstance(leaf_filename, str)
+                    return cls.devirtualize_to(
+                        leaf_filename,
+                        dest_dir,
+                        file_source,
+                        wdl_options,
+                        devirtualized_to_virtualized,
+                        virtualized_to_devirtualized,
+                        export
+                    )
+                # Otherwise, we have a direct URL to a file to get. Base case.
+
+                # Figure out destination for the URL. TODO: deduplicate with
+                # similar parent-finding logic above for directories.
+                if is_toil_file_url(filename):
+                    # This is a reference to the Toil filestore.
+                    # Deserialize the metadata about where the file came from
+                    _, task_path, parent, file_basename = unpack_toil_uri(filename)
+
+                    # Decide where it should be put.
+                    parent_path = choose_human_readable_directory(
+                        dest_dir, task_path, parent
+                    )
+                    # And work out where the file we're fetching goes inside its parent.
+                    dest_path = os.path.join(parent_path, file_basename)
+                else:
+                    # Parse the URL and extract the basename
+                    file_basename = os.path.basename(urlsplit(filename).path)
+                    # Get the URL to the directory this thing came from.
+                    parent_url = urljoin(filename, ".")
+                    # Turn it into a string we can make a directory for
+                    parent_path = os.path.join(dest_dir, quote(parent_url, safe=""))
+
+                    # And work out where the file we're fetching goes inside its parent.
+                    dest_path = os.path.join(parent_path, file_basename)
+
+                # Make sure the chosen directory exists
+                os.makedirs(parent_path, exist_ok=True)
+                # Download the file into it.
+                cls._write_uri_to(filename, dest_path, file_source, export)
+
+                # Store it in the cache
+                virtualized_to_devirtualized[filename] = dest_path
+                devirtualized_to_virtualized[dest_path] = filename
+                
+                logger.debug("Devirtualized %s as openable file %s", filename, dest_path)
+                return dest_path
         else:
             # This is a local file or file URL
             if is_file_url(filename):
@@ -1861,13 +1894,12 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 result = filename
             logger.debug("Virtualized file %s is already a local path", filename)
 
-        if not os.path.exists(result):
-            # Catch if something made it through without going through the proper virtualization/devirtualization steps
-            raise RuntimeError(
-                f"Virtualized file {filename} looks like a local file but isn't!"
-            )
+            if not os.path.exists(result):
+                raise RuntimeError(
+                    f"Virtualized file {filename} looks like a local file but isn't!"
+                )
 
-        return result
+            return result
 
     @memoize
     def _virtualize_filename(self, filename: str) -> str:
