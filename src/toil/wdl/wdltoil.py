@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import copy
 import errno
 import hashlib
 import io
@@ -2963,6 +2964,28 @@ def map_over_inodes_in_binding(
         binding.info,
     )
 
+def remove_expr_from_value(value: WDL.Value.Base) -> WDL.Value.Base:
+    """
+    Remove the expression from a WDL value
+    :param value: Original WDL value
+    :return: New WDL value without the expr field
+    """
+    # TODO: This is an extra copy that we could get rid of by dropping the immutability idea
+    def predicate(value: WDL.Value.Base) -> WDL.Value.Base:
+        # Do a shallow copy to preserve immutability
+        new_value = copy.copy(value)
+        if value.expr:
+            # We use a Null expr instead of None here, because when evaluating an expression, 
+            # MiniWDL applies that expression to the result value *and* all values it contains that
+            # have None expressions. Using a Null expression here protects nested values that 
+            # didn't really get created by the current expression from being attributed to it, while
+            # still cutting the reference to the parsed WDL document.
+            new_value._expr = WDL.Expr.Null(value.expr.pos)
+        else:
+            new_value._expr = value.expr
+        return new_value
+    return map_over_typed_value(value, predicate)
+
 # TODO: We want to type this to say, for anything descended from a WDL type, we
 # return something descended from the same WDL type or a null. But I can't
 # quite do that with generics, since you could pass in some extended WDL value
@@ -2970,6 +2993,59 @@ def map_over_inodes_in_binding(
 #
 # For now we assume that any types extending the WDL value types will implement
 # compatible constructors.
+def map_over_typed_value(value: WDL.Value.Base, transform: Callable[[WDL.Value.Base], WDL.Value.Base]) -> WDL.Value.Base:
+    """
+    Apply a transform to a WDL value and all contained WDL values.
+    :param value: WDL value to transform
+    :param transform: Function that takes a WDL value and returns a new WDL value
+    :return: New transformed WDL value
+    """
+    if isinstance(value, WDL.Value.Array):
+        # This is an array, so recurse on the items
+        value = WDL.Value.Array(
+            value.type.item_type,
+            [map_over_typed_value(v, transform) for v in value.value],
+            value.expr,
+        )
+    elif isinstance(value, WDL.Value.Map):
+        # This is a map, so recurse on the members of the items, which are tuples (but not wrapped as WDL Pair objects)
+        # TODO: Can we avoid a cast in a comprehension if we get MyPy to know that each pair is always a 2-element tuple?
+        value = WDL.Value.Map(
+            value.type.item_type,
+            [
+                cast(
+                    tuple[WDL.Value.Base, WDL.Value.Base],
+                    tuple(map_over_typed_value(v, transform) for v in pair),
+                )
+                for pair in value.value
+            ],
+            value.expr,
+        )
+    elif isinstance(value, WDL.Value.Pair):
+        # This is a pair, so recurse on the left and right items
+        value = WDL.Value.Pair(
+            value.type.left_type,
+            value.type.right_type,
+            cast(
+                tuple[WDL.Value.Base, WDL.Value.Base],
+                tuple(map_over_typed_value(v, transform) for v in value.value),
+            ),
+            value.expr,
+        )
+    elif isinstance(value, WDL.Value.Struct):
+        # This is a struct, so recurse on the values in the backing dict
+        value = WDL.Value.Struct(
+            cast(Union[WDL.Type.StructInstance, WDL.Type.Object], value.type),
+            {
+                k: map_over_typed_value(v, transform)
+                for k, v in value.value.items()
+            },
+            value.expr,
+        )
+    # Run the predicate on the final value
+    return transform(value)
+
+
 def map_over_typed_inodes_in_value(
     value: WDL.Value.Base, transform: INodeTransform
 ) -> WDL.Value.Base:
@@ -2988,66 +3064,25 @@ def map_over_typed_inodes_in_value(
     actually be used, to allow for scans. So error checking needs to be part of
     the transform itself.
     """
-    if is_inode(value):
-        # This is a File or Directory so we need to process it
-        orig_stored_value = value.value
-        transformed = transform(value)
-        assert (
-            value.value == orig_stored_value
-        ), "Transformation mutated the original"
-        if transformed is None:
-            # Assume the transform checked types if we actually care about the
-            # result.
-            logger.warning("%s became Null", value)
-            return WDL.Value.Null()
-        else:
-            # Pass along the transformed result
-            return transformed
-    elif isinstance(value, WDL.Value.Array):
-        # This is an array, so recurse on the items
-        return WDL.Value.Array(
-            value.type.item_type,
-            [map_over_typed_inodes_in_value(v, transform) for v in value.value],
-            value.expr,
-        )
-    elif isinstance(value, WDL.Value.Map):
-        # This is a map, so recurse on the members of the items, which are tuples (but not wrapped as WDL Pair objects)
-        # TODO: Can we avoid a cast in a comprehension if we get MyPy to know that each pair is always a 2-element tuple?
-        return WDL.Value.Map(
-            value.type.item_type,
-            [
-                cast(
-                    tuple[WDL.Value.Base, WDL.Value.Base],
-                    tuple(map_over_typed_inodes_in_value(v, transform) for v in pair),
-                )
-                for pair in value.value
-            ],
-            value.expr,
-        )
-    elif isinstance(value, WDL.Value.Pair):
-        # This is a pair, so recurse on the left and right items
-        return WDL.Value.Pair(
-            value.type.left_type,
-            value.type.right_type,
-            cast(
-                tuple[WDL.Value.Base, WDL.Value.Base],
-                tuple(map_over_typed_inodes_in_value(v, transform) for v in value.value),
-            ),
-            value.expr,
-        )
-    elif isinstance(value, WDL.Value.Struct):
-        # This is a struct, so recurse on the values in the backing dict
-        return WDL.Value.Struct(
-            cast(Union[WDL.Type.StructInstance, WDL.Type.Object], value.type),
-            {
-                k: map_over_typed_inodes_in_value(v, transform)
-                for k, v in value.value.items()
-            },
-            value.expr,
-        )
-    else:
-        # All other kinds of value can be passed through unmodified.
+    def predicate(value: WDL.Value.Base) -> WDL.Value.Base:
+        if is_inode(value):
+            # This is a File or Directory so we need to process it
+            orig_stored_value = value.value
+            transformed = transform(value)
+            assert (
+                value.value == orig_stored_value
+            ), "Transformation mutated the original"
+            if transformed is None:
+                # Assume the transform checked types if we actually care about the
+                # result.
+                logger.warning("%s became Null", value)
+                return WDL.Value.Null()
+            else:
+                # Pass along the transformed result
+                return transformed
         return value
+
+    return map_over_typed_value(value, predicate)
 
 
 def ensure_null_inodes_are_nullable(
@@ -3193,6 +3228,11 @@ class WDLBaseJob(Job):
         logger.debug("Overlay %s after %s", overlay, self)
         self._postprocessing_steps.append(("overlay", overlay))
 
+    def remove_expr_from_bindings(self, bindings: WDLBindings) -> WDLBindings:
+        # We have to throw out the expressions because they drag the entire WDL document into the WDL outputs
+        # which causes duplicate pickling and linear growth in scatter memory usage
+        return bindings.map(lambda b: WDL.Env.Binding(b.name, remove_expr_from_value(b.value), b.info))
+
     def postprocess(self, bindings: WDLBindings) -> WDLBindings:
         """
         Apply queued changes to bindings.
@@ -3229,7 +3269,7 @@ class WDLBaseJob(Job):
                 bindings = combine_bindings([bindings.subtract(argument), argument])
             else:
                 raise RuntimeError(f"Unknown postprocessing action {action}")
-
+        bindings = self.remove_expr_from_bindings(bindings)
         return bindings
 
     def defer_postprocessing(self, other: WDLBaseJob) -> None:
@@ -5081,6 +5121,12 @@ class WDLScatterJob(WDLSectionJob):
                 [(p, p) for p in standard_library.get_local_paths()]
             )
 
+        # Set the exprs of the WDL values to WDL.Expr.Null to reduce the memory footprint. This got set from evaluate_named_expression
+        # because any evaluation on an expression will mutate child values of the result values of the expression, and we had not
+        # processed it yet by this point as the bindings from input environment and WDLWorkflowJob do not get processing and postprocessing
+        # ran respectively
+        bindings = self.remove_expr_from_bindings(bindings)
+
         if not isinstance(scatter_value, WDL.Value.Array):
             raise RuntimeError(
                 "The returned value from a scatter is not an Array type."
@@ -5093,6 +5139,8 @@ class WDLScatterJob(WDLSectionJob):
             # duration of the body.
             local_bindings: WDLBindings = WDL.Env.Bindings()
             local_bindings = local_bindings.bind(self._scatter.variable, item)
+            # Remove expr from new scatter binding
+            local_bindings = self.remove_expr_from_bindings(local_bindings)
             # TODO: We need to turn values() into a list because MyPy seems to
             # think a dict_values isn't a Sequence. This is a waste of time to
             # appease MyPy but probably better than a cast?

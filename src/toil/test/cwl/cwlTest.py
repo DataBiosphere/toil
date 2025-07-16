@@ -2209,7 +2209,16 @@ class ImportWorkersMessageHandler(_stream_handler):
     def emit(self, record: logging.LogRecord) -> None:
         # We get the job name from the class since we already started failing
         # this test once due to it being renamed.
-        if (record.msg % record.args).startswith(
+        try:
+            formatted = record.getMessage()
+        except TypeError as e:
+            # The log message has the wrong number of items for its fields.
+            # Complain in a way we could figure out.
+            raise RuntimeError(
+                f"Log message {record.msg} has wrong number of "
+                f"fields in {record.args}"
+            ) from e
+        if formatted.startswith(
             f"Issued job '{WorkerImportJob.__name__}'"
         ):
             self.detected = True

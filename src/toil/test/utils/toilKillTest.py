@@ -91,6 +91,7 @@ class TestToilKillWithAWSJobStore(_ToilKillTest):
     """A set of test cases for "toil kill" using the AWS job store."""
 
     @needs_cwl
+    @needs_aws_s3
     def test_cwl_toil_kill(self) -> None:
         """Test "toil kill" on a CWL workflow with a 100 second sleep."""
         self._test_cwl_toil_kill(generate_locator("aws", decoration="testkill"))

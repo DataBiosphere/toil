@@ -129,7 +129,7 @@ develop: check_venv
 
 clean_develop: check_venv
 	- rm -rf src/*.egg-info
-	- rm src/toil/version.py
+	- rm -f src/toil/version.py
 
 uninstall:
 	- pip uninstall -y toil
@@ -149,7 +149,7 @@ dist/$(sdist_name):
 
 clean_sdist:
 	- rm -rf dist
-	- rm src/toil/version.py
+	- rm -f src/toil/version.py
 
 download_cwl_spec:
 	git clone https://github.com/common-workflow-language/cwl-v1.2.git src/toil/test/cwl/spec_v12 || true && cd src/toil/test/cwl/spec_v12 && git checkout 0d538a0dbc5518f3c6083ce4571926f65cb84f76
@@ -207,7 +207,7 @@ endef
 
 docker: toil_docker prometheus_docker grafana_docker mtail_docker
 
-toil_docker: docker/Dockerfile
+toil_docker: docker/Dockerfile src/toil/version.py
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd docker \
