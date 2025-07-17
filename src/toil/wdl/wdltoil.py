@@ -963,10 +963,10 @@ def choose_human_readable_directory(
         source_task_path,
         root_dir,
     )
-    
+
     if is_file_url(parent):
         # Convert files back to paths.
-        parent = unquote(urlsplit(parent).path) 
+        parent = unquote(urlsplit(parent).path)
     if is_any_url(parent):
         # Parent might contain exciting things like "/../" or "///". The spec
         # says the parent is everything up to the last / so we just encode the
@@ -977,14 +977,14 @@ def choose_human_readable_directory(
         # sensible way.
         # TODO: Will they always be absolute?
         parent_component = f"_toil_root{parent}"
-    
+
     if is_any_url(parent):
         # Don't include task name because it's from a URL and invariant across
         # tasks.
         result = os.path.join(root_dir, parent_component)
     else:
         result = os.path.join(root_dir, source_task_path, parent_component)
-    
+
     logger.debug("Picked path %s", result)
     return result
 
@@ -999,10 +999,10 @@ def evaluate_decls_to_bindings(
 ) -> WDLBindings:
     """
     Evaluate decls with a given bindings environment and standard library.
-    
+
     Creates a new bindings object that only contains the bindings from the given decls.
     Guarantees that each decl in `decls` can access the variables defined by the previous ones.
-    
+
     :param all_bindings: Environment to use when evaluating decls
     :param decls: Decls to evaluate
     :param standard_library: Standard library
@@ -1164,7 +1164,7 @@ def extract_toil_file_uris(environment: WDLBindings) -> Iterable[str]:
                 if child_uri is not None and is_toil_file_url(child_uri):
                     # This is a Toil file within a Directory.
                     yield child_uri
-    
+
 
 def virtualize_inodes_in_bindings(
     environment: WDLBindings,
@@ -1355,7 +1355,7 @@ def convert_remote_files(
         """
         Calls import_filename to detect if a potential URI exists and imports it. Will modify the File object value to the new URI and tack on the virtualized file.
         """
-        
+
         if isinstance(inode, WDL.Value.Directory):
             # TODO: add code to import directories here
             raise NotImplementedError()
@@ -1557,9 +1557,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         Handles resolving symlinks using in-container paths if necessary.
         """
-        
+
         return Toil.normalize_uri(devirtualized, dir_path=self.execution_dir)
-        
+
     def _virtualize_inode(
         self, inode: AnyINode, enforce_existence: bool = True
     ) -> AnyINode:
@@ -1609,6 +1609,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         dest_path: str,
         file_source: AbstractFileStore | Toil,
         export: Optional[bool] = None,
+        symlink: Optional[bool] = None
     ) -> None:
         """
         Given a filename/URI, write it to the given dest_path.
@@ -1617,6 +1618,10 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         :param export: Always create exported copies of files rather than views
             that a FileStore might clean up.
+
+        :param symlink: If False, do not allow a symlink. Always use a full
+            copy or a hard link. This does *not* prevent FileStore cleanup; see
+            export.
         """
         if is_toil_file_url(filename):
             # Deserialize file ID
@@ -1631,10 +1636,14 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # Read from the file store.
                 # File is not allowed to be modified by the task. See
                 # <https://github.com/openwdl/wdl/issues/495>.
-                # We try to get away with symlinks and hope the task
-                # container can mount the destination file.
+                # If we're planning to mount the file directly later, we can
+                # use a symlink. Otherwise (like if we're mounting a parent
+                # directroy only) we can't.
                 result = file_source.readGlobalFile(
-                    file_id, dest_path, mutable=False, symlink=True
+                    file_id,
+                    dest_path,
+                    mutable=False,
+                    symlink=True if symlink is None else symlink,
                 )
                 if result != dest_path:
                     # We definitely want this to be put where we asked.
@@ -1717,14 +1726,14 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 logger.debug("Trying to devirtualize from Directory: %s", filename)
 
                 if is_toil_dir_url(filename):
-                    # This is a Toil directory URL directory. 
+                    # This is a Toil directory URL directory.
                     base_dir_decoded, remaining_path, _, base_dir_source_uri, source_task = decode_directory(filename)
                     # We always set the directory URI and source task.
                     assert base_dir_source_uri is not None
                     assert source_task is not None
 
                     contents = get_directory_contents_item(base_dir_decoded, remaining_path)
-                    
+
                     # This is a directory and we have its decoded structure.
                     assert not isinstance(contents, str)
 
@@ -1741,7 +1750,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     # contents is already a dict from basename to sub-dict or full URL.
                 else:
                     # This is a non-toildir: URL but still a directory to recursively handle.
-                    
+
                     # Parse the URL and extract the basename
                     dir_basename = os.path.basename(urlsplit(filename).path)
                     # Get the URL to the directory this thing came from. Since
@@ -1830,14 +1839,33 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                         else:
                             # Download files from their stored locations.
                             assert not os.path.exists(item_devirtualized_path), f"Virtualized file {item_virtualized_path} pointing to {item_value} already exists at {item_devirtualized_path}, but is not in cache. Back-cache says: {devirtualized_to_virtualized.get(item_devirtualized_path)}"
-                            cls._write_uri_to(item_value, item_devirtualized_path, file_source, export)
+
+                            # Download, not allowing a symlink.
+                            #
+                            # If any directory entries were already downloaded
+                            # separately as Files, it's fine if they are
+                            # already present as symlinks, because they will be
+                            # separately mounted.
+                            #
+                            # TODO: Allow symlinks here *and* mount over them
+                            # with the link tagests when mounting into the
+                            # container, as long as this won't create "too
+                            # many" distinct mounts, whatever that means.
+                            cls._write_uri_to(
+                                item_value,
+                                item_devirtualized_path,
+                                file_source,
+                                export,
+                                symlink=False
+                            )
+
                             logger.debug("Add %s pointing to %s to cache at %s", item_virtualized_path, item_value, item_devirtualized_path)
                             # Cache the file in its own right
                             virtualized_to_devirtualized[item_value] = item_devirtualized_path
                             devirtualized_to_virtualized[item_devirtualized_path] = item_value
                             # And the directory entry as pointing to the file.
                             virtualized_to_devirtualized[item_virtualized_path] = virtualized_to_devirtualized[item_value]
-                        
+
                         logger.debug("Cache now has %s items", len(virtualized_to_devirtualized))
 
                 # We should now have it in the cache.
@@ -1896,7 +1924,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 os.makedirs(parent_path, exist_ok=True)
                 # Download the file into it.
                 cls._write_uri_to(filename, dest_path, file_source, export)
-                
+
                 logger.debug("Devirtualized %s as openable file %s", filename, dest_path)
 
                 # Store it in the cache
@@ -1939,7 +1967,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # Already virtual
             logger.debug("Already virtual: %s", filename)
             return filename
-        
+
         # Make all the bare paths absolute file URIs
         normalized_uri = Toil.normalize_uri(filename, dir_path=self.execution_dir)
 
@@ -1962,7 +1990,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 return contents
 
             contents = handle_directory(normalized_uri)
-            
+
             result = encode_directory(contents, name=normalized_uri, source=self.task_path)
             self._devirtualized_to_virtualized[normalized_uri] = result
             return result
@@ -1994,7 +2022,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     e.code,
                 )
                 # We don't need to handle translating error codes for not
-                # found; import_file does it already. 
+                # found; import_file does it already.
                 raise
             if imported is None:
                 # Satisfy mypy. This should never happen though as we don't
@@ -2564,7 +2592,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
                 # broken symlinks as nonexistent.
                 raise FileNotFoundError(filename)
             filename = here
-        
+
         logger.debug("WDL task outputs stdlib thinks we really need to virtualize %s", filename)
         return super()._virtualize_filename(filename)
 
@@ -2692,7 +2720,7 @@ def evaluate_defaultable_decl(
             )
         logger.info("Defaulting %s to %s", node.name, node.expr)
         return evaluate_decl(node, environment, stdlib)
-    
+
 
 
 # TODO: make these stdlib methods???
@@ -2778,7 +2806,7 @@ def all_parents(path: str) -> Iterable[str]:
 def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     """
     Based off of WDL.runtime.task_container.add_paths from miniwdl
-    
+
     Comes up with a container path for each host path and fils in input_path_map
     and input_path_map_rev on the TaskContainer to map from host path to
     container path and visa versa.
@@ -2788,6 +2816,10 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     Because of File and Directory sibling constraints, anything that's a child
     of something on the host needs to remain a child of the same thing in the
     container. MiniWDL's add_paths didn't do this.
+
+    We also need to enforce that Directories that are at the top of the
+    hierarchy of what's included are themselves siblings, if they were
+    originally siblings.
 
     TODO: Deduplicate with the similar CWL mount deduplication code that's
     based on a notion of nonredundant mounts? But unlike that code, we want to
@@ -2803,32 +2835,25 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
 
     paths_with_slashes = (host_path + "/" if not host_path.endswith("/") and os.path.isdir(host_path) else host_path for host_path in host_paths)
     paths_by_length = list(sorted(paths_with_slashes, key=len))
-    
+
     # This stores all the paths that need to be mounted, organized by ultimate
     # parent.
     paths_by_ultimate_parent: dict[str, list[str]] = {}
     for path in paths_by_length:
         # Having sorted by length, when we encounter a path that doesn't have a
-        # parent stored already, it (if a directory) or its parent (if a file)
-        # is a new ultimate parent.
+        # parent stored already, its parent is a new ultimate parent.
         for parent in all_parents(path):
             if parent in paths_by_ultimate_parent:
                 # We found the ultimate parent, so list this value under it.
                 paths_by_ultimate_parent[parent].append(path)
                 break
         else:
-            # No parent is listed already.
-            if path.endswith("/"):
-                # This is a directory and so becomes a new ultimate parent with only itself under it.
-                paths_by_ultimate_parent[path] = [path]
-            else:
-                # This is the first file under its patrent or anything above
-                # it, so its parent is the ultimate parent.
-                # Make sure to add the trailing / after a dirname call that
-                # won't produce it, but to strip it off first in case the
-                # dirname is "/".
-                paths_by_ultimate_parent[os.path.dirname(path).rstrip("/") + "/"] = [path]
-    
+            # This is the first file or directory under its parent or anything
+            # above it, so its parent is the ultimate parent. Make sure to add
+            # the trailing / after a dirname call that won't produce it, but to
+            # strip it off first in case the dirname is "/".
+            paths_by_ultimate_parent[os.path.dirname(path).rstrip("/") + "/"] = [path]
+
     logger.debug("Paths by length: %s", paths_by_length)
     logger.debug("Paths by ultimate parent: %s", paths_by_ultimate_parent)
 
@@ -2852,7 +2877,7 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
         container_parent = os.path.join(
             based, host_path_subd, parent_id
         ) + "/"
-        logger.debug("Handlng ultimate patent %s containing %s", ultimate_parent, paths) 
+        logger.debug("Handlng ultimate patent %s containing %s", ultimate_parent, paths)
         for host_path in paths:
             # Get the path within the ultimate parent ("" if mounting that
             # Directory itself) and join it on to the ultimate parent's
@@ -2886,11 +2911,11 @@ def drop_if_missing(
     if reference is not None and is_any_url(reference):
         try:
             if (
-                is_toil_file_url(reference) or 
+                is_toil_file_url(reference) or
                 (
                     is_toil_dir_url(reference) and
                     directory_item_exists(reference)
-                ) or 
+                ) or
                 URLAccess.url_exists(reference)
             ):
                 # We assume anything in the filestore actually exists.
@@ -3030,9 +3055,9 @@ def remove_expr_from_value(value: WDL.Value.Base) -> WDL.Value.Base:
         # Do a shallow copy to preserve immutability
         new_value = copy.copy(value)
         if value.expr:
-            # We use a Null expr instead of None here, because when evaluating an expression, 
+            # We use a Null expr instead of None here, because when evaluating an expression,
             # MiniWDL applies that expression to the result value *and* all values it contains that
-            # have None expressions. Using a Null expression here protects nested values that 
+            # have None expressions. Using a Null expression here protects nested values that
             # didn't really get created by the current expression from being attributed to it, while
             # still cutting the reference to the parsed WDL document.
             new_value._expr = WDL.Expr.Null(value.expr.pos)
@@ -5921,7 +5946,7 @@ def main() -> None:
                         "Inferring --allCallOutputs=True to preserve probable actual outputs of a croo WDL file."
                     )
                     options.all_call_outputs = True
-        
+
             # This mutates document to add linting information, but doesn't print any lint errors itself
             # or stop the workflow
             WDL.Lint.lint(document)
