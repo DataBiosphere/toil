@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "baf44bcc7e6f6927540adf77d91b26a5558ae4b7"
+WDL_CONFORMANCE_TEST_COMMIT = "f88bcfa16fed8f951dd1a89bfb14fdb9e52a492c"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -108,6 +108,15 @@ class TestWDLConformance:
             )
             logger.error(
                 "Failed process standard error: %s",
+                p.stderr.decode("utf-8", errors="replace"),
+            )
+        else:
+            logger.debug(
+                "Successful process standard output: %s",
+                p.stdout.decode("utf-8", errors="replace"),
+            )
+            logger.debug(
+                "Successful process standard error: %s",
                 p.stderr.decode("utf-8", errors="replace"),
             )
 
@@ -185,6 +194,30 @@ class TestWDLConformance:
             "conformance.yaml",
             "-v",
             "1.1",
+        ]
+        if WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL:
+            commands.append("--exclude-numbers")
+            commands.append(
+                ",".join([str(t) for t in WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL])
+            )
+        p = subprocess.run(commands, capture_output=True)
+
+        self.check(p)
+
+    # estimated running time: 10 minutes (once all the appropriate tests get
+    # marked as "development")
+    @slow
+    def test_conformance_tests_development(self, wdl_conformance_test_repo: Path) -> None:
+        os.chdir(wdl_conformance_test_repo)
+        commands = [
+            exactPython,
+            "run.py",
+            "--runner",
+            "toil-wdl-runner",
+            "--conformance-file",
+            "conformance.yaml",
+            "-v",
+            "development",
         ]
         if WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL:
             commands.append("--exclude-numbers")
