@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "baf44bcc7e6f6927540adf77d91b26a5558ae4b7"
+WDL_CONFORMANCE_TEST_COMMIT = "46b5f85ee38ec60d0b8b9c35928b5104a2af83d5"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -108,6 +108,15 @@ class TestWDLConformance:
             )
             logger.error(
                 "Failed process standard error: %s",
+                p.stderr.decode("utf-8", errors="replace"),
+            )
+        else:
+            logger.debug(
+                "Successful process standard output: %s",
+                p.stdout.decode("utf-8", errors="replace"),
+            )
+            logger.debug(
+                "Successful process standard error: %s",
                 p.stderr.decode("utf-8", errors="replace"),
             )
 
@@ -185,6 +194,30 @@ class TestWDLConformance:
             "conformance.yaml",
             "-v",
             "1.1",
+        ]
+        if WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL:
+            commands.append("--exclude-numbers")
+            commands.append(
+                ",".join([str(t) for t in WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL])
+            )
+        p = subprocess.run(commands, capture_output=True)
+
+        self.check(p)
+
+    # estimated running time: 10 minutes (once all the appropriate tests get
+    # marked as "development")
+    @slow
+    def test_conformance_tests_development(self, wdl_conformance_test_repo: Path) -> None:
+        os.chdir(wdl_conformance_test_repo)
+        commands = [
+            exactPython,
+            "run.py",
+            "--runner",
+            "toil-wdl-runner",
+            "--conformance-file",
+            "conformance.yaml",
+            "-v",
+            "development",
         ]
         if WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL:
             commands.append("--exclude-numbers")
@@ -856,25 +889,29 @@ class TestWDL:
         env["TOIL_DOCKSTORE_TOKEN"] = "99cf5578ebe94b194d7864630a86258fa3d6cedcc17d757b5dd49e64ee3b68c3"
         # Enable history for when <https://github.com/DataBiosphere/toil/pull/5258> merges
         env["TOIL_HISTORY"] = "True"
+        
+        try:
+            output_log = subprocess.check_output(
+                self.base_command
+                + [
+                    wdl_file,
+                    json_input,
+                    "--logDebug",
+                    "-o",
+                    str(tmp_path),
+                    "--outputDialect",
+                    "miniwdl",
+                    "--publishWorkflowMetrics=current",
+                ]
+                + (extra_args or []),
+                stderr=subprocess.STDOUT,
+                env=env,
+            ).decode("utf-8", errors="replace")
+        except subprocess.CalledProcessError as e:
+            logger.error("Test run of Toil failed: %s", e.stdout.decode("utf-8", errors="replace"))
+            raise
 
-        output_log = subprocess.check_output(
-            self.base_command
-            + [
-                wdl_file,
-                json_input,
-                "--logDebug",
-                "-o",
-                str(tmp_path),
-                "--outputDialect",
-                "miniwdl",
-                "--publishWorkflowMetrics=current",
-            ]
-            + (extra_args or []),
-            stderr=subprocess.STDOUT,
-            env=env,
-        )
-
-        assert b'Workflow metrics were accepted by Dockstore.' in output_log
+        assert "Workflow metrics were accepted by Dockstore." in output_log, f"No acceptance message in log: {output_log}"
 
     @slow
     @needs_docker_cuda
@@ -1138,34 +1175,57 @@ class TestWDLToilBench(unittest.TestCase):
         """
 
         from toil.wdl.wdltoil import (
-            DirectoryNamingStateDict,
             choose_human_readable_directory,
         )
 
-        state: DirectoryNamingStateDict = {}
-
-        # The first time we should get a path with the task name and without the ID
+        # The first time we should get a path with the task name
         first_chosen = choose_human_readable_directory(
-            "root", "taskname", "111-222-333", state
+            "root", "taskname", "https://example.com/some/directory"
         )
         assert first_chosen.startswith("root")
-        assert "taskname" in first_chosen
-        assert "111-222-333" not in first_chosen
 
-        # If we use the same ID we should get the same result
-        same_id = choose_human_readable_directory(
-            "root", "taskname", "111-222-333", state
+        # If we use the same parent we should get the same result
+        same_parent = choose_human_readable_directory(
+            "root", "taskname", "https://example.com/some/directory"
         )
-        assert same_id == first_chosen
+        assert same_parent == first_chosen
 
-        # If we use a different ID we should get a different result still obeying the constraints
-        diff_id = choose_human_readable_directory(
-            "root", "taskname", "222-333-444", state
+        # If we use a lower parent with a URL, we do not necessarily need to be
+        # inside the higher parent.
+
+        # If we use a URL with a creative number of slashes, it should be distinct.
+        slash_parent = choose_human_readable_directory(
+            "root", "taskname", "https://example.com/some/directory//////"
         )
-        assert diff_id != first_chosen
-        assert diff_id.startswith("root")
-        assert "taskname" in diff_id
-        assert "222-333-444" not in diff_id
+        assert slash_parent != first_chosen
+
+        # If we use the same parent URL but a different task we should get the same result
+        other_task = choose_human_readable_directory(
+            "root", "taskname2", "https://example.com/some/directory"
+        )
+        assert other_task == first_chosen
+
+        # If we use a different parent we should get a different result still obeying the constraints
+        diff_parent = choose_human_readable_directory(
+            "root", "taskname", "/data/tmp/files/somewhere"
+        )
+        assert diff_parent != first_chosen
+        assert diff_parent.startswith("root")
+        assert "taskname" in diff_parent
+
+        # If we use a subpath parent with a filename we should get a path inside it.
+        diff_parent_subpath = choose_human_readable_directory(
+            "root", "taskname", "/data/tmp/files/somewhere/else"
+        )
+        assert os.path.dirname(diff_parent_subpath) == diff_parent
+
+        # If we use the same parent path but a different task we should get a different result.
+        other_task_directory = choose_human_readable_directory(
+            "root", "taskname2", "/data/tmp/files/somewhere"
+        )
+        assert other_task_directory != diff_parent
+        assert other_task_directory.startswith("root")
+        assert "taskname2" in other_task_directory
 
     def test_uri_packing(self) -> None:
         """
@@ -1181,7 +1241,7 @@ class TestWDLToilBench(unittest.TestCase):
         file_basename = "thefile.txt"
 
         # Pack and unpack it
-        uri = pack_toil_uri(file_id, task_path, dir_id, file_basename)
+        uri = pack_toil_uri(file_id, task_path, str(dir_id), file_basename)
         unpacked = unpack_toil_uri(uri)
 
         # Make sure we got what we put in

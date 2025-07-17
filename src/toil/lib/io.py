@@ -11,6 +11,8 @@ from contextlib import contextmanager
 from io import BytesIO
 from typing import IO, Any, Callable, Optional, Protocol, Union
 
+from toil.lib.directory import get_directory_item, TOIL_DIR_URI_SCHEME
+from toil.lib.url import URLAccess
 from toil.lib.memoize import memoize
 from toil.lib.misc import StrPath
 
@@ -39,9 +41,8 @@ def get_toil_home() -> str:
 
 TOIL_URI_SCHEME = "toilfile:"
 
-
 STANDARD_SCHEMES = ["http:", "https:", "s3:", "gs:", "ftp:"]
-REMOTE_SCHEMES = STANDARD_SCHEMES + [TOIL_URI_SCHEME]
+REMOTE_SCHEMES = STANDARD_SCHEMES + [TOIL_URI_SCHEME, TOIL_DIR_URI_SCHEME]
 ALL_SCHEMES = REMOTE_SCHEMES + ["file:"]
 
 def is_standard_url(filename: str) -> bool:
@@ -76,9 +77,23 @@ def is_url_with_scheme(filename: str, schemes: list[str]) -> bool:
 
 def is_toil_url(filename: str) -> bool:
     """
+    Return True if a URL is a toilfile: or toildir: URL.
+    """
+    return is_url_with_scheme(filename, [TOIL_URI_SCHEME, TOIL_DIR_URI_SCHEME])
+
+def is_toil_file_url(filename: str) -> bool:
+    """
     Return True if a URL is a toilfile: URL.
     """
     return is_url_with_scheme(filename, [TOIL_URI_SCHEME])
+
+def is_toil_dir_url(filename: str) -> bool:
+    """
+    Return True if a URL is a toildir: URL.
+
+    Note that this may point to either a direcotry or a leaf file.
+    """
+    return is_url_with_scheme(filename, [TOIL_DIR_URI_SCHEME])
 
 def is_file_url(filename: str) -> bool:
     """
@@ -87,6 +102,22 @@ def is_file_url(filename: str) -> bool:
     Will return False for bare paths.
     """
     return is_url_with_scheme(filename, ["file:"])
+
+def is_directory_url(filename: str) -> bool:
+    """
+    Return True if a URL points to a directory.
+
+    Covers toildir: URLs and deterrmines if they point to directories or leaf
+    files. Also covers other supported remote URL schemes.
+    """
+
+    if is_toil_file_url(filename):
+        # Direct file URLs aren't directories.
+        return False
+    if is_toil_dir_url(filename):
+        # This is a toildir: URL but might be a file or a root or subdirectory.
+        return not isinstance(get_directory_item(filename), str)
+    return URLAccess.get_is_directory(filename)
 
 def mkdtemp(
     suffix: Optional[str] = None,
