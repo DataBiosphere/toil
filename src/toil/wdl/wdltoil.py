@@ -2828,72 +2828,59 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     are used for reverse lookups.
     """
 
-    # Organize paths by top-level parent within the set that has multiple
-    # children or is named explicitly. This is the "ultimate parent".
+    # Organize paths by top-level path named explicitly. This is the "top item".
     #
     # TODO: I wish I had a BWT here but that seems fiddly.
 
     paths_with_slashes = (host_path + "/" if not host_path.endswith("/") and os.path.isdir(host_path) else host_path for host_path in host_paths)
     paths_by_length = list(sorted(paths_with_slashes, key=len))
 
-    # This stores all the paths that need to be mounted, organized by ultimate
-    # parent.
-    paths_by_ultimate_parent: dict[str, list[str]] = {}
+    # This stores all the paths that need to be mounted, organized by top
+    # item. The top item has a trailing slash if it's a directory.
+    paths_by_top_item: dict[str, list[str]] = {}
     for path in paths_by_length:
         # Having sorted by length, when we encounter a path that doesn't have a
-        # parent stored already, its parent is a new ultimate parent.
+        # parent stored already, it is a new top item.
         for parent in all_parents(path):
-            if parent in paths_by_ultimate_parent:
-                # We found the ultimate parent, so list this value under it.
-                paths_by_ultimate_parent[parent].append(path)
+            if parent in paths_by_top_item:
+                # We found the top item, so list this value under it.
+                paths_by_top_item[parent].append(path)
                 break
         else:
-            # This is the first file or directory under its parent or anything
-            # above it, so its parent is the ultimate parent. Make sure to add
-            # the trailing / after a dirname call that won't produce it, but to
-            # strip it off first in case the dirname is "/".
-            paths_by_ultimate_parent[os.path.dirname(path).rstrip("/") + "/"] = [path]
+            # This is the first file or directory for a subtree, so it is a top
+            # item.
+            paths_by_top_item[path] = [path]
 
     logger.debug("Paths by length: %s", paths_by_length)
-    logger.debug("Paths by ultimate parent: %s", paths_by_ultimate_parent)
+    logger.debug("Paths by top item: %s", paths_by_top_item)
 
-    # for each such partition of paths
-    # - if there are no basename collisions under input subdirectory 0, then mount them there.
-    # - otherwise, mount them in a fresh subdirectory
-    id_to_subd: dict[str, int] = collections.Counter()
-    for ultimate_parent, paths in paths_by_ultimate_parent.items():
-        assert ultimate_parent.endswith("/"), f"Ultimate parent {ultimate_parent} is missing its trailing slash"
-        based = os.path.join(task_container.container_dir, "work/_miniwdl_inputs")
-        parent_id = os.path.basename(ultimate_parent.rstrip("/"))
-        if parent_id == "":
-            # The ultimate parent was the filesystem root.
-            # This must not have been a Directory, so don't try and preserve its basename.
-            parent_id = "_root"
-        host_path_subd = str(id_to_subd[parent_id])
-        id_to_subd[parent_id] += 1
-        logger.debug("Handling ultimate parent with basename %s; we have seen this basename %s times already.", parent_id, host_path_subd)
-        # Get the parent path in the container, with trailing slash so that
-        # joining "" on ends in slash.
-        container_parent = os.path.join(
-            based, host_path_subd, parent_id
-        ) + "/"
-        logger.debug("Handlng ultimate patent %s containing %s", ultimate_parent, paths)
-        for host_path in paths:
-            # Get the path within the ultimate parent ("" if mounting that
-            # Directory itself) and join it on to the ultimate parent's
-            # assigned location in the container.
-            container_path = os.path.join(
-                container_parent, host_path[len(ultimate_parent):]
-            )
-            assert container_path.startswith(container_parent), f"Joining {host_path[len(ultimate_parent):]} from {host_path} under {ultimate_parent} onto {container_parent} gave {container_path} not under the container parent."
-            assert (
-                container_path.endswith("/") == host_path.endswith("/")
-            ), f"{container_path} should end in slash only when {host_path} does."
-            assert (
-                container_path not in task_container.input_path_map_rev
-            ), f"{container_path} should not already be in {task_container.input_path_map_rev}"
-            task_container.input_path_map[host_path] = container_path
-            task_container.input_path_map_rev[container_path] = host_path
+    # We need to preserve sibling relationships among top items. So organize them by parents.
+    top_items_by_parent = collections.defaultdict(list)
+    for top_item in paths_by_top_item.keys():
+        top_items_by_parent[os.path.dirname(top_item.rstrip("/")) + "/"].append(top_item)
+
+    logger.debug("Top items by parent: %s", top_items_by_parent)
+
+    container_base = os.path.join(task_container.container_dir, "work/_miniwdl_inputs")
+
+    for i, (parent, top_items) in enumerate(top_items_by_parent.items()):
+        # Just assign each distinct parent a numbered directory to put its
+        # contents in as siblings. We could try and re-use these by packing
+        # non-colliding sets of siblings into the fewest of them we can get
+        # away with, but that smells NP-complete.
+        # TODO: Do the packing because it might actually be useful.
+        parent_container_base = os.path.join(container_base, str(i))
+        for top_item in top_items:
+            for host_path in paths_by_top_item[top_item]:
+                # Figure out where relative to the parent's assigned path
+                # in the container we should put this file/directory.
+                container_path = os.path.join(parent_container_base, host_path[len(parent):])
+
+                # Put it there.
+                task_container.input_path_map[host_path] = container_path
+                task_container.input_path_map_rev[container_path] = host_path
+
+                logger.debug("Mount %s at %s", host_path, container_path)
 
 def drop_if_missing(
     inode: WDLINode, standard_library: ToilWDLStdLibBase
