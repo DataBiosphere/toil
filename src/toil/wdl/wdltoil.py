@@ -2863,12 +2863,23 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
 
     container_base = os.path.join(task_container.container_dir, "work/_miniwdl_inputs")
 
-    for i, (parent, top_items) in enumerate(top_items_by_parent.items()):
-        # Just assign each distinct parent a numbered directory to put its
-        # contents in as siblings. We could try and re-use these by packing
-        # non-colliding sets of siblings into the fewest of them we can get
-        # away with, but that smells NP-complete.
-        # TODO: Do the packing because it might actually be useful.
+    used_names: list[set[str]] = [set()]
+    for parent, top_items in top_items_by_parent.items():
+        # For each set of siblings, get the basenames they need
+        top_item_basenames = {os.path.basename(item.rstrip("/")) for item in top_items}
+        i = 0
+        while len(top_item_basenames.intersection(used_names[i])) > 0:
+            # We can't use this input slot because there's a collision with what's used there already.
+            i += 1
+            if i == len(used_names):
+                # Make a new slot
+                used_names.append(set())
+        # Now we know we have no collisions with what's in slot i
+        # TODO: is there a non-quadradic way to pack these slightly?
+        # Mark the names as used.
+        used_names[i].update(top_item_basenames)
+
+        # Use that number input directory.
         parent_container_base = os.path.join(container_base, str(i))
         for top_item in top_items:
             for host_path in paths_by_top_item[top_item]:
