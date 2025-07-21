@@ -31,6 +31,7 @@ from toil.batchSystems.abstractBatchSystem import (
     EXIT_STATUS_UNAVAILABLE_VALUE,
     AbstractBatchSystem,
     BatchJobExitReason,
+    UpdatedBatchJobInfo,
 )
 from toil.bus import (
     JobCompletedMessage,
