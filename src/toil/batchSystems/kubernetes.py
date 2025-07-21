@@ -1602,6 +1602,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                         exitStatus=exitCode,
                         wallTime=runtime,
                         exitReason=exitReason,
+                        backing_id=jobObject.metadata.name,
                     )
 
                     if (exitReason == BatchJobExitReason.FAILED) or (
@@ -1855,7 +1856,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Return the one finished job we found
         return UpdatedBatchJobInfo(
-            jobID=jobID, exitStatus=exitCode, wallTime=runtime, exitReason=None
+            jobID=jobID,
+            exitStatus=exitCode,
+            wallTime=runtime,
+            exitReason=None,
+            backing_id=jobObject.metadata.name,
         )
 
     def _waitForJobDeath(self, jobName: str) -> None:

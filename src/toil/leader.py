@@ -829,40 +829,41 @@ class Leader:
             # Mark the service job updated so we don't stop here.
             self._messages.publish(JobUpdatedMessage(client_id, 1))
 
-    def _gatherUpdatedJobs(self, updatedJobTuple):
+    def _gatherUpdatedJobs(self, update: UpdatedBatchJobInfo):
         """Gather any new, updated JobDescriptions from the batch system."""
-        bsID, exitStatus, exitReason, wallTime = (
-            updatedJobTuple.jobID,
-            updatedJobTuple.exitStatus,
-            updatedJobTuple.exitReason,
-            updatedJobTuple.wallTime,
-        )
         # easy, track different state
         try:
             updatedJob = self.toilState.get_job(
-                self.issued_jobs_by_batch_system_id[bsID]
+                self.issued_jobs_by_batch_system_id[update.jobID]
             )
         except KeyError:
             logger.warning(
-                "A result seems to already have been processed for job %s", bsID
+                "A result seems to already have been processed for job %s", update.jobID
             )
         else:
-            if exitStatus == 0:
+            if update.exitStatus == 0:
                 logger.debug("Job ended: %s", updatedJob)
             else:
                 status_string = (
-                    str(exitStatus)
-                    if exitStatus != EXIT_STATUS_UNAVAILABLE_VALUE
+                    str(update.exitStatus)
+                    if update.exitStatus != EXIT_STATUS_UNAVAILABLE_VALUE
                     else "<UNAVAILABLE>"
                 )
+                message = [
+                    f"Job failed with exit value {status_string}: {updatedJob}",
+                    f"Exit reason: {BatchJobExitReason.to_string(update.exitReason)}"
+                ]
+                if update.backing_id is not None:
+                    # Report the job in the backing scheduler in case the user
+                    # needs to follow it down a level.
+                    message.append(f"Failed job in backing scheduler: {update.backing_id}")
                 logger.warning(
-                    f"Job failed with exit value {status_string}: {updatedJob}\n"
-                    f"Exit reason: {BatchJobExitReason.to_string(exitReason)}"
+                    "\n".join(message)
                 )
                 # This logic is undefined for which of the failing jobs will send its exit code
                 # when there are multiple failing jobs with different exit statuses
-                self.recommended_fail_exit_code = exitStatus
-                if exitStatus == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
+                self.recommended_fail_exit_code = update.exitStatus
+                if update.exitStatus == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
                     # This is a CWL job informing us that the workflow is
                     # asking things of us that Toil can't do. When we raise an
                     # exception because of this, make sure to forward along
@@ -876,11 +877,14 @@ class Leader:
                 JobCompletedMessage(
                     get_job_kind(updatedJob.get_names()),
                     updatedJob.jobStoreID,
-                    exitStatus,
+                    update.exitStatus,
                 )
             )
             self.process_finished_job(
-                bsID, exitStatus, wall_time=wallTime, exit_reason=exitReason
+                update.jobID,
+                update.exitStatus,
+                wall_time=update.wallTime,
+                exit_reason=update.exitReason,
             )
 
     def _processLostJobs(self):
@@ -926,10 +930,10 @@ class Leader:
             self._processJobsWithFailedServices()
 
             # check in with the batch system
-            updatedJobTuple = self.batchSystem.getUpdatedBatchJob(maxWait=2)
-            if updatedJobTuple is not None:
+            update: UpdatedBatchJobInfo = self.batchSystem.getUpdatedBatchJob(maxWait=2)
+            if update is not None:
                 # Collect and process all the updates
-                self._gatherUpdatedJobs(updatedJobTuple)
+                self._gatherUpdatedJobs(update)
                 # As long as we are getting updates we definitely can't be
                 # deadlocked.
                 self.feed_deadlock_watchdog()
@@ -1125,7 +1129,7 @@ class Leader:
             self.preemptibleJobsIssued += 1
         cur_logger = logger.debug if jobNode.local else logger.info
         cur_logger(
-            "Issued job %s with job batch system ID: " "%s and %s",
+            "Issued job %s with job batch system ID: %s and %s",
             jobNode,
             str(jobBatchSystemID),
             jobNode.requirements_string(),
