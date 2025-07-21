@@ -73,12 +73,13 @@ class BatchJobExitReason(enum.IntEnum):
         except ValueError:
             return str(value)
 
-class UpdatedBatchJobInfo(NamedTuple):
+@dataclass
+class UpdatedBatchJobInfo:
     jobID: int
     """
     The Toil batch system ID of the job.
     """
-    exitStatus: int
+    exitStatus: int = EXIT_STATUS_UNAVAILABLE_VALUE
     """
     The exit status (integer value) of the job. 0 implies successful.
 
@@ -86,9 +87,9 @@ class UpdatedBatchJobInfo(NamedTuple):
     (e.g. job is lost, or otherwise died but actual exit code was not reported).
     """
 
-    exitReason: Optional[BatchJobExitReason]
-    wallTime: Union[float, int, None]
-    backing_id: Optional[str]
+    exitReason: Optional[BatchJobExitReason] = None
+    wallTime: Union[float, int, None] = None
+    backing_id: Optional[str] = None
     """
     The identifier for the job in the backing scheduler, if available.
     """
