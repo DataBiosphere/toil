@@ -1156,7 +1156,7 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom ToilPathMapper."""
 
     def _initialworkdir(
-        self, j: cwltool.job.JobBase, builder: cwltool.builder.Builder
+        self, j: Optional[cwltool.job.JobBase], builder: cwltool.builder.Builder
     ) -> None:
         """
         Hook the InitialWorkDirRequirement setup to make sure that there are no
@@ -1165,6 +1165,9 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
 
         # Set up the initial work dir with all its files
         super()._initialworkdir(j, builder)
+
+        if j is None:
+            return  # Only testing
 
         # The initial work dir listing is now in j.generatefiles["listing"]
         # Also j.generatefiles is a CWL Directory.
