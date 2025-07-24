@@ -971,26 +971,33 @@ def choose_human_readable_directory(
     if is_file_url(parent):
         # Convert files back to paths.
         parent = unquote(urlsplit(parent).path)
+
     if is_any_url(parent):
         # Parent might contain exciting things like "/../" or "///". The spec
         # says the parent is everything up to the last / so we just encode the
         # URL.
         parent_component = os.path.join("url", quote(parent, safe=""))
-    elif parent.startswith("/"):
-        # Absolute source paths need to be stashed somewhere.
-        parent_component = f"root{parent}"
-    else:
-        # Relative source paths need to be kept out of the absolute ones.
-        parent_component = os.path.join("local", parent)
 
-
-    if is_any_url(parent):
         # Don't include task name because it's from a URL and invariant across
         # tasks.
         result = os.path.join(root_dir, parent_component)
-    else:
-        result = os.path.join(root_dir, source_task_path, parent_component)
+        logger.debug("Picked URL-based path %s", result)
+        return result
 
+    # Otherwise, this is a path.
+
+    if parent.startswith("/"):
+        # Absolute source paths need to be stashed somewhere separate from
+        # relative ones, so we adjust the task part of the path to avoid
+        # another layer of directory hierarchy.
+        parent_component = parent.lstrip("/")
+        source_component = source_task_path + "@root"
+    else:
+        # Relative source paths need to be kept out of the absolute ones.
+        parent_component = parent
+        source_component = source_task_path
+
+    result = os.path.join(root_dir, source_task_path, parent_component)
     logger.debug("Picked path %s", result)
     return result
 
@@ -1984,10 +1991,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # We need to use realpath instead of abspath here to account for MacOS
         # /var and /private/var being the same thing.
         real_path = os.path.realpath(path)
+        # The main Toil temp directory is here.
         ltd_prefix = os.path.realpath(self._file_store.localTempDir).rstrip("/") + "/"
+        # The container working directory is here.
+        work_prefix = ltd_prefix + "work/"
 
-        if real_path.startswith(ltd_prefix):
-            return real_path[len(ltd_prefix):]
+        if real_path.startswith(work_prefix):
+            return real_path[len(work_prefix):]
 
         return path
 
@@ -4137,9 +4147,11 @@ class WDLTaskJob(WDLBaseJob):
             # Make the container object
             # TODO: What is this?
             run_id = str(uuid.uuid4())
-            # Directory on the host where the conteiner is allowed to put files.
+            # Directory on the host where the container is allowed to put
+            # files.
             host_dir = os.path.abspath(".")
-            # Container working directory is guaranteed (?) to be at "work" inside there
+            # Container working directory is guaranteed (?) by MiniWDL to be at
+            # "work" inside there
             workdir_in_container = os.path.join(host_dir, "work")
             task_container = TaskContainerImplementation(
                 miniwdl_config, run_id, host_dir
