@@ -42,11 +42,12 @@ from toil.lib.io import (
     mkdtemp,
     robust_rmtree,
 )
+from toil.lib.url import URLAccess
 
 logger = logging.getLogger(__name__)
 
 
-class FileJobStore(AbstractJobStore):
+class FileJobStore(AbstractJobStore, URLAccess):
     """
     A job store that uses a directory on a locally attached file system. To be compatible with
     distributed batch systems, that file system must be shared by all worker nodes.
@@ -395,6 +396,7 @@ class FileJobStore(AbstractJobStore):
 
     @classmethod
     def _url_exists(cls, url: ParseResult) -> bool:
+        # Note that broken symlinks will not be shown to exist.
         return os.path.exists(cls._extract_path_from_url(url))
 
     @classmethod
@@ -770,8 +772,31 @@ class FileJobStore(AbstractJobStore):
             ) as f:
                 yield f
 
+    @overload
     @contextmanager
-    def read_shared_file_stream(self, shared_file_name, encoding=None, errors=None):
+    def read_shared_file_stream(
+        self,
+        shared_file_name: str,
+        encoding: str,
+        errors: Optional[str] = None,
+    ) -> Iterator[IO[str]]: ...
+
+    @overload
+    @contextmanager
+    def read_shared_file_stream(
+        self,
+        shared_file_name: str,
+        encoding: Literal[None] = None,
+        errors: Optional[str] = None,
+    ) -> Iterator[IO[bytes]]: ...
+
+    @contextmanager
+    def read_shared_file_stream(
+        self,
+        shared_file_name: str,
+        encoding: Optional[str] = None,
+        errors: Optional[str] = None,
+    ) -> Union[Iterator[IO[bytes]], Iterator[IO[str]]]:
         self._requireValidSharedFileName(shared_file_name)
         try:
             with open(

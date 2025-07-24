@@ -502,7 +502,7 @@ class ToilBackend(WESBackend):
         }
 
     @handle_errors
-    def run_workflow(self) -> dict[str, str]:
+    def run_workflow(self, **args: Any) -> dict[str, str]:
         """Run a workflow."""
         run_id = self.run_id_prefix + uuid.uuid4().hex
         run = self._get_run(run_id, should_exists=False)
@@ -514,7 +514,7 @@ class ToilBackend(WESBackend):
         # stage the uploaded files to the execution directory, so that we can run the workflow file directly
         temp_dir = run.exec_dir
         try:
-            _, request = self.collect_attachments(run_id, temp_dir=temp_dir)
+            _, request = self.collect_attachments(args, run_id, temp_dir=temp_dir)
         except ValueError:
             run.clean_up()
             raise

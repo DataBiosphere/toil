@@ -19,7 +19,7 @@ import boto3
 from moto import mock_aws
 
 from toil.lib.aws import iam
-from toil.test import ToilTest
+from toil.test import ToilTest, needs_aws_s3
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
@@ -70,6 +70,7 @@ class IAMTest(ToilTest):
         assert iam.permission_matches_any("ec2:*", ["iam:*"]) is False
 
     @mock_aws
+    @needs_aws_s3  # mock is incomplete, this avoid 'botocore.exceptions.NoCredentialsError: Unable to locate credentials'
     def test_get_policy_permissions(self):
         mock_iam = boto3.client("iam")
 
@@ -165,6 +166,7 @@ class IAMTest(ToilTest):
         assert actions_set == expected_actions
         assert notactions_set == set()
 
+    @needs_aws_s3
     def test_create_delete_iam_role(self):
         region = "us-west-2"
         role_name = f'test{str(uuid4()).replace("-", "")}'

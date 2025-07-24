@@ -74,6 +74,7 @@ from toil.lib.compatibility import deprecated
 from toil.lib.history import HistoryManager
 from toil.lib.history_submission import ask_user_about_publishing_metrics, create_history_submission, create_current_submission
 from toil.lib.io import AtomicFileCreate, try_path, get_toil_home
+from toil.lib.misc import StrPath
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
 from toil.lib.threading import ensure_filesystem_lockable
@@ -85,6 +86,7 @@ from toil.provisioners import add_provisioner_options, cluster_factory
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import add_logging_options, set_logging_from_options
 from toil.version import dockerRegistry, dockerTag, version, baseVersion
+from toil.lib.url import URLAccess
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
@@ -126,6 +128,8 @@ class Config:
     kubernetes_service_account: Optional[str]
     kubernetes_pod_timeout: float
     kubernetes_privileged: bool
+    kubernetes_pod_security_context: Optional[str]
+    kubernetes_security_context: Optional[str]
     tes_endpoint: str
     tes_user: str
     tes_password: str
@@ -138,7 +142,7 @@ class Config:
     batch_logs_dir: Optional[str]
     """The backing scheduler will be instructed, if possible, to save logs
     to this directory, where the leader can read them."""
-    statePollingWait: int
+    statePollingWait: float
     state_polling_timeout: int
     disableAutoDeployment: bool
 
@@ -400,7 +404,7 @@ class Config:
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
         set_option("write_messages")
-        
+
         # Data Publishing Options
         set_option("publish_workflow_metrics")
 
@@ -445,6 +449,11 @@ class Config:
             self.coordination_dir = os.getenv("TOIL_COORDINATION_DIR_OVERRIDE")
 
         self.check_configuration_consistency()
+
+        # Check for deprecated Toil built-in autoscaling
+        # --provisioner is guaranteed to be set
+        if self.provisioner is not None and self.batchSystem == "mesos":
+            logger.warning("Toil built-in autoscaling with Mesos is deprecated as Mesos is no longer active. Please use Kubernetes-based autoscaling instead.")
 
     def check_configuration_consistency(self) -> None:
         """Old checks that cannot be fit into an action class for argparse"""
@@ -542,6 +551,19 @@ def generate_config(filepath: str) -> None:
         "enableCaching",
         "disableCaching",
         "version",
+        # Toil built-in autoscaling with mesos is deprecated as mesos has not been updated since Python 3.10
+        "provisioner",
+        "nodeTypes"
+        "minNodes",
+        "maxNodes",
+        "targetTime",
+        "betaInertia",
+        "scaleInterval",
+        "preemtibleCompensation",
+        "nodeStorage",
+        "nodeStorageOverrides",
+        "metrics",
+        "assumeZeroOverhead"
     )
 
     def create_config_dict_from_parser(parser: ArgumentParser) -> CommentedMap:
@@ -655,7 +677,7 @@ def update_config(filepath: str, key: str, new_value: Union[str, bool, int, floa
     :param key: Setting to set. Must be the command-line option name, not the
         destination variable name.
     """
-    
+
     yaml = YAML(typ="rt")
     data = yaml.load(open(filepath))
 
@@ -794,7 +816,7 @@ def addOptions(
         :param typ: string of either "cwl" or "wdl" to specify which runner to check against
         :return: None, raise parser error if option is found
         """
-        check_parser = ArgParser()
+        check_parser = ArgParser(allow_abbrev=False)
         if typ == "wdl":
             add_cwl_options(check_parser)
         if typ == "cwl":
@@ -1394,7 +1416,7 @@ class Toil(ContextManager["Toil"]):
             self._batchSystem.setUserScript(userScriptResource)
 
     def url_exists(self, src_uri: str) -> bool:
-        return self._jobStore.url_exists(self.normalize_uri(src_uri))
+        return URLAccess.url_exists(self.normalize_uri(src_uri))
 
     # Importing a file with a shared file name returns None, but without one it
     # returns a file ID. Explain this to MyPy.
@@ -1502,21 +1524,33 @@ class Toil(ContextManager["Toil"]):
         self._jobStore.export_file(file_id, dst_uri)
 
     @staticmethod
-    def normalize_uri(uri: str, check_existence: bool = False) -> str:
+    def normalize_uri(uri: str, check_existence: bool = False, dir_path: Optional[str] = None) -> str:
         """
-        Given a URI, if it has no scheme, prepend "file:".
+        Given a URI, if it has no scheme, make it a properly quoted file: URI.
 
         :param check_existence: If set, raise FileNotFoundError if a URI points to
                a local file that does not exist.
+
+        :param dir_path: If specified, interpret relative paths relative to the
+            given directory path instead of the current one.
         """
-        if urlparse(uri).scheme == "file":
+
+        parsed = urlparse(uri)
+        if parsed.scheme == "file":
             uri = unquote(
-                urlparse(uri).path
+                parsed.path
             )  # this should strip off the local file scheme; it will be added back
+            parsed = urlparse(uri)
 
         # account for the scheme-less case, which should be coerced to a local absolute path
-        if urlparse(uri).scheme == "":
-            abs_path = os.path.abspath(uri)
+        if parsed.scheme == "":
+            if dir_path is not None:
+                # To support relative paths from a particular directory, join
+                # the directory on. If uri is already an abs path, join() will
+                # not do anything
+                abs_path = os.path.join(dir_path, uri)
+            else:
+                abs_path = os.path.abspath(uri)
             if not os.path.exists(abs_path) and check_existence:
                 raise FileNotFoundError(
                     f'Could not find local file "{abs_path}" when importing "{uri}".\n'
@@ -2032,7 +2066,7 @@ def cacheDirName(workflowID: str) -> str:
     return f"cache-{workflowID}"
 
 
-def getDirSizeRecursively(dirPath: str) -> int:
+def getDirSizeRecursively(dirPath: StrPath) -> int:
     """
     This method will return the cumulative number of bytes occupied by the files
     on disk in the directory and its subdirectories.

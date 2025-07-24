@@ -17,6 +17,7 @@ import os
 import resource
 import sys
 
+from toil.lib.misc import StrPath
 
 class ResourceMonitor:
     """
@@ -89,7 +90,7 @@ class ResourceMonitor:
         )
 
 
-def glob(glob_pattern: str, directoryname: str) -> list[str]:
+def glob(glob_pattern: str, directoryname: StrPath) -> list[str]:
     """
     Walks through a directory and its subdirectories looking for files matching
     the glob_pattern and returns a list=[].

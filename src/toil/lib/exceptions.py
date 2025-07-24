@@ -15,8 +15,8 @@
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 
 import sys
-
 from typing import Optional
+import logging
 from urllib.parse import ParseResult
 
 
@@ -41,7 +41,7 @@ class panic:
     the primary exception will be reraised.
     """
 
-    def __init__(self, log=None) -> None:
+    def __init__(self, log: Optional[logging.Logger] = None) -> None:
         super().__init__()
         self.log = log
         self.exc_info = None

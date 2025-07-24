@@ -11,10 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from collections.abc import Iterable, Generator
+import argparse
 import fcntl
 import itertools
 import logging
 import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
@@ -23,6 +26,7 @@ import time
 from abc import ABCMeta, abstractmethod
 from fractions import Fraction
 from unittest import skipIf
+from typing import Optional, Any, TYPE_CHECKING
 
 from toil.batchSystems.abstractBatchSystem import (
     AbstractBatchSystem,
@@ -38,12 +42,12 @@ from toil.batchSystems.registry import (
     add_batch_system_factory,
     get_batch_system,
     get_batch_systems,
-    restore_batch_system_plugin_state,
-    save_batch_system_plugin_state,
 )
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config, Toil
-from toil.job import Job, JobDescription, Requirer
+from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.job import Job, JobDescription, Requirer, ServiceHostJob
+from toil.lib.misc import StrPath
 from toil.lib.retry import retry_flaky_test
 from toil.lib.threading import cpu_count
 from toil.test import (
@@ -60,7 +64,16 @@ from toil.test import (
     needs_slurm,
     needs_torque,
     slow,
+    pslow,
+    pneeds_mesos,
 )
+from toil.lib.plugins import remove_plugin
+
+import pytest
+
+if TYPE_CHECKING:
+    from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
+
 
 logger = logging.getLogger(__name__)
 
@@ -83,19 +96,13 @@ class BatchSystemPluginTest(ToilTest):
     Class for testing batch system plugin functionality.
     """
 
-    def setUp(self):
-        # Save plugin state so our plugin doesn't stick around after the test
-        # (and create duplicate options)
-        self.__state = save_batch_system_plugin_state()
-        super().setUp()
-
-    def tearDown(self):
+    def tearDown(self) -> None:
         # Restore plugin state
-        restore_batch_system_plugin_state(self.__state)
+        remove_plugin("batch_system", "testBatchSystem")
         super().tearDown()
 
-    def test_add_batch_system_factory(self):
-        def test_batch_system_factory():
+    def test_add_batch_system_factory(self) -> None:
+        def test_batch_system_factory() -> type[SingleMachineBatchSystem]:
             # TODO: Adding the same batch system under multiple names means we
             # can't actually create Toil options, because each version tries to
             # add its arguments.
@@ -112,7 +119,6 @@ class hidden:
 
     http://stackoverflow.com/questions/1323455/python-unit-test-with-base-and-sub-class#answer-25695512
     """
-
     class AbstractBatchSystemTest(ToilTest, metaclass=ABCMeta):
         """
         A base test case with generic tests that every batch system should pass.
@@ -124,11 +130,11 @@ class hidden:
         def createBatchSystem(self) -> AbstractBatchSystem:
             raise NotImplementedError
 
-        def supportsWallTime(self):
+        def supportsWallTime(self) -> bool:
             return False
 
         @classmethod
-        def createConfig(cls):
+        def createConfig(cls) -> Config:
             """
             Returns a dummy config for the batch system tests.  We need a workflowID to be set up
             since we are running tests without setting up a jobstore. This is the class version
@@ -143,7 +149,7 @@ class hidden:
             config.cleanWorkDir = "always"
             return config
 
-        def _createConfig(self):
+        def _createConfig(self) -> Config:
             """
             Returns a dummy config for the batch system tests.  We need a workflowID to be set up
             since we are running tests without setting up a jobstore.
@@ -152,7 +158,9 @@ class hidden:
             """
             return self.createConfig()
 
-        def _mockJobDescription(self, jobStoreID=None, **kwargs):
+        def _mockJobDescription(
+            self, jobStoreID: Optional[str] = None, **kwargs: Any
+        ) -> JobDescription:
             """
             Create a mock-up JobDescription with the given ID and other parameters.
             """
@@ -168,17 +176,17 @@ class hidden:
             return desc
 
         @classmethod
-        def setUpClass(cls):
+        def setUpClass(cls) -> None:
             super().setUpClass()
             logging.basicConfig(level=logging.DEBUG)
 
-        def setUp(self):
+        def setUp(self) -> None:
             super().setUp()
             self.config = self._createConfig()
             self.batchSystem = self.createBatchSystem()
             self.tempDir = self._createTempDir("testFiles")
 
-        def tearDown(self):
+        def tearDown(self) -> None:
             self.batchSystem.shutdown()
             super().tearDown()
 
@@ -189,11 +197,11 @@ class hidden:
             """
             return 120
 
-        def test_available_cores(self):
+        def test_available_cores(self) -> None:
             self.assertTrue(cpu_count() >= numCores)
 
         @retry_flaky_test(prepare=[tearDown, setUp])
-        def test_run_jobs(self):
+        def test_run_jobs(self) -> None:
             jobDesc1 = self._mockJobDescription(
                 jobName="test1",
                 unitName=None,
@@ -247,6 +255,7 @@ class hidden:
             job3 = self.batchSystem.issueBatchJob("mktemp -d", jobDesc3)
 
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            assert jobUpdateInfo is not None
             jobID, exitStatus, wallTime = (
                 jobUpdateInfo.jobID,
                 jobUpdateInfo.exitStatus,
@@ -260,6 +269,7 @@ class hidden:
             self.assertEqual(jobID, job3)
             self.assertEqual(exitStatus, 0)
             if self.supportsWallTime():
+                assert wallTime is not None
                 self.assertTrue(wallTime > 0)
             else:
                 self.assertIsNone(wallTime)
@@ -270,7 +280,7 @@ class hidden:
             # Make sure killBatchJobs can handle jobs that don't exist
             self.batchSystem.killBatchJobs([10])
 
-        def test_set_env(self):
+        def test_set_env(self) -> None:
             # Start with a relatively safe script
             script_shell = (
                 'if [ "x${FOO}" == "xbar" ] ; then exit 23 ; else exit 42 ; fi'
@@ -289,6 +299,7 @@ class hidden:
             )
             job4 = self.batchSystem.issueBatchJob(command, jobDesc4)
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            assert jobUpdateInfo is not None
             jobID, exitStatus, wallTime = (
                 jobUpdateInfo.jobID,
                 jobUpdateInfo.exitStatus,
@@ -305,11 +316,12 @@ class hidden:
                 requirements=defaultRequirements,
             )
             job5 = self.batchSystem.issueBatchJob(command, jobDesc5)
-            jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
-            self.assertEqual(jobUpdateInfo.exitStatus, 23)
-            self.assertEqual(jobUpdateInfo.jobID, job5)
+            jobUpdateInfo2 = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            assert jobUpdateInfo2 is not None
+            self.assertEqual(jobUpdateInfo2.exitStatus, 23)
+            self.assertEqual(jobUpdateInfo2.jobID, job5)
 
-        def test_set_job_env(self):
+        def test_set_job_env(self) -> None:
             """Test the mechanism for setting per-job environment variables to batch system jobs."""
             script = 'if [ "x${FOO}" == "xbar" ] ; then exit 23 ; else exit 42 ; fi'
             command = 'bash -c "\\${@}" bash eval ' + script.replace(";", r"\;")
@@ -325,6 +337,7 @@ class hidden:
                 command, job_desc_6, job_environment={"FOO": "bar"}
             )
             job_update_info = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            assert job_update_info is not None
             self.assertEqual(job_update_info.exitStatus, 23)  # this should succeed
             self.assertEqual(job_update_info.jobID, job6)
             # Now check that the environment variable doesn't exist for other jobs
@@ -335,11 +348,12 @@ class hidden:
                 requirements=defaultRequirements,
             )
             job7 = self.batchSystem.issueBatchJob(command, job_desc_7)
-            job_update_info = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
-            self.assertEqual(job_update_info.exitStatus, 42)
-            self.assertEqual(job_update_info.jobID, job7)
+            job_update_info2 = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            assert job_update_info2 is not None
+            self.assertEqual(job_update_info2.exitStatus, 42)
+            self.assertEqual(job_update_info2.jobID, job7)
 
-        def testCheckResourceRequest(self):
+        def testCheckResourceRequest(self) -> None:
             if isinstance(self.batchSystem, BatchSystemSupport):
                 check_resource_request = self.batchSystem.check_resource_request
                 # Assuming we have <2000 cores, this should be too many cores
@@ -405,11 +419,11 @@ class hidden:
                     Requirer(dict(memory=10, cores=1, disk=100, accelerators=[]))
                 )
 
-        def testScalableBatchSystem(self):
+        def testScalableBatchSystem(self) -> None:
             # If instance of scalable batch system
             pass
 
-        def _waitForJobsToIssue(self, numJobs):
+        def _waitForJobsToIssue(self, numJobs: int) -> list[int]:
             issuedIDs = []
             for it in range(20):
                 issuedIDs = self.batchSystem.getIssuedBatchJobIDs()
@@ -418,7 +432,7 @@ class hidden:
                 time.sleep(1)
             return issuedIDs
 
-        def _waitForJobsToStart(self, numJobs, tries=20):
+        def _waitForJobsToStart(self, numJobs: int, tries: int = 20) -> list[int]:
             """
             Loop until the given number of distinct jobs are in the
             running state, or until the given number of tries is exhausted
@@ -437,114 +451,109 @@ class hidden:
                 time.sleep(1)
             return runningIDs
 
-    class AbstractBatchSystemJobTest(ToilTest, metaclass=ABCMeta):
-        """
-        An abstract base class for batch system tests that use a full Toil workflow rather
-        than using the batch system directly.
-        """
-
-        cpuCount = cpu_count()
-        allocatedCores = sorted({1, 2, cpuCount})
-        sleepTime = 30
-
-        @abstractmethod
-        def getBatchSystemName(self):
-            """
-            :rtype: (str, AbstractBatchSystem)
-            """
-            raise NotImplementedError
-
-        def getOptions(self, tempDir):
-            """
-            Configures options for Toil workflow and makes job store.
-            :param str tempDir: path to test directory
-            :return: Toil options object
-            """
-            options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-            options.logLevel = "DEBUG"
-            options.batchSystem = self.batchSystemName
-            options.workDir = tempDir
-            options.maxCores = self.cpuCount
-            return options
-
-        def setUp(self):
-            self.batchSystemName = self.getBatchSystemName()
-            super().setUp()
-
-        def tearDown(self):
-            super().tearDown()
-
-        @slow
-        def testJobConcurrency(self):
-            """
-            Tests that the batch system is allocating core resources properly for concurrent tasks.
-            """
-            for coresPerJob in self.allocatedCores:
-                tempDir = self._createTempDir("testFiles")
-                options = self.getOptions(tempDir)
-
-                counterPath = os.path.join(tempDir, "counter")
-                resetCounters(counterPath)
-                value, maxValue = getCounters(counterPath)
-                assert (value, maxValue) == (0, 0)
-
-                root = Job()
-                for _ in range(self.cpuCount):
-                    root.addFollowOn(
-                        Job.wrapFn(
-                            measureConcurrency,
-                            counterPath,
-                            self.sleepTime,
-                            cores=coresPerJob,
-                            memory="1M",
-                            disk="1Mi",
-                        )
-                    )
-                with Toil(options) as toil:
-                    toil.start(root)
-                _, maxValue = getCounters(counterPath)
-                self.assertEqual(maxValue, self.cpuCount // coresPerJob)
-
-        def test_omp_threads(self):
-            """
-            Test if the OMP_NUM_THREADS env var is set correctly based on jobs.cores.
-            """
-            test_cases = {
-                # mapping of the number of cores to the OMP_NUM_THREADS value
-                0.1: "1",
-                1: "1",
-                2: "2",
-            }
-
-            temp_dir = self._createTempDir()
-            options = self.getOptions(temp_dir)
-
-            for cores, expected_omp_threads in test_cases.items():
-                if os.environ.get("OMP_NUM_THREADS"):
-                    expected_omp_threads = os.environ.get("OMP_NUM_THREADS")
-                    logger.info(
-                        f"OMP_NUM_THREADS is set.  Using OMP_NUM_THREADS={expected_omp_threads} instead."
-                    )
-                with Toil(options) as toil:
-                    output = toil.start(
-                        Job.wrapFn(
-                            get_omp_threads, memory="1Mi", cores=cores, disk="1Mi"
-                        )
-                    )
-                self.assertEqual(output, expected_omp_threads)
-
     class AbstractGridEngineBatchSystemTest(AbstractBatchSystemTest):
         """
         An abstract class to reduce redundancy between Grid Engine, Slurm, and other similar batch
         systems
         """
 
-        def _createConfig(self):
+        def _createConfig(self) -> Config:
             config = super()._createConfig()
             config.statePollingWait = 0.5  # Reduce polling wait so tests run faster
             # can't use _getTestJobStorePath since that method removes the directory
             config.jobStore = "file:" + self._createTempDir("jobStore")
             return config
+
+
+class AbstractBatchSystemJobTest:
+    """
+    An abstract base class for batch system tests that use a full Toil workflow rather
+    than using the batch system directly.
+    """
+
+    cpuCount = cpu_count() if cpu_count() < 4 else 4
+    allocatedCores = sorted({1, 2, cpuCount})
+    sleepTime = 30
+
+    @abstractmethod
+    def getBatchSystemName(self) -> str:
+        """
+        :rtype: (str, AbstractBatchSystem)
+        """
+        raise NotImplementedError
+
+    def getOptions(self, tempDir: Path) -> argparse.Namespace:
+        """
+        Configures options for Toil workflow and makes job store.
+        :param str tempDir: path to test directory
+        :return: Toil options object
+        """
+        workdir = tempDir / "workdir"
+        workdir.mkdir()
+        options = Job.Runner.getDefaultOptions(tempDir / "jobstore")
+        options.logLevel = "DEBUG"
+        options.batchSystem = self.getBatchSystemName()
+        options.workDir = str(workdir)
+        options.maxCores = self.cpuCount
+        return options
+
+    @pslow
+    @pytest.mark.slow
+    def testJobConcurrency(self, tmp_path: Path) -> None:
+        """
+        Tests that the batch system is allocating core resources properly for concurrent tasks.
+        """
+        for coresPerJob in self.allocatedCores:
+            tempDir = tmp_path / f"testFiles_{coresPerJob}"
+            tempDir.mkdir()
+            options = self.getOptions(tempDir)
+
+            counterPath = tempDir / "counter"
+            resetCounters(counterPath)
+            value, maxValue = getCounters(counterPath)
+            assert (value, maxValue) == (0, 0)
+
+            root = Job()
+            for _ in range(self.cpuCount):
+                root.addFollowOn(
+                    Job.wrapFn(
+                        measureConcurrency,
+                        counterPath,
+                        self.sleepTime,
+                        cores=coresPerJob,
+                        memory="1M",
+                        disk="1Mi",
+                    )
+                )
+            with Toil(options) as toil:
+                toil.start(root)
+            _, maxValue = getCounters(counterPath)
+            assert maxValue == (self.cpuCount // coresPerJob)
+
+    def test_omp_threads(self, tmp_path: Path) -> None:
+        """
+        Test if the OMP_NUM_THREADS env var is set correctly based on jobs.cores.
+        """
+        test_cases = {
+            # mapping of the number of cores to the OMP_NUM_THREADS value
+            0.1: "1",
+            1: "1",
+            2: "2",
+        }
+
+        options = self.getOptions(tmp_path)
+
+        for cores, expected_omp_threads in test_cases.items():
+            if eont := os.environ.get("OMP_NUM_THREADS"):
+                expected_omp_threads = eont
+                logger.info(
+                    f"OMP_NUM_THREADS is set.  Using OMP_NUM_THREADS={expected_omp_threads} instead."
+                )
+            with Toil(options) as toil:
+                output = toil.start(
+                    Job.wrapFn(get_omp_threads, memory="1Mi", cores=cores, disk="1Mi")
+                )
+            assert output == expected_omp_threads
 
 
 @needs_kubernetes
@@ -555,10 +564,10 @@ class KubernetesBatchSystemTest(hidden.AbstractBatchSystemTest):
     Tests against the Kubernetes batch system
     """
 
-    def supportsWallTime(self):
+    def supportsWallTime(self) -> bool:
         return True
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         # We know we have Kubernetes so we can import the batch system
         from toil.batchSystems.kubernetes import KubernetesBatchSystem
 
@@ -573,7 +582,7 @@ class KubernetesBatchSystemBenchTest(ToilTest):
     Kubernetes batch system unit tests that don't need to actually talk to a cluster.
     """
 
-    def test_preemptability_constraints(self):
+    def test_preemptability_constraints(self) -> None:
         """
         Make sure we generate the right preemptability constraints.
         """
@@ -645,7 +654,7 @@ class KubernetesBatchSystemBenchTest(ToilTest):
             str(spot_spec.tolerations),
         )
 
-    def test_label_constraints(self):
+    def test_label_constraints(self) -> None:
         """
         Make sure we generate the right preemptability constraints.
         """
@@ -694,10 +703,10 @@ class AWSBatchBatchSystemTest(hidden.AbstractBatchSystemTest):
     Tests against the AWS Batch batch system
     """
 
-    def supportsWallTime(self):
+    def supportsWallTime(self) -> bool:
         return True
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         from toil.batchSystems.awsBatch import AWSBatchBatchSystem
 
         return AWSBatchBatchSystem(
@@ -716,8 +725,10 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     Tests against the Mesos batch system
     """
 
+    batchSystem: "MesosBatchSystem"
+
     @classmethod
-    def createConfig(cls):
+    def createConfig(cls) -> Config:
         """
         needs to set mesos_endpoint to localhost for testing since the default is now the
         private IP address
@@ -726,10 +737,10 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         config.mesos_endpoint = "localhost:5050"
         return config
 
-    def supportsWallTime(self):
+    def supportsWallTime(self) -> bool:
         return True
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> "MesosBatchSystem":
         # We know we have Mesos so we can import the batch system
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
 
@@ -738,11 +749,11 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
             config=self.config, maxCores=numCores, maxMemory=1e9, maxDisk=1001
         )
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         self._stopMesos()
         super().tearDown()
 
-    def testIgnoreNode(self):
+    def testIgnoreNode(self) -> None:
         self.batchSystem.ignoreNode("localhost")
         jobDesc = self._mockJobDescription(
             jobName="test2",
@@ -807,14 +818,14 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
             import signal
             import sys
             import time
-            from typing import Any
+            from typing import Any, Iterable
 
             def handle_signal(sig: Any, frame: Any) -> None:
                 sys.stderr.write(f"{os.getpid()} ignoring signal {sig}\n")
 
             if hasattr(signal, "valid_signals"):
                 # We can just ask about the signals
-                all_signals = signal.valid_signals()
+                all_signals: Iterable[signal.Signals] = signal.valid_signals()
             else:
                 # Fish them out by name
                 all_signals = [
@@ -901,7 +912,7 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
             os.unlink(script_path)
             os.unlink(lockable_path)
 
-    def testHidingProcessEscape(self):
+    def testHidingProcessEscape(self) -> None:
         """
         Test to make sure that child processes and their descendants go away
         when the Toil workflow stops, even if the job process stops and leaves children.
@@ -980,7 +991,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         return " ".join([sys.executable, self.scriptPath, self.counterPath])
 
     @retry_flaky_test(prepare=[tearDown, setUp])
-    def test(self):
+    def test(self) -> None:
         # We'll use fractions to avoid rounding errors. Remember that not every fraction can be
         # represented as a floating point number.
         F = Fraction
@@ -1025,7 +1036,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                             self.assertEqual(len(jobIds), jobs)
                             while jobIds:
                                 job = bs.getUpdatedBatchJob(maxWait=10)
-                                self.assertIsNotNone(job)
+                                assert job is not None
                                 jobId, status, wallTime = (
                                     job.jobID,
                                     job.exitStatus,
@@ -1057,7 +1068,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         SingleMachineBatchSystem.numCores < 3,
         "Need at least three cores to run this test",
     )
-    def testServices(self):
+    def testServices(self) -> None:
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "DEBUG"
         options.maxCores = 3
@@ -1072,38 +1083,38 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
 # Toil can use only top-level functions so we have to add them here:
 
 
-def parentJob(job, cmd):
+def parentJob(job: Job, cmd: str) -> None:
     job.addChildJobFn(childJob, cmd)
 
 
-def childJob(job, cmd):
+def childJob(job: Job, cmd: str) -> None:
     job.addService(Service(cmd))
     job.addChildJobFn(grandChildJob, cmd)
     subprocess.check_call(cmd, shell=True)
 
 
-def grandChildJob(job, cmd):
+def grandChildJob(job: Job, cmd: str) -> None:
     job.addService(Service(cmd))
     job.addChildFn(greatGrandChild, cmd)
     subprocess.check_call(cmd, shell=True)
 
 
-def greatGrandChild(cmd):
+def greatGrandChild(cmd: str) -> None:
     subprocess.check_call(cmd, shell=True)
 
 
 class Service(Job.Service):
-    def __init__(self, cmd):
+    def __init__(self, cmd: str) -> None:
         super().__init__()
         self.cmd = cmd
 
-    def start(self, fileStore):
+    def start(self, job: ServiceHostJob) -> None:
         subprocess.check_call(self.cmd + " 1", shell=True)
 
-    def check(self):
+    def check(self) -> bool:
         return True
 
-    def stop(self, fileStore):
+    def stop(self, job: ServiceHostJob) -> None:
         subprocess.check_call(self.cmd + " -1", shell=True)
 
 
@@ -1121,7 +1132,7 @@ class GridEngineBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
             config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=1e9
         )
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         super().tearDown()
         # Cleanup GridEngine output log file from qsub
         from glob import glob
@@ -1144,7 +1155,7 @@ class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
             config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=1e9
         )
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         super().tearDown()
         # Cleanup 'slurm-%j.out' produced by sbatch
         from glob import glob
@@ -1175,8 +1186,8 @@ class TorqueBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     Tests against the Torque batch system
     """
 
-    def _createDummyConfig(self):
-        config = super()._createDummyConfig()
+    def _createDummyConfig(self) -> Config:
+        config = super()._createConfig()
         # can't use _getTestJobStorePath since that method removes the directory
         config.jobStore = self._createTempDir("jobStore")
         return config
@@ -1188,7 +1199,7 @@ class TorqueBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
             config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=1e9
         )
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         super().tearDown()
         # Cleanup 'toil_job-%j.out' produced by sbatch
         from glob import glob
@@ -1211,42 +1222,39 @@ class HTCondorBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
             config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=1e9
         )
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         super().tearDown()
 
 
-class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
+class TestSingleMachineBatchSystemJob(AbstractBatchSystemJobTest):
     """
     Tests Toil workflow against the SingleMachine batch system
     """
 
-    def getBatchSystemName(self):
+    def getBatchSystemName(self) -> str:
         return "single_machine"
 
-    @slow
-    @retry_flaky_test(
-        prepare=[
-            hidden.AbstractBatchSystemJobTest.tearDown,
-            hidden.AbstractBatchSystemJobTest.setUp,
-        ]
-    )
-    def testConcurrencyWithDisk(self):
+    @pslow
+    @pytest.mark.slow
+    @retry_flaky_test(prepare=[])
+    def testConcurrencyWithDisk(self, tmp_path: Path) -> None:
         """
         Tests that the batch system is allocating disk resources properly
         """
-        tempDir = self._createTempDir("testFiles")
 
-        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.workDir = tempDir
+        workdir = tmp_path / "workdir"
+        workdir.mkdir()
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobstore")
+        options.workDir = str(workdir)
         from toil import physicalDisk
 
         availableDisk = physicalDisk(options.workDir)
         logger.info("Testing disk concurrency limits with %s disk space", availableDisk)
         # More disk might become available by the time Toil starts, so we limit it here
         options.maxDisk = availableDisk
-        options.batchSystem = self.batchSystemName
+        options.batchSystem = self.getBatchSystemName()
 
-        counterPath = os.path.join(tempDir, "counter")
+        counterPath = tmp_path / "counter"
         resetCounters(counterPath)
         value, maxValue = getCounters(counterPath)
         assert (value, maxValue) == (0, 0)
@@ -1283,31 +1291,32 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
 
         logger.info("After run: %s disk space", physicalDisk(options.workDir))
 
-        self.assertEqual(maxValue, 1)
+        assert maxValue == 1
 
-    @skipIf(
+    @pytest.mark.skipif(
         SingleMachineBatchSystem.numCores < 4,
-        "Need at least four cores to run this test",
+        reason="Need at least four cores to run this test",
     )
-    @slow
-    def testNestedResourcesDoNotBlock(self):
+    @pslow
+    @pytest.mark.slow
+    def testNestedResourcesDoNotBlock(self, tmp_path: Path) -> None:
         """
         Resources are requested in the order Memory > Cpu > Disk.
         Test that unavailability of cpus for one job that is scheduled does not block another job
         that can run.
         """
-        tempDir = self._createTempDir("testFiles")
-
-        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.workDir = tempDir
+        workdir = tmp_path / "workdir"
+        workdir.mkdir()
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobstore")
+        options.workDir = str(workdir)
         options.maxCores = 4
         from toil import physicalMemory
 
         availableMemory = physicalMemory()
-        options.batchSystem = self.batchSystemName
+        options.batchSystem = self.getBatchSystemName()
 
-        outFile = os.path.join(tempDir, "counter")
-        open(outFile, "w").close()
+        outFile = tmp_path / "counter"
+        outFile.open("w").close()
 
         root = Job()
 
@@ -1395,7 +1404,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         should not block them, and should only run after they finish.
         """
         Job.Runner.startToil(root, options)
-        with open(outFile) as oFH:
+        with outFile.open() as oFH:
             outString = oFH.read()
         # The ordering of b, fJ and sJ is non-deterministic since they are scheduled at the same
         # time. We look for all possible permutations.
@@ -1406,12 +1415,12 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         assert outString.endswith("sJCsJGCfJC")
 
 
-def _resourceBlockTestAuxFn(outFile, sleepTime, writeVal):
+def _resourceBlockTestAuxFn(outFile: StrPath, sleepTime: int, writeVal: str) -> None:
     """
     Write a value to the out file and then sleep for requested seconds.
-    :param str outFile: File to write to
-    :param int sleepTime: Time to sleep for
-    :param str writeVal: Character to write
+    :param outFile: File to write to
+    :param sleepTime: Time to sleep for
+    :param writeVal: Character to write
     """
     with open(outFile, "a") as oFH:
         fcntl.flock(oFH, fcntl.LOCK_EX)
@@ -1419,33 +1428,38 @@ def _resourceBlockTestAuxFn(outFile, sleepTime, writeVal):
     time.sleep(sleepTime)
 
 
-@slow
-@needs_mesos
-class MesosBatchSystemJobTest(hidden.AbstractBatchSystemJobTest, MesosTestSupport):
+@pslow
+@pytest.mark.slow
+@pneeds_mesos
+class TestMesosBatchSystemJob(AbstractBatchSystemJobTest, MesosTestSupport):
     """
     Tests Toil workflow against the Mesos batch system
     """
 
-    def getOptions(self, tempDir):
+    @pytest.fixture(autouse=True)
+    def mesos_support(self) -> Generator[None]:
+        try:
+            self._startMesos(self.cpuCount)
+            yield
+        finally:
+            self._stopMesos()
+
+    def getOptions(self, tempDir: Path) -> argparse.Namespace:
         options = super().getOptions(tempDir)
         options.mesos_endpoint = "localhost:5050"
         return options
 
-    def getBatchSystemName(self):
-        self._startMesos(self.cpuCount)
+    def getBatchSystemName(self) -> "str":
         return "mesos"
 
-    def tearDown(self):
-        self._stopMesos()
 
-
-def measureConcurrency(filepath, sleep_time=10):
+def measureConcurrency(filepath: StrPath, sleep_time: int = 10) -> int:
     """
     Run in parallel to determine the number of concurrent tasks.
     This code was copied from toil.batchSystemTestMaxCoresSingleMachineBatchSystemTest
-    :param str filepath: path to counter file
-    :param int sleep_time: number of seconds to sleep before counting down
-    :return int max concurrency value:
+    :param filepath: path to counter file
+    :param sleep_time: number of seconds to sleep before counting down
+    :return: max concurrency value
     """
     count(1, filepath)
     try:
@@ -1454,16 +1468,17 @@ def measureConcurrency(filepath, sleep_time=10):
         return count(-1, filepath)
 
 
-def count(delta, file_path):
+def count(delta: int, file_path: StrPath) -> int:
     """
     Increments counter file and returns the max number of times the file
     has been modified. Counter data must be in the form:
     concurrent tasks, max concurrent tasks (counter should be initialized to 0,0)
 
-    :param int delta: increment value
-    :param str file_path: path to shared counter file
-    :return int max concurrent tasks:
+    :param delta: increment value
+    :param file_path: path to shared counter file
+    :return: max concurrent tasks
     """
+
     fd = os.open(file_path, os.O_RDWR)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
@@ -1483,13 +1498,13 @@ def count(delta, file_path):
     return maxValue
 
 
-def getCounters(path):
+def getCounters(path: StrPath) -> tuple[int, int]:
     with open(path, "r+") as f:
         concurrentTasks, maxConcurrentTasks = (int(i) for i in f.read().split(","))
     return concurrentTasks, maxConcurrentTasks
 
 
-def resetCounters(path):
+def resetCounters(path: StrPath) -> None:
     with open(path, "w") as f:
         f.write("0,0")
         f.close()

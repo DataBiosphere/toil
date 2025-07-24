@@ -31,7 +31,8 @@ from typing import (
     Optional,
     Union,
     cast,
-    overload
+    overload,
+    Type,
 )
 from urllib.error import HTTPError
 from urllib.parse import ParseResult, urlparse
@@ -52,6 +53,7 @@ from toil.lib.exceptions import UnimplementedURLException
 from toil.lib.io import WriteWatchingStream
 from toil.lib.memoize import memoize
 from toil.lib.retry import ErrorCondition, retry
+from toil.lib.url import URLAccess
 
 if TYPE_CHECKING:
     from toil.job import TemporaryID
@@ -355,23 +357,6 @@ class AbstractJobStore(ABC):
                 jobStoreClasses.append(jobStoreClass)
         return jobStoreClasses
 
-    @classmethod
-    def _findJobStoreForUrl(
-        cls, url: ParseResult, export: bool = False
-    ) -> "AbstractJobStore":
-        """
-        Returns the AbstractJobStore subclass that supports the given URL.
-
-        :param ParseResult url: The given URL
-
-        :param bool export: Determines if the url is supported for exporting
-
-        :rtype: toil.jobStore.AbstractJobStore
-        """
-        for implementation in cls._get_job_store_classes():
-            if implementation._supports_url(url, export):
-                return implementation
-        raise UnimplementedURLException(url, "export" if export else "import")
 
     # Importing a file with a shared file name returns None, but without one it
     # returns a file ID. Explain this to MyPy.
@@ -465,7 +450,7 @@ class AbstractJobStore(ABC):
         # optimizations that circumvent this, the _import_file method should be overridden by
         # subclasses of AbstractJobStore.
         parseResult = urlparse(src_uri)
-        otherCls = self._findJobStoreForUrl(parseResult)
+        otherCls = URLAccess._find_url_implementation(parseResult)
         logger.info("Importing input %s...", src_uri)
         return self._import_file(
             otherCls,
@@ -477,7 +462,7 @@ class AbstractJobStore(ABC):
 
     def _import_file(
         self,
-        otherCls: "AbstractJobStore",
+        otherCls: Type["URLAccess"],
         uri: ParseResult,
         shared_file_name: Optional[str] = None,
         hardlink: bool = False,
@@ -491,7 +476,7 @@ class AbstractJobStore(ABC):
 
         Raises FileNotFoundError if the file does not exist.
 
-        :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
+        :param URLAccess otherCls: The class of URLAccess that supports
                reading from the given URL and getting the file size from the URL.
 
         :param ParseResult uri: The location of the file to import.
@@ -536,16 +521,16 @@ class AbstractJobStore(ABC):
         from toil.common import Toil
         dst_uri = Toil.normalize_uri(dst_uri)
         parseResult = urlparse(dst_uri)
-        otherCls = self._findJobStoreForUrl(parseResult, export=True)
+        otherCls = URLAccess._find_url_implementation(parseResult, export=True)
         self._export_file(otherCls, file_id, parseResult)
 
     def _export_file(
-        self, otherCls: "AbstractJobStore", jobStoreFileID: FileID, url: ParseResult
+        self, otherCls: Type["URLAccess"], jobStoreFileID: FileID, url: ParseResult
     ) -> None:
         """
         Refer to exportFile docstring for information about this method.
 
-        :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
+        :param URLAccess otherCls: The class of URLAccess that supports
                exporting to the given URL. Note that the type annotation here is not completely
                accurate. This is not an instance, it's a class, but there is no way to reflect
                that in :pep:`484` type hints.
@@ -557,12 +542,12 @@ class AbstractJobStore(ABC):
         self._default_export_file(otherCls, jobStoreFileID, url)
 
     def _default_export_file(
-        self, otherCls: "AbstractJobStore", jobStoreFileID: FileID, url: ParseResult
+        self, otherCls: Type["URLAccess"], jobStoreFileID: FileID, url: ParseResult
     ) -> None:
         """
         Refer to exportFile docstring for information about this method.
 
-        :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
+        :param URLAccess otherCls: The class of URLAccess that supports
                exporting to the given URL. Note that the type annotation here is not completely
                accurate. This is not an instance, it's a class, but there is no way to reflect
                that in :pep:`484` type hints.
@@ -576,216 +561,6 @@ class AbstractJobStore(ABC):
             if getattr(jobStoreFileID, "executable", False):
                 executable = jobStoreFileID.executable
             otherCls._write_to_url(readable, url, executable)
-
-    @classmethod
-    def url_exists(cls, src_uri: str) -> bool:
-        """
-        Return True if the file at the given URI exists, and False otherwise.
-
-        May raise an error if file existence cannot be determined.
-
-        :param src_uri: URL that points to a file or object in the storage
-               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
-        """
-        parseResult = urlparse(src_uri)
-        otherCls = cls._findJobStoreForUrl(parseResult)
-        return otherCls._url_exists(parseResult)
-
-    @classmethod
-    def get_size(cls, src_uri: str) -> Optional[int]:
-        """
-        Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
-
-        :param src_uri: URL that points to a file or object in the storage
-               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
-        """
-        parseResult = urlparse(src_uri)
-        otherCls = cls._findJobStoreForUrl(parseResult)
-        return otherCls._get_size(parseResult)
-
-    @classmethod
-    def get_is_directory(cls, src_uri: str) -> bool:
-        """
-        Return True if the thing at the given URL is a directory, and False if
-        it is a file. The URL may or may not end in '/'.
-        """
-        parseResult = urlparse(src_uri)
-        otherCls = cls._findJobStoreForUrl(parseResult)
-        return otherCls._get_is_directory(parseResult)
-
-    @classmethod
-    def list_url(cls, src_uri: str) -> list[str]:
-        """
-        List the directory at the given URL. Returned path components can be
-        joined with '/' onto the passed URL to form new URLs. Those that end in
-        '/' correspond to directories. The provided URL may or may not end with
-        '/'.
-
-        Currently supported schemes are:
-
-            - 's3' for objects in Amazon S3
-                e.g. s3://bucket/prefix/
-
-            - 'file' for local files
-                e.g. file:///local/dir/path/
-
-        :param str src_uri: URL that points to a directory or prefix in the storage mechanism of a
-                supported URL scheme e.g. a prefix in an AWS s3 bucket.
-
-        :return: A list of URL components in the given directory, already URL-encoded.
-        """
-        parseResult = urlparse(src_uri)
-        otherCls = cls._findJobStoreForUrl(parseResult)
-        return otherCls._list_url(parseResult)
-
-    @classmethod
-    def read_from_url(cls, src_uri: str, writable: IO[bytes]) -> tuple[int, bool]:
-        """
-        Read the given URL and write its content into the given writable stream.
-
-        Raises FileNotFoundError if the URL doesn't exist.
-
-        :return: The size of the file in bytes and whether the executable permission bit is set
-        """
-        parseResult = urlparse(src_uri)
-        otherCls = cls._findJobStoreForUrl(parseResult)
-        return otherCls._read_from_url(parseResult, writable)
-
-    @classmethod
-    def open_url(cls, src_uri: str) -> IO[bytes]:
-        """
-        Read from the given URI.
-
-        Raises FileNotFoundError if the URL doesn't exist.
-
-        Has a readable stream interface, unlike :meth:`read_from_url` which
-        takes a writable stream.
-        """
-        parseResult = urlparse(src_uri)
-        otherCls = cls._findJobStoreForUrl(parseResult)
-        return otherCls._open_url(parseResult)
-
-    @classmethod
-    @abstractmethod
-    def _url_exists(cls, url: ParseResult) -> bool:
-        """
-        Return True if the item at the given URL exists, and Flase otherwise.
-
-        May raise an error if file existence cannot be determined.
-        """
-        raise NotImplementedError(f"No implementation for {url}")
-
-    @classmethod
-    @abstractmethod
-    def _get_size(cls, url: ParseResult) -> Optional[int]:
-        """
-        Get the size of the object at the given URL, or None if it cannot be obtained.
-        """
-        raise NotImplementedError(f"No implementation for {url}")
-
-    @classmethod
-    @abstractmethod
-    def _get_is_directory(cls, url: ParseResult) -> bool:
-        """
-        Return True if the thing at the given URL is a directory, and False if
-        it is a file or it is known not to exist. The URL may or may not end in
-        '/'.
-
-        :param url: URL that points to a file or object, or directory or prefix,
-               in the storage mechanism of a supported URL scheme e.g. a blob
-               in an AWS s3 bucket.
-        """
-        raise NotImplementedError(f"No implementation for {url}")
-
-    @classmethod
-    @abstractmethod
-    def _read_from_url(cls, url: ParseResult, writable: IO[bytes]) -> tuple[int, bool]:
-        """
-        Reads the contents of the object at the specified location and writes it to the given
-        writable stream.
-
-        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
-
-        Raises FileNotFoundError if the thing at the URL is not found.
-
-        :param ParseResult url: URL that points to a file or object in the storage
-               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
-
-        :param IO[bytes] writable: a writable stream
-
-        :return: The size of the file in bytes and whether the executable permission bit is set
-        """
-        raise NotImplementedError(f"No implementation for {url}")
-
-    @classmethod
-    @abstractmethod
-    def _list_url(cls, url: ParseResult) -> list[str]:
-        """
-        List the contents of the given URL, which may or may not end in '/'
-
-        Returns a list of URL components. Those that end in '/' are meant to be
-        directories, while those that do not are meant to be files.
-
-        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
-
-        :param ParseResult url: URL that points to a directory or prefix in the
-        storage mechanism of a supported URL scheme e.g. a prefix in an AWS s3
-        bucket.
-
-        :return: The children of the given URL, already URL-encoded if
-        appropriate. (If the URL is a bare path, no encoding is done.)
-        """
-        raise NotImplementedError(f"No implementation for {url}")
-
-    @classmethod
-    @abstractmethod
-    def _open_url(cls, url: ParseResult) -> IO[bytes]:
-        """
-        Get a stream of the object at the specified location.
-
-        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
-
-        Raises FileNotFoundError if the thing at the URL is not found.
-        """
-        raise NotImplementedError(f"No implementation for {url}")
-
-    @abstractmethod
-    def _write_to_url(
-        cls,
-        readable: Union[IO[bytes], IO[str]],
-        url: ParseResult,
-        executable: bool = False,
-    ) -> None:
-        """
-        Reads the contents of the given readable stream and writes it to the object at the
-        specified location. Raises FileNotFoundError if the URL doesn't exist..
-
-        Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
-
-        :param Union[IO[bytes], IO[str]] readable: a readable stream
-
-        :param ParseResult url: URL that points to a file or object in the storage
-               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
-
-        :param bool executable: determines if the file has executable permissions
-        """
-        raise NotImplementedError(f"No implementation for {url}")
-
-    @classmethod
-    @abstractmethod
-    def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
-        """
-        Returns True if the job store supports the URL's scheme.
-
-        Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
-
-        :param ParseResult url: a parsed URL that may be supported
-
-        :param bool export: Determines if the url is supported for exported
-
-        :return bool: returns true if the cls supports the URL
-        """
-        raise NotImplementedError(f"No implementation for {url}")
 
     @abstractmethod
     def destroy(self) -> None:
@@ -1687,8 +1462,30 @@ class AbstractJobStore(ABC):
         sharedFileName: str,
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> ContextManager[IO[bytes]]:
+    ) -> Union[ContextManager[IO[str]], ContextManager[IO[bytes]]]:
         return self.read_shared_file_stream(sharedFileName, encoding, errors)
+
+    @overload
+    @abstractmethod
+    @contextmanager
+    def read_shared_file_stream(
+        self,
+        shared_file_name: str,
+        encoding: str,
+        errors: Optional[str] = None,
+    ) -> Iterator[IO[str]]:
+        """If encoding is specified, then a text file handle is provided."""
+
+    @overload
+    @abstractmethod
+    @contextmanager
+    def read_shared_file_stream(
+        self,
+        shared_file_name: str,
+        encoding: Literal[None] = None,
+        errors: Optional[str] = None,
+    ) -> Iterator[IO[bytes]]:
+        """If no encoding is provided, then a bytest file handle is provided."""
 
     @abstractmethod
     @contextmanager
@@ -1697,7 +1494,7 @@ class AbstractJobStore(ABC):
         shared_file_name: str,
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> Iterator[IO[bytes]]:
+    ) -> Union[Iterator[IO[str]], Iterator[IO[bytes]]]:
         """
         Returns a context manager yielding a readable file handle to the global file referenced
         by the given name.
@@ -1712,7 +1509,6 @@ class AbstractJobStore(ABC):
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :return: a context manager yielding a readable file handle
-        :rtype: Iterator[IO[bytes]]
         """
         raise NotImplementedError()
 
@@ -1852,7 +1648,7 @@ class AbstractJobStore(ABC):
             raise ValueError("Not a valid shared file name: '%s'." % sharedFileName)
 
 
-class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
+class JobStoreSupport(AbstractJobStore, URLAccess, metaclass=ABCMeta):
     """
     A mostly fake JobStore to access URLs not really associated with real job
     stores.

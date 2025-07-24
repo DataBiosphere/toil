@@ -11,72 +11,81 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from argparse import Namespace
+from collections.abc import Callable, Generator, Sequence
 import logging
 import os
+from pathlib import Path
 import signal
 import time
-from abc import ABCMeta
+from typing import Optional
 from uuid import uuid4
 
 import psutil
+import pytest
 
 from toil.exceptions import FailedJobsException
 from toil.job import Job
 from toil.lib.threading import cpu_count
-from toil.test import ToilTest, slow
+from toil.test import pslow as slow
 
 logger = logging.getLogger(__name__)
 
 
-class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
+@pytest.fixture(scope="function")
+def options(tmp_path: Path) -> Generator[Namespace]:
+    try:
+        testDir = tmp_path / "testDir"
+        testDir.mkdir()
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobstore")
+        options.logLevel = "INFO"
+        options.workDir = str(testDir)
+        options.clean = "always"
+        options.logFile = str(testDir / "logFile")
+        yield options
+    finally:
+        pass  # no cleanup
+
+
+class TestDeferredFunction:
     """Test the deferred function system."""
 
-    # This determines what job store type to use.
-    jobStoreType = "file"
-
-    def _getTestJobStore(self):
-        if self.jobStoreType == "file":
-            return self._getTestJobStorePath()
-        elif self.jobStoreType == "aws":
-            return f"aws:{self.awsRegion()}:cache-tests-{uuid4()}"
-        elif self.jobStoreType == "google":
-            projectID = os.getenv("TOIL_GOOGLE_PROJECTID")
-            return f"google:{projectID}:cache-tests-{str(uuid4())}"
-        else:
-            raise RuntimeError("Illegal job store type.")
-
-    def setUp(self):
-        super().setUp()
-        testDir = self._createTempDir()
-        self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
-        self.options.logLevel = "INFO"
-        self.options.workDir = testDir
-        self.options.clean = "always"
-        self.options.logFile = os.path.join(testDir, "logFile")
-
     # Tests for the various defer possibilities
-    def testDeferredFunctionRunsWithMethod(self):
+    def testDeferredFunctionRunsWithMethod(
+        self, tmp_path: Path, options: Namespace
+    ) -> None:
         """
         Refer docstring in _testDeferredFunctionRuns.
         Test with Method
         """
-        self._testDeferredFunctionRuns(_writeNonLocalFilesMethod)
+        self._testDeferredFunctionRuns(tmp_path, options, _writeNonLocalFilesMethod)
 
-    def testDeferredFunctionRunsWithClassMethod(self):
+    def testDeferredFunctionRunsWithClassMethod(
+        self, tmp_path: Path, options: Namespace
+    ) -> None:
         """
         Refer docstring in _testDeferredFunctionRuns.
         Test with Class Method
         """
-        self._testDeferredFunctionRuns(_writeNonLocalFilesClassMethod)
+        self._testDeferredFunctionRuns(
+            tmp_path, options, _writeNonLocalFilesClassMethod
+        )
 
-    def testDeferredFunctionRunsWithLambda(self):
+    def testDeferredFunctionRunsWithLambda(
+        self, tmp_path: Path, options: Namespace
+    ) -> None:
         """
         Refer docstring in _testDeferredFunctionRuns.
         Test with Lambda
         """
-        self._testDeferredFunctionRuns(_writeNonLocalFilesLambda)
+        self._testDeferredFunctionRuns(tmp_path, options, _writeNonLocalFilesLambda)
 
-    def _testDeferredFunctionRuns(self, callableFn):
+    def _testDeferredFunctionRuns(
+        self,
+        tmp_path: Path,
+        options: Namespace,
+        callableFn: Callable[[Job, tuple[Path, Path]], None],
+    ) -> None:
         """
         Create 2 files. Make a job that writes data to them. Register a deferred function that
         deletes the two files (one passed as an arg, and one as a kwarg) and later assert that
@@ -85,20 +94,24 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         :param function callableFn: The function to use in the test.
         :return: None
         """
-        workdir = self._createTempDir(purpose="nonLocalDir")
-        nonLocalFile1 = os.path.join(workdir, str(uuid4()))
-        nonLocalFile2 = os.path.join(workdir, str(uuid4()))
-        open(nonLocalFile1, "w").close()
-        open(nonLocalFile2, "w").close()
-        assert os.path.exists(nonLocalFile1)
-        assert os.path.exists(nonLocalFile2)
+        workdir = tmp_path / "nonLocalDir"
+        workdir.mkdir()
+        nonLocalFile1 = workdir / str(uuid4())
+        nonLocalFile2 = workdir / str(uuid4())
+        nonLocalFile1.touch()
+        nonLocalFile2.touch()
+        assert nonLocalFile1.exists()
+        assert nonLocalFile2.exists()
         A = Job.wrapJobFn(callableFn, files=(nonLocalFile1, nonLocalFile2))
-        Job.Runner.startToil(A, self.options)
-        assert not os.path.exists(nonLocalFile1)
-        assert not os.path.exists(nonLocalFile2)
+        Job.Runner.startToil(A, options)
+        assert not nonLocalFile1.exists()
+        assert not nonLocalFile2.exists()
 
     @slow
-    def testDeferredFunctionRunsWithFailures(self):
+    @pytest.mark.slow
+    def testDeferredFunctionRunsWithFailures(
+        self, options: Namespace, tmp_path: Path
+    ) -> None:
         """
         Create 2 non local filesto use as flags.  Create a job that registers a function that
         deletes one non local file.  If that file exists, the job SIGKILLs itself. If it doesn't
@@ -114,23 +127,30 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         Incidentally, this also tests for multiple registered deferred functions, and the case
         where a deferred function fails (since the first file doesn't exist on the retry).
         """
-        self.options.retryCount = 1
-        workdir = self._createTempDir(purpose="nonLocalDir")
-        nonLocalFile1 = os.path.join(workdir, str(uuid4()))
-        nonLocalFile2 = os.path.join(workdir, str(uuid4()))
-        open(nonLocalFile1, "w").close()
-        open(nonLocalFile2, "w").close()
-        assert os.path.exists(nonLocalFile1)
-        assert os.path.exists(nonLocalFile2)
+        options.retryCount = 1
+        workdir = tmp_path / "nonLocalDir"
+        workdir.mkdir()
+        nonLocalFile1 = workdir / str(uuid4())
+        nonLocalFile2 = workdir / str(uuid4())
+        nonLocalFile1.touch()
+        nonLocalFile2.touch()
+        assert nonLocalFile1.exists()
+        assert nonLocalFile2.exists()
         A = Job.wrapJobFn(
             _deferredFunctionRunsWithFailuresFn, files=(nonLocalFile1, nonLocalFile2)
         )
-        Job.Runner.startToil(A, self.options)
-        assert not os.path.exists(nonLocalFile1)
-        assert not os.path.exists(nonLocalFile2)
+        Job.Runner.startToil(A, options)
+        assert not nonLocalFile1.exists()
+        assert not nonLocalFile2.exists()
 
     @slow
-    def testNewJobsCanHandleOtherJobDeaths(self):
+    @pytest.mark.slow
+    @pytest.mark.skipif(
+        cpu_count() < 2, reason="Not enough CPUs to run two tasks at once"
+    )
+    def testNewJobsCanHandleOtherJobDeaths(
+        self, options: Namespace, tmp_path: Path
+    ) -> None:
         """
         Create 2 non-local files and then create 2 jobs. The first job registers a deferred job
         to delete the second non-local file, deletes the first non-local file and then kills
@@ -141,19 +161,16 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         end of the run.
         """
 
-        # Check to make sure we can run two jobs in parallel
-        cpus = cpu_count()
-        assert cpus >= 2, "Not enough CPUs to run two tasks at once"
-
         # There can be no retries
-        self.options.retryCount = 0
-        workdir = self._createTempDir(purpose="nonLocalDir")
-        nonLocalFile1 = os.path.join(workdir, str(uuid4()))
-        nonLocalFile2 = os.path.join(workdir, str(uuid4()))
-        open(nonLocalFile1, "w").close()
-        open(nonLocalFile2, "w").close()
-        assert os.path.exists(nonLocalFile1)
-        assert os.path.exists(nonLocalFile2)
+        options.retryCount = 0
+        workdir = tmp_path / "nonLocalDir"
+        workdir.mkdir()
+        nonLocalFile1 = workdir / str(uuid4())
+        nonLocalFile2 = workdir / str(uuid4())
+        nonLocalFile1.touch()
+        nonLocalFile2.touch()
+        assert nonLocalFile1.exists()
+        assert nonLocalFile2.exists()
         files = [nonLocalFile1, nonLocalFile2]
         root = Job()
         # A and B here must run in parallel for this to work
@@ -169,11 +186,13 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         root.addChild(B)
         B.addChild(C)
         try:
-            Job.Runner.startToil(root, self.options)
-        except FailedJobsException as e:
+            Job.Runner.startToil(root, options)
+        except FailedJobsException:
             pass
 
-    def testBatchSystemCleanupCanHandleWorkerDeaths(self):
+    def testBatchSystemCleanupCanHandleWorkerDeaths(
+        self, options: Namespace, tmp_path: Path
+    ) -> None:
         """
         Create some non-local files. Create a job that registers a deferred
         function to delete the file and then kills its worker.
@@ -184,17 +203,17 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         """
 
         # There can be no retries
-        self.options.retryCount = 0
-        workdir = self._createTempDir(purpose="nonLocalDir")
-        nonLocalFile1 = os.path.join(workdir, str(uuid4()))
-        nonLocalFile2 = os.path.join(workdir, str(uuid4()))
+        options.retryCount = 0
+        workdir = tmp_path / "nonLocalDir"
+        workdir.mkdir()
+        nonLocalFile1 = workdir / str(uuid4())
+        nonLocalFile2 = workdir / str(uuid4())
         # The first file has to be non zero or meseeks will go into an infinite sleep
-        file1 = open(nonLocalFile1, "w")
-        file1.write("test")
-        file1.close()
-        open(nonLocalFile2, "w").close()
-        assert os.path.exists(nonLocalFile1)
-        assert os.path.exists(nonLocalFile2)
+        with nonLocalFile1.open("w") as file1:
+            file1.write("test")
+        nonLocalFile2.touch()
+        assert nonLocalFile1.exists()
+        assert nonLocalFile2.exists()
         # We only use the "A" job here, and we fill in the first file, so all
         # it will do is defer deleting the second file, delete the first file,
         # and die.
@@ -202,117 +221,111 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
             _testNewJobsCanHandleOtherJobDeaths_A, files=(nonLocalFile1, nonLocalFile2)
         )
         try:
-            Job.Runner.startToil(A, self.options)
+            Job.Runner.startToil(A, options)
         except FailedJobsException:
             pass
-        assert not os.path.exists(nonLocalFile1)
-        assert not os.path.exists(nonLocalFile2)
+        assert not nonLocalFile1.exists()
+        assert not nonLocalFile2.exists()
 
 
-def _writeNonLocalFilesMethod(job, files):
+def _writeNonLocalFilesMethod(job: Job, files: tuple[Path, Path]) -> None:
     """
     Write some data to 2 files.  Pass them to a registered deferred method.
 
     :param tuple files: the tuple of the two files to work with
-    :return: None
     """
     for nlf in files:
-        with open(nlf, "wb") as nonLocalFileHandle:
+        with nlf.open("wb") as nonLocalFileHandle:
             nonLocalFileHandle.write(os.urandom(1 * 1024 * 1024))
     job.defer(_deleteMethods._deleteFileMethod, files[0], nlf=files[1])
-    return None
 
 
-def _writeNonLocalFilesClassMethod(job, files):
+def _writeNonLocalFilesClassMethod(job: Job, files: tuple[Path, Path]) -> None:
     """
     Write some data to 2 files.  Pass them to a registered deferred class method.
 
     :param tuple files: the tuple of the two files to work with
-    :return: None
     """
     for nlf in files:
-        with open(nlf, "wb") as nonLocalFileHandle:
+        with nlf.open("wb") as nonLocalFileHandle:
             nonLocalFileHandle.write(os.urandom(1 * 1024 * 1024))
     job.defer(_deleteMethods._deleteFileClassMethod, files[0], nlf=files[1])
-    return None
 
 
-def _writeNonLocalFilesLambda(job, files):
+def _writeNonLocalFilesLambda(job: Job, files: tuple[Path, Path]) -> None:
     """
     Write some data to 2 files.  Pass them to a registered deferred Lambda.
 
     :param tuple files: the tuple of the two files to work with
-    :return: None
     """
-    lmd = lambda x, nlf: [os.remove(x), os.remove(nlf)]
+
+    def lmd(x: Path, nlf: Path) -> None:
+        x.unlink()
+        nlf.unlink()
     for nlf in files:
-        with open(nlf, "wb") as nonLocalFileHandle:
+        with nlf.open("wb") as nonLocalFileHandle:
             nonLocalFileHandle.write(os.urandom(1 * 1024 * 1024))
     job.defer(lmd, files[0], nlf=files[1])
-    return None
 
 
-def _deferredFunctionRunsWithFailuresFn(job, files):
+def _deferredFunctionRunsWithFailuresFn(job: Job, files: tuple[Path, Path]) -> None:
     """
     Refer testDeferredFunctionRunsWithFailures
 
     :param tuple files: the tuple of the two files to work with
-    :return: None
     """
     job.defer(_deleteFile, files[0])
-    if os.path.exists(files[0]):
+    if files[0].exists():
         os.kill(os.getpid(), signal.SIGKILL)
     else:
-        assert os.path.exists(files[1])
+        assert files[1].exists()
         job.defer(_deleteFile, files[1])
 
 
-def _deleteFile(nonLocalFile, nlf=None):
+def _deleteFile(nonLocalFile: Path, nlf: Optional[Path] = None) -> None:
     """
     Delete nonLocalFile and nlf
-    :param str nonLocalFile:
-    :param str nlf:
-    :return: None
+    :param nonLocalFile:
+    :param nlf:
     """
     logger.debug("Removing file: %s", nonLocalFile)
-    os.remove(nonLocalFile)
+    nonLocalFile.unlink()
     logger.debug("Successfully removed file: %s", nonLocalFile)
     if nlf is not None:
         logger.debug("Removing file: %s", nlf)
-        os.remove(nlf)
+        nlf.unlink()
         logger.debug("Successfully removed file: %s", nlf)
 
 
-def _testNewJobsCanHandleOtherJobDeaths_A(job, files):
+def _testNewJobsCanHandleOtherJobDeaths_A(job: Job, files: tuple[Path, Path]) -> None:
     """
     Defer deletion of files[1], then wait for _testNewJobsCanHandleOtherJobDeaths_B to
     start up, and finally delete files[0] before sigkilling self.
 
     :param tuple files: the tuple of the two files to work with
-    :return: None
     """
 
     # Write the pid to files[1] such that we can be sure that this process has died before
     # we spawn the next job that will do the cleanup.
-    with open(files[1], "w") as fileHandle:
+    with files[1].open("w") as fileHandle:
         fileHandle.write(str(os.getpid()))
     job.defer(_deleteFile, files[1])
     logger.info("Deferred delete of %s", files[1])
-    while os.stat(files[0]).st_size == 0:
+    while files[0].stat().st_size == 0:
         time.sleep(0.5)
-    os.remove(files[0])
+    files[0].unlink()
     os.kill(os.getpid(), signal.SIGKILL)
 
 
-def _testNewJobsCanHandleOtherJobDeaths_B(job, files):
+def _testNewJobsCanHandleOtherJobDeaths_B(job: Job, files: tuple[Path, Path]) -> None:
     # Write something to files[0] such that we can be sure that this process has started
     # before _testNewJobsCanHandleOtherJobDeaths_A kills itself.
-    with open(files[0], "w") as fileHandle:
+    with files[0].open("w") as fileHandle:
         fileHandle.write(str(os.getpid()))
-    while os.path.exists(files[0]):
+    while files[0].exists():
         time.sleep(0.5)
     # Get the pid of _testNewJobsCanHandleOtherJobDeaths_A and wait for it to truly be dead.
-    with open(files[1]) as fileHandle:
+    with files[1].open() as fileHandle:
         pid = int(fileHandle.read())
     assert pid > 0
     while psutil.pid_exists(pid):
@@ -321,37 +334,37 @@ def _testNewJobsCanHandleOtherJobDeaths_B(job, files):
     # spawn the next job
 
 
-def _testNewJobsCanHandleOtherJobDeaths_C(job, files, expectedResult):
+def _testNewJobsCanHandleOtherJobDeaths_C(
+    job: Job, files: Sequence[Path], expectedResult: bool
+) -> None:
     """
     Asserts whether the files exist or not.
 
-    :param Job job: Job
-    :param list files: list of files to test
-    :param bool expectedResult: Are we expecting the files to exist or not?
+    :param job: Job
+    :param files: list of files to test
+    :param expectedResult: Are we expecting the files to exist or not?
     """
     for testFile in files:
-        assert os.path.exists(testFile) is expectedResult
+        assert testFile.exists() is expectedResult
 
 
 class _deleteMethods:
     @staticmethod
-    def _deleteFileMethod(nonLocalFile, nlf=None):
+    def _deleteFileMethod(nonLocalFile: Path, nlf: Optional[Path] = None) -> None:
         """
         Delete nonLocalFile and nlf
-
-        :return: None
         """
-        os.remove(nonLocalFile)
+        nonLocalFile.unlink()
         if nlf is not None:
-            os.remove(nlf)
+            nlf.unlink()
 
     @classmethod
-    def _deleteFileClassMethod(cls, nonLocalFile, nlf=None):
+    def _deleteFileClassMethod(
+        cls, nonLocalFile: Path, nlf: Optional[Path] = None
+    ) -> None:
         """
         Delete nonLocalFile and nlf
-
-        :return: None
         """
-        os.remove(nonLocalFile)
+        nonLocalFile.unlink()
         if nlf is not None:
-            os.remove(nlf)
+            nlf.unlink()

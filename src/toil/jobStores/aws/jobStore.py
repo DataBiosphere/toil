@@ -86,13 +86,14 @@ from toil.lib.retry import get_error_status
 from toil.version import version
 from toil.lib.aws.session import establish_boto3_session
 from toil.job import JobDescription, Job
+from toil.lib.url import URLAccess
 
 
 DEFAULT_AWS_PART_SIZE = 52428800
 logger = logging.getLogger(__name__)
 
 
-class AWSJobStore(AbstractJobStore):
+class AWSJobStore(AbstractJobStore, URLAccess):
     """
     # The AWS jobstore can be thought of as an AWS s3 bucket, with functions to
     # centralize, store, and track files for the workflow.

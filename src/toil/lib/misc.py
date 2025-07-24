@@ -9,10 +9,16 @@ import sys
 import time
 from collections.abc import Iterator
 from contextlib import closing
-from typing import Optional
+from typing import Optional, Union
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    from typing_extensions import TypeAlias
 
 logger = logging.getLogger(__name__)
 
+StrPath: TypeAlias = Union[str, os.PathLike[str]]
+FileDescriptorOrPath: TypeAlias = Union[int, bytes, os.PathLike[bytes], StrPath]
 
 def get_public_ip() -> str:
     """Get the IP that this machine uses to contact the internet.
@@ -21,7 +27,7 @@ def get_public_ip() -> str:
     try:
         # Try to get the internet-facing IP by attempting a connection
         # to a non-existent server and reading what IP was used.
-        ip = "127.0.0.1"
+        ip: str = "127.0.0.1"
         with closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as sock:
             # 203.0.113.0/24 is reserved as TEST-NET-3 by RFC 5737, so
             # there is guaranteed to be no one listening on the other

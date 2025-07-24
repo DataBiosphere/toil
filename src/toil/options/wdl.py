@@ -86,3 +86,25 @@ def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         default=None,
         help=suppress_help or "Keep and return all call outputs as workflow outputs"
     )
+
+    strict_arguments = ["--wdlStrict"] + (
+        ["--strict"] if not suppress else []
+    )
+    parser.add_argument(
+        *strict_arguments,
+        dest="strict",
+        type=strtobool,
+        default=False,
+        help=suppress_help or "Exit runner if workflow has any lint warnings"
+    )
+
+    quant_check_arguments = ["--wdlQuantCheck"] + (
+        ["--quantCheck"] if not suppress else []
+    )
+    parser.add_argument(
+        *quant_check_arguments,
+        dest="quant_check",
+        type=strtobool,
+        default=True,
+        help=suppress_help or "Whether to relax quantifier validation rules"
+    )

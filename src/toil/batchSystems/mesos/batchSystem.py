@@ -40,6 +40,7 @@ from toil.batchSystems.abstractBatchSystem import (
 from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.batchSystems.mesos import JobQueue, MesosShape, TaskData, ToilJob
 from toil.batchSystems.options import OptionSetter
+from toil.common import Config
 from toil.job import JobDescription
 from toil.lib.conversions import b_to_mib, mib_to_b
 from toil.lib.memoize import strict_bool
@@ -61,22 +62,26 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
     """
 
     @classmethod
-    def supportsAutoDeployment(cls):
+    def supportsAutoDeployment(cls) -> bool:
         return True
 
     @classmethod
-    def supportsWorkerCleanup(cls):
+    def supportsWorkerCleanup(cls) -> bool:
         return True
 
     class ExecutorInfo:
-        def __init__(self, nodeAddress, agentId, nodeInfo, lastSeen):
+        def __init__(
+            self, nodeAddress: str, agentId: str, nodeInfo: str, lastSeen: str
+        ) -> None:
             super().__init__()
             self.nodeAddress = nodeAddress
             self.agentId = agentId
             self.nodeInfo = nodeInfo
             self.lastSeen = lastSeen
 
-    def __init__(self, config, maxCores, maxMemory, maxDisk):
+    def __init__(
+        self, config: Config, maxCores: float, maxMemory: float, maxDisk: int
+    ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
 
         # The auto-deployed resource representing the user script. Will be passed along in every
@@ -97,6 +102,9 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
         self.mesos_name = config.mesos_name
         if config.mesos_framework_id is not None:
             self.mesos_framework_id = config.mesos_framework_id
+
+        # How long in seconds to wait to register before declaring Mesos unreachable.
+        self.mesos_timeout = 60
 
         # Written to when Mesos kills tasks, as directed by Toil.
         # Jobs must not enter this set until they are removed from runningJobMap.
@@ -165,13 +173,13 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
 
         self._startDriver(config)
 
-    def setUserScript(self, userScript):
+    def setUserScript(self, userScript: str) -> None:
         self.userScript = userScript
 
-    def ignoreNode(self, nodeAddress):
+    def ignoreNode(self, nodeAddress: str) -> None:
         self.ignoredNodes.add(nodeAddress)
 
-    def unignoreNode(self, nodeAddress):
+    def unignoreNode(self, nodeAddress: str) -> None:
         self.ignoredNodes.remove(nodeAddress)
 
     def issueBatchJob(
@@ -179,7 +187,7 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
         command: str,
         jobNode: JobDescription,
         job_environment: Optional[dict[str, str]] = None,
-    ):
+    ) -> str:
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory
         is an int giving the number of bytes the job needs to run in and cores is the number of cpus
@@ -340,16 +348,37 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
             framework.roles = config.mesos_role
             framework.capabilities = [dict(type="MULTI_ROLE")]
 
+        endpoint = self._resolveAddress(self.mesos_endpoint)
+        log.info("Connecting to Mesos at %s...", self.mesos_endpoint)
+
         # Make the driver which implements most of the scheduler logic and calls back to us for the user-defined parts.
         # Make sure it will call us with nice namespace-y addicts
         self.driver = MesosSchedulerDriver(
             self,
             framework,
-            self._resolveAddress(self.mesos_endpoint),
+            endpoint,
             use_addict=True,
             implicit_acknowledgements=True,
         )
         self.driver.start()
+
+        wait_count = 0
+        while self.frameworkId is None:
+            # Wait to register with Mesos, and eventually fail if it just isn't
+            # responding.
+
+            # TODO: Use a condition instead of a spin wait.
+
+            if wait_count >= self.mesos_timeout:
+                error_message = f"Could not connect to Mesos endpoint at {self.mesos_endpoint}"
+                log.error(error_message)
+                self.shutdown()
+                raise RuntimeError(error_message)
+            elif wait_count > 1 and wait_count % 10 == 0:
+                log.warning("Waiting for Mesos registration (try %s/%s)", wait_count, self.mesos_timeout)
+            time.sleep(1)
+            wait_count += 1
+
 
     @staticmethod
     def _resolveAddress(address):
@@ -389,9 +418,16 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
         """
         Invoked when the scheduler successfully registers with a Mesos master
         """
-        log.debug("Registered with framework ID %s", frameworkId.value)
+        log.info("Registered with Mesos as framework ID %s", frameworkId.value)
         # Save the framework ID
         self.frameworkId = frameworkId.value
+
+    def error(self, driver, message):
+        """
+        Invoked when Mesos reports an unrecoverable error.
+        """
+        log.error("Mesos error: %s", message)
+        super().error(driver, message)
 
     def _declineAllOffers(self, driver, offers):
         for offer in offers:

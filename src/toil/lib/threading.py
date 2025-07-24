@@ -36,12 +36,13 @@ import psutil
 
 from toil.lib.exceptions import raise_
 from toil.lib.io import robust_rmtree
+from toil.lib.misc import StrPath
 
 logger = logging.getLogger(__name__)
 
 
 def ensure_filesystem_lockable(
-    path: str, timeout: float = 30, hint: Optional[str] = None
+    path: StrPath, timeout: float = 30, hint: Optional[str] = None
 ) -> None:
     """
     Make sure that the filesystem used at the given path is one where locks are safe to use.
@@ -71,7 +72,7 @@ def ensure_filesystem_lockable(
             # Start a child process to stat the path. See <https://unix.stackexchange.com/a/402236>.
             # We really should call statfs but no bindings for it are in PyPI.
             completed = subprocess.run(
-                ["stat", "-f", "-c", "%T", path],
+                ["stat", "-f", "-c", "%T", str(path)],
                 check=True,
                 capture_output=True,
                 timeout=timeout,
@@ -85,7 +86,7 @@ def ensure_filesystem_lockable(
             # Stat didn't work. Maybe we don't have the right version of stat installed?
             logger.warning(
                 "Could not determine filesystem type at %s because of: %s",
-                path,
+                str(path),
                 e.stderr.decode("utf-8", errors="replace").strip(),
             )
             # If we don't know the filesystem type, keep going anyway.
@@ -107,7 +108,7 @@ def ensure_filesystem_lockable(
             # flaky with regard to locks actually locking anything).
             logger.debug(
                 "Detected that %s has lockable filesystem type: %s",
-                path,
+                str(path),
                 filesystem_type,
             )
 
@@ -518,7 +519,7 @@ def process_name_exists(base_dir: str, name: str) -> bool:
 # Similar to the process naming system above, we define a global mutex system
 # for critical sections, based just around file locks.
 @contextmanager
-def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
+def global_mutex(base_dir: StrPath, mutex: str) -> Iterator[None]:
     """
     Context manager that locks a mutex. The mutex is identified by the given
     name, and scoped to the given directory. Works across all containers that
@@ -527,7 +528,7 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
 
     Only works between processes, NOT between threads.
 
-    :param str base_dir: Base directory to work in. Defines the shared namespace.
+    :param base_dir: Base directory to work in. Defines the shared namespace.
     :param str mutex: Mutex to lock. Must be a permissible path component.
     """
 
@@ -674,7 +675,7 @@ class LastProcessStandingArena:
     Consider using a try/finally; this class is not a context manager.
     """
 
-    def __init__(self, base_dir: str, name: str) -> None:
+    def __init__(self, base_dir: StrPath, name: str) -> None:
         """
         Connect to the arena specified by the given base_dir and name.
 
@@ -683,12 +684,12 @@ class LastProcessStandingArena:
 
         Doesn't enter or leave the arena.
 
-        :param str base_dir: Base directory to work in. Defines the shared namespace.
-        :param str name: Name of the arena. Must be a permissible path component.
+        :param base_dir: Base directory to work in. Defines the shared namespace.
+        :param name: Name of the arena. Must be a permissible path component.
         """
 
         # Save the base_dir which namespaces everything
-        self.base_dir = base_dir
+        self.base_dir = str(base_dir)
 
         # We need a mutex name to allow only one process to be entering or
         # leaving at a time.
