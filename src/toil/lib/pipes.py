@@ -15,64 +15,64 @@ log = logging.getLogger(__name__)
 
 class WritablePipe(ABC):
     """
-    # An object-oriented wrapper for os.pipe. Clients should subclass it, implement
-    # :meth:`.readFrom` to consume the readable end of the pipe, then instantiate the class as a
-    # context manager to get the writable end. See the example below.
-    #
-    # >>> import sys, shutil
-    # >>> class MyPipe(WritablePipe):
-    # ...     def readFrom(self, readable):
-    # ...         shutil.copyfileobj(codecs.getreader('utf-8')(readable), sys.stdout)
-    # >>> with MyPipe() as writable:
-    # ...     _ = writable.write('Hello, world!\\n'.encode('utf-8'))
-    # Hello, world!
-    #
-    # Each instance of this class creates a thread and invokes the readFrom method in that thread.
-    # The thread will be join()ed upon normal exit from the context manager, i.e. the body of the
-    # `with` statement. If an exception occurs, the thread will not be joined but a well-behaved
-    # :meth:`.readFrom` implementation will terminate shortly thereafter due to the pipe having
-    # been closed.
-    #
-    # Now, exceptions in the reader thread will be reraised in the main thread:
-    #
-    # >>> class MyPipe(WritablePipe):
-    # ...     def readFrom(self, readable):
-    # ...         raise RuntimeError('Hello, world!')
-    # >>> with MyPipe() as writable:
-    # ...     pass
-    # Traceback (most recent call last):
-    # ...
-    # RuntimeError: Hello, world!
-    #
-    # More complicated, less illustrative tests:
-    #
-    # Same as above, but proving that handles are closed:
-    #
-    # >>> x = os.dup(0); os.close(x)
-    # >>> class MyPipe(WritablePipe):
-    # ...     def readFrom(self, readable):
-    # ...         raise RuntimeError('Hello, world!')
-    # >>> with MyPipe() as writable:
-    # ...     pass
-    # Traceback (most recent call last):
-    # ...
-    # RuntimeError: Hello, world!
-    # >>> y = os.dup(0); os.close(y); x == y
-    # True
-    #
-    # Exceptions in the body of the with statement aren't masked, and handles are closed:
-    #
-    # >>> x = os.dup(0); os.close(x)
-    # >>> class MyPipe(WritablePipe):
-    # ...     def readFrom(self, readable):
-    # ...         pass
-    # >>> with MyPipe() as writable:
-    # ...     raise RuntimeError('Hello, world!')
-    # Traceback (most recent call last):
-    # ...
-    # RuntimeError: Hello, world!
-    # >>> y = os.dup(0); os.close(y); x == y
-    # True
+    An object-oriented wrapper for os.pipe. Clients should subclass it, implement
+    :meth:`.readFrom` to consume the readable end of the pipe, then instantiate the class as a
+    context manager to get the writable end. See the example below.
+
+    >>> import sys, shutil
+    >>> class MyPipe(WritablePipe):
+    ...     def readFrom(self, readable):
+    ...         shutil.copyfileobj(codecs.getreader('utf-8')(readable), sys.stdout)
+    >>> with MyPipe() as writable:
+    ...     _ = writable.write('Hello, world!\\n'.encode('utf-8'))
+    Hello, world!
+
+    Each instance of this class creates a thread and invokes the readFrom method in that thread.
+    The thread will be join()ed upon normal exit from the context manager, i.e. the body of the
+    `with` statement. If an exception occurs, the thread will not be joined but a well-behaved
+    :meth:`.readFrom` implementation will terminate shortly thereafter due to the pipe having
+    been closed.
+
+    Now, exceptions in the reader thread will be reraised in the main thread:
+
+    >>> class MyPipe(WritablePipe):
+    ...     def readFrom(self, readable):
+    ...         raise RuntimeError('Hello, world!')
+    >>> with MyPipe() as writable:
+    ...     pass
+    Traceback (most recent call last):
+    ...
+    RuntimeError: Hello, world!
+
+    More complicated, less illustrative tests:
+
+    Same as above, but proving that handles are closed:
+
+    >>> x = os.dup(0); os.close(x)
+    >>> class MyPipe(WritablePipe):
+    ...     def readFrom(self, readable):
+    ...         raise RuntimeError('Hello, world!')
+    >>> with MyPipe() as writable:
+    ...     pass
+    Traceback (most recent call last):
+    ...
+    RuntimeError: Hello, world!
+    >>> y = os.dup(0); os.close(y); x == y
+    True
+
+    Exceptions in the body of the with statement aren't masked, and handles are closed:
+
+    >>> x = os.dup(0); os.close(x)
+    >>> class MyPipe(WritablePipe):
+    ...     def readFrom(self, readable):
+    ...         pass
+    >>> with MyPipe() as writable:
+    ...     raise RuntimeError('Hello, world!')
+    Traceback (most recent call last):
+    ...
+    RuntimeError: Hello, world!
+    >>> y = os.dup(0); os.close(y); x == y
+    True
     """
     def __init__(self, encoding: Optional[str] = None, errors: Optional[str] = None) -> None:
         """
@@ -121,7 +121,7 @@ class WritablePipe(ABC):
                     os.close(self.readable_fh)
                 except OSError as e:
                     # OSError: [Errno 9] Bad file descriptor implies this file handle is already closed
-                    if not e.errno == 9:
+                    if not e.errno == errno.EBADF:
                         raise e
 
     @abstractmethod
@@ -146,64 +146,64 @@ class WritablePipe(ABC):
 
 class ReadablePipe(ABC):
     """
-    # An object-oriented wrapper for os.pipe. Clients should subclass it, implement
-    # :meth:`.writeTo` to place data into the writable end of the pipe, then instantiate the class
-    # as a context manager to get the writable end. See the example below.
-    #
-    # >>> import sys, shutil
-    # >>> class MyPipe(ReadablePipe):
-    # ...     def writeTo(self, writable) -> None:
-    # ...         writable.write('Hello, world!\\n'.encode('utf-8'))
-    # >>> with MyPipe() as readable:
-    # ...     shutil.copyfileobj(codecs.getreader('utf-8')(readable), sys.stdout)
-    # Hello, world!
-    #
-    # Each instance of this class creates a thread and invokes the :meth:`.writeTo` method in that
-    # thread. The thread will be join()ed upon normal exit from the context manager, i.e. the body
-    # of the `with` statement. If an exception occurs, the thread will not be joined but a
-    # well-behaved :meth:`.writeTo` implementation will terminate shortly thereafter due to the
-    # pipe having been closed.
-    #
-    # Now, exceptions in the reader thread will be reraised in the main thread:
-    #
-    # >>> class MyPipe(ReadablePipe):
-    # ...     def writeTo(self, writable) -> None:
-    # ...         raise RuntimeError('Hello, world!')
-    # >>> with MyPipe() as readable:
-    # ...     pass
-    # Traceback (most recent call last):
-    # ...
-    # RuntimeError: Hello, world!
-    #
-    # More complicated, less illustrative tests:
-    #
-    # Same as above, but proving that handles are closed:
-    #
-    # >>> x = os.dup(0); os.close(x)
-    # >>> class MyPipe(ReadablePipe):
-    # ...     def writeTo(self, writable):
-    # ...         raise RuntimeError('Hello, world!')
-    # >>> with MyPipe() as readable:
-    # ...     pass
-    # Traceback (most recent call last):
-    # ...
-    # RuntimeError: Hello, world!
-    # >>> y = os.dup(0); os.close(y); x == y
-    # True
-    #
-    # Exceptions in the body of the with statement aren't masked, and handles are closed:
-    #
-    # >>> x = os.dup(0); os.close(x)
-    # >>> class MyPipe(ReadablePipe):
-    # ...     def writeTo(self, writable):
-    # ...         pass
-    # >>> with MyPipe() as readable:
-    # ...     raise RuntimeError('Hello, world!')
-    # Traceback (most recent call last):
-    # ...
-    # RuntimeError: Hello, world!
-    # >>> y = os.dup(0); os.close(y); x == y
-    # True
+    An object-oriented wrapper for os.pipe. Clients should subclass it, implement
+    :meth:`.writeTo` to place data into the writable end of the pipe, then instantiate the class
+    as a context manager to get the writable end. See the example below.
+
+    >>> import sys, shutil
+    >>> class MyPipe(ReadablePipe):
+    ...     def writeTo(self, writable) -> None:
+    ...         writable.write('Hello, world!\\n'.encode('utf-8'))
+    >>> with MyPipe() as readable:
+    ...     shutil.copyfileobj(codecs.getreader('utf-8')(readable), sys.stdout)
+    Hello, world!
+
+    Each instance of this class creates a thread and invokes the :meth:`.writeTo` method in that
+    thread. The thread will be join()ed upon normal exit from the context manager, i.e. the body
+    of the `with` statement. If an exception occurs, the thread will not be joined but a
+    well-behaved :meth:`.writeTo` implementation will terminate shortly thereafter due to the
+    pipe having been closed.
+
+    Now, exceptions in the reader thread will be reraised in the main thread:
+
+    >>> class MyPipe(ReadablePipe):
+    ...     def writeTo(self, writable) -> None:
+    ...         raise RuntimeError('Hello, world!')
+    >>> with MyPipe() as readable:
+    ...     pass
+    Traceback (most recent call last):
+    ...
+    RuntimeError: Hello, world!
+
+    More complicated, less illustrative tests:
+
+    Same as above, but proving that handles are closed:
+
+    >>> x = os.dup(0); os.close(x)
+    >>> class MyPipe(ReadablePipe):
+    ...     def writeTo(self, writable):
+    ...         raise RuntimeError('Hello, world!')
+    >>> with MyPipe() as readable:
+    ...     pass
+    Traceback (most recent call last):
+    ...
+    RuntimeError: Hello, world!
+    >>> y = os.dup(0); os.close(y); x == y
+    True
+
+    Exceptions in the body of the with statement aren't masked, and handles are closed:
+
+    >>> x = os.dup(0); os.close(x)
+    >>> class MyPipe(ReadablePipe):
+    ...     def writeTo(self, writable):
+    ...         pass
+    >>> with MyPipe() as readable:
+    ...     raise RuntimeError('Hello, world!')
+    Traceback (most recent call last):
+    ...
+    RuntimeError: Hello, world!
+    >>> y = os.dup(0); os.close(y); x == y
+    True
     """
 
     @abstractmethod
@@ -266,33 +266,33 @@ class ReadablePipe(ABC):
 
 class ReadableTransformingPipe(ReadablePipe):
     """
-    # A pipe which is constructed around a readable stream, and which provides a
-    # context manager that gives a readable stream.
-    #
-    # Useful as a base class for pipes which have to transform or otherwise visit
-    # bytes that flow through them, instead of just consuming or producing data.
-    #
-    # Clients should subclass it and implement :meth:`.transform`, like so:
-    #
-    # >>> import sys, shutil
-    # >>> class MyPipe(ReadableTransformingPipe):
-    # ...     def transform(self, readable, writable) -> None:
-    # ...         writable.write(readable.read().decode('utf-8').upper().encode('utf-8'))
-    # >>> class SourcePipe(ReadablePipe):
-    # ...     def writeTo(self, writable) -> None:
-    # ...         writable.write('Hello, world!\\n'.encode('utf-8'))
-    # >>> with SourcePipe() as source:
-    # ...     with MyPipe(source) as transformed:
-    # ...         shutil.copyfileobj(codecs.getreader('utf-8')(transformed), sys.stdout)
-    # HELLO, WORLD!
-    #
-    # The :meth:`.transform` method runs in its own thread, and should move data
-    # chunk by chunk instead of all at once. It should finish normally if it
-    # encounters either an EOF on the readable, or a :class:`BrokenPipeError` on
-    # the writable. This means tat it should make sure to actually catch a
-    # :class:`BrokenPipeError` when writing.
-    #
-    # See also: :class:`toil.lib.misc.WriteWatchingStream`.
+    A pipe which is constructed around a readable stream, and which provides a
+    context manager that gives a readable stream.
+
+    Useful as a base class for pipes which have to transform or otherwise visit
+    bytes that flow through them, instead of just consuming or producing data.
+
+    Clients should subclass it and implement :meth:`.transform`, like so:
+
+    >>> import sys, shutil
+    >>> class MyPipe(ReadableTransformingPipe):
+    ...     def transform(self, readable, writable) -> None:
+    ...         writable.write(readable.read().decode('utf-8').upper().encode('utf-8'))
+    >>> class SourcePipe(ReadablePipe):
+    ...     def writeTo(self, writable) -> None:
+    ...         writable.write('Hello, world!\\n'.encode('utf-8'))
+    >>> with SourcePipe() as source:
+    ...     with MyPipe(source) as transformed:
+    ...         shutil.copyfileobj(codecs.getreader('utf-8')(transformed), sys.stdout)
+    HELLO, WORLD!
+
+    The :meth:`.transform` method runs in its own thread, and should move data
+    chunk by chunk instead of all at once. It should finish normally if it
+    encounters either an EOF on the readable, or a :class:`BrokenPipeError` on
+    the writable. This means tat it should make sure to actually catch a
+    :class:`BrokenPipeError` when writing.
+
+    See also: :class:`toil.lib.misc.WriteWatchingStream`.
     """
     def __init__(self, source: IO[Any], encoding: Optional[str] = None, errors: Optional[str] = None) -> None:
         """

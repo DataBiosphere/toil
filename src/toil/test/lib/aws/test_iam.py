@@ -30,7 +30,7 @@ class IAMTest(ToilTest):
 
     def test_permissions_iam(self):
         granted_perms = {
-            "*": {"Action": ["ec2:*", "iam:*", "s3:*", "sdb:*"], "NotAction": []}
+            "*": {"Action": ["ec2:*", "iam:*", "s3:*"], "NotAction": []}
         }
         assert (
             iam.policy_permissions_allow(
@@ -47,7 +47,7 @@ class IAMTest(ToilTest):
         )
 
     def test_negative_permissions_iam(self):
-        granted_perms = {"*": {"Action": ["ec2:*", "s3:*", "sdb:*"], "NotAction": []}}
+        granted_perms = {"*": {"Action": ["ec2:*", "s3:*"], "NotAction": []}}
         assert (
             iam.policy_permissions_allow(
                 granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS

@@ -39,7 +39,7 @@ from toil.jobStores.abstractJobStore import (
     NoSuchJobException,
     NoSuchJobStoreException,
 )
-from toil.jobStores.utils import ReadablePipe, WritablePipe
+from toil.lib.pipes import ReadablePipe, WritablePipe
 from toil.lib.compatibility import compat_bytes
 from toil.lib.io import AtomicFileCreate
 from toil.lib.misc import truncExpBackoff
@@ -671,7 +671,7 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
     ):
         """
         Yields a context manager that can be used to write to the bucket
-        with a stream. See :class:`~toil.jobStores.utils.WritablePipe` for an example.
+        with a stream. See :class:`~toil.lib.pipes.WritablePipe` for an example.
 
         Will throw assertion error if the file shouldn't be updated
         and yet exists.
@@ -692,7 +692,7 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :return: an instance of WritablePipe.
-        :rtype: :class:`~toil.jobStores.utils.writablePipe`
+        :rtype: :class:`~toil.lib.pipes.WritablePipe`
         """
         blob = self.bucket.blob(
             compat_bytes(fileName), encryption_key=self.sseKey if encrypt else None
@@ -715,7 +715,7 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
     def _download_stream(self, fileName, encrypt=True, encoding=None, errors=None):
         """
         Yields a context manager that can be used to read from the bucket
-        with a stream. See :class:`~toil.jobStores.utils.WritablePipe` for an example.
+        with a stream. See :class:`~toil.lib.pipes.WritablePipe` for an example.
 
         :param fileName: name of file in bucket to be read
         :type fileName: str
@@ -730,7 +730,7 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :return: an instance of ReadablePipe.
-        :rtype: :class:`~toil.jobStores.utils.ReadablePipe`
+        :rtype: :class:`~toil.lib.pipes.ReadablePipe`
         """
 
         blob = self.bucket.get_blob(
