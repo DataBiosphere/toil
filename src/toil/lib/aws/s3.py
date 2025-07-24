@@ -175,7 +175,7 @@ def delete_s3_bucket(
 
 
 @retry(errors=[BotoServerError])
-def bucket_exists(s3_resource: "S3ServiceResource", bucket: str) -> Union[bool, Bucket]:
+def bucket_exists(s3_resource: "S3ServiceResource", bucket: str) -> Union[bool, "Bucket"]:
     s3_client = s3_resource.meta.client
     try:
         s3_client.head_bucket(Bucket=bucket)
@@ -189,7 +189,7 @@ def bucket_exists(s3_resource: "S3ServiceResource", bucket: str) -> Union[bool, 
 
 
 @retry(errors=[AWSServerErrors])
-def head_s3_object(bucket: str, key: str, header: Dict[str, Any], region: Optional[str] = None) -> HeadObjectOutputTypeDef:
+def head_s3_object(bucket: str, key: str, header: Dict[str, Any], region: Optional[str] = None) -> "HeadObjectOutputTypeDef":
     """
     Attempt to HEAD an s3 object and return its response.
 
@@ -204,7 +204,7 @@ def head_s3_object(bucket: str, key: str, header: Dict[str, Any], region: Option
 
 
 @retry(errors=[AWSServerErrors])
-def list_multipart_uploads(bucket: str, region: str, prefix: str, max_uploads: int = 1) -> ListMultipartUploadsOutputTypeDef:
+def list_multipart_uploads(bucket: str, region: str, prefix: str, max_uploads: int = 1) -> "ListMultipartUploadsOutputTypeDef":
     s3_client = session.client("s3", region_name=region)
     return s3_client.list_multipart_uploads(Bucket=bucket, MaxUploads=max_uploads, Prefix=prefix)
 
@@ -316,7 +316,7 @@ def parse_s3_uri(uri: str) -> Tuple[str, str]:
     return bucket_name, key_name
 
 
-def list_s3_items(s3_resource: "S3ServiceResource", bucket: str, prefix: str, startafter: Optional[str] = None) -> Iterator[ObjectTypeDef]:
+def list_s3_items(s3_resource: "S3ServiceResource", bucket: str, prefix: str, startafter: Optional[str] = None) -> Iterator["ObjectTypeDef"]:
     s3_client = s3_resource.meta.client
     paginator = s3_client.get_paginator('list_objects_v2')
     kwargs = dict(Bucket=bucket, Prefix=prefix)
@@ -411,7 +411,7 @@ def download_stream(s3_resource: "S3ServiceResource", bucket: str, key: str, che
         raise
 
 
-def download_fileobject(s3_resource: "S3ServiceResource", bucket: Bucket, key: str, fileobj: BytesIO, extra_args: Optional[Dict[Any, Any]] = None) -> None:
+def download_fileobject(s3_resource: "S3ServiceResource", bucket: "Bucket", key: str, fileobj: BytesIO, extra_args: Optional[Dict[Any, Any]] = None) -> None:
     try:
         bucket.download_fileobj(Key=key, Fileobj=fileobj, ExtraArgs=extra_args)
     except s3_resource.meta.client.exceptions.NoSuchKey:
@@ -454,14 +454,14 @@ def s3_key_exists(s3_resource: "S3ServiceResource", bucket: str, key: str, check
             raise
 
 
-def get_s3_object(s3_resource: "S3ServiceResource", bucket: str, key: str, extra_args: Optional[Dict[Any, Any]] = None) -> GetObjectOutputTypeDef:
+def get_s3_object(s3_resource: "S3ServiceResource", bucket: str, key: str, extra_args: Optional[Dict[Any, Any]] = None) -> "GetObjectOutputTypeDef":
     if extra_args is None:
         extra_args = dict()
     s3_client = s3_resource.meta.client
     return s3_client.get_object(Bucket=bucket, Key=key, **extra_args)
 
 
-def put_s3_object(s3_resource: "S3ServiceResource", bucket: str, key: str, body: Union[str, bytes], extra_args: Optional[Dict[Any, Any]] = None) -> PutObjectOutputTypeDef:
+def put_s3_object(s3_resource: "S3ServiceResource", bucket: str, key: str, body: Union[str, bytes], extra_args: Optional[Dict[Any, Any]] = None) -> "PutObjectOutputTypeDef":
     if extra_args is None:
         extra_args = dict()
     s3_client = s3_resource.meta.client
