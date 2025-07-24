@@ -1277,7 +1277,6 @@ class AbstractJobStore(ABC):
     ) -> ContextManager[IO[str]]: ...
 
     @abstractmethod
-    @contextmanager  # type: ignore
     def read_file_stream(
         self,
         file_id: Union[FileID, str],

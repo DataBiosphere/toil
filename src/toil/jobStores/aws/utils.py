@@ -17,7 +17,7 @@ import logging
 import os
 import types
 from ssl import SSLError
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, IO, Optional, cast, Any
 
 from boto3.s3.transfer import TransferConfig
 from botocore.client import Config
@@ -37,7 +37,8 @@ from toil.lib.retry import (
 )
 
 if TYPE_CHECKING:
-    from mypy_boto3_s3 import S3ServiceResource
+    from mypy_boto3_s3 import S3Client, S3ServiceResource
+    from mypy_boto3_s3.type_defs import CopySourceTypeDef
 
 logger = logging.getLogger(__name__)
 
@@ -53,20 +54,21 @@ DIAL_SPECIFIC_REGION_CONFIG = Config(
 )
 
 
-def fileSizeAndTime(localFilePath):
+def fileSizeAndTime(localFilePath: str) -> tuple[int, float]:
     file_stat = os.stat(localFilePath)
     return file_stat.st_size, file_stat.st_mtime
 
 
+# TODO: This function is unused.
 @retry(errors=[AWSServerErrors])
 def uploadFromPath(
     localFilePath: str,
-    resource,
+    resource: "S3ServiceResource",
     bucketName: str,
     fileID: str,
-    headerArgs: Optional[dict] = None,
+    headerArgs: Optional[dict[str, Any]] = None,
     partSize: int = 50 << 20,
-):
+) -> Optional[str]:
     """
     Uploads a file to s3, using multipart uploading if applicable
 
@@ -88,8 +90,12 @@ def uploadFromPath(
     version = uploadFile(
         localFilePath, resource, bucketName, fileID, headerArgs, partSize
     )
+
+    # Only pass along version if we got one.
+    version_args: dict[str, Any] = {"VersionId": version} if version is not None else {}
+
     info = client.head_object(
-        Bucket=bucketName, Key=compat_bytes(fileID), VersionId=version, **headerArgs
+        Bucket=bucketName, Key=compat_bytes(fileID), **version_args, **headerArgs
     )
     size = info.get("ContentLength")
 
@@ -102,13 +108,13 @@ def uploadFromPath(
 
 @retry(errors=[AWSServerErrors])
 def uploadFile(
-    readable,
-    resource,
+    readable: IO[bytes],
+    resource: "S3ServiceResource",
     bucketName: str,
     fileID: str,
-    headerArgs: Optional[dict] = None,
+    headerArgs: Optional[dict[str, Any]] = None,
     partSize: int = 50 << 20,
-):
+) -> Optional[str]:
     """
     Upload a readable object to s3, using multipart uploading if applicable.
     :param readable: a readable stream or a file path to upload to s3
@@ -170,7 +176,7 @@ def copyKeyMultipart(
     sseKey: Optional[str] = None,
     copySourceSseAlgorithm: Optional[str] = None,
     copySourceSseKey: Optional[str] = None,
-):
+) -> Optional[str]:
     """
     Copies a key from a source key to a destination key in multiple parts. Note that if the
     destination key exists it will be overwritten implicitly, and if it does not exist a new
@@ -202,12 +208,11 @@ def copyKeyMultipart(
     :param str copySourceSseAlgorithm: Server-side encryption algorithm for the source.
     :param str copySourceSseKey: Server-side encryption key for the source.
 
-    :rtype: str
     :return: The version of the copied file (or None if versioning is not enabled for dstBucket).
     """
     dstBucket = resource.Bucket(compat_bytes(dstBucketName))
     dstObject = dstBucket.Object(compat_bytes(dstKeyName))
-    copySource = {
+    copySource: "CopySourceTypeDef" = {
         "Bucket": compat_bytes(srcBucketName),
         "Key": compat_bytes(srcKeyName),
     }
@@ -219,23 +224,20 @@ def copyKeyMultipart(
     # object metadata. And we really want it to talk to the source region and
     # not wherever the bucket virtual hostnames go.
     source_region = get_bucket_region(srcBucketName)
-    source_client = cast(
-        "S3Client",
-        session.client(
-            "s3", region_name=source_region, config=DIAL_SPECIFIC_REGION_CONFIG
-        ),
+    source_client = session.client(
+        "s3", region_name=source_region, config=DIAL_SPECIFIC_REGION_CONFIG
     )
 
     # The boto3 functions don't allow passing parameters as None to
     # indicate they weren't provided. So we have to do a bit of work
     # to ensure we only provide the parameters when they are actually
     # required.
-    destEncryptionArgs = {}
+    destEncryptionArgs: dict[str, Any] = {}
     if sseKey is not None:
         destEncryptionArgs.update(
             {"SSECustomerAlgorithm": sseAlgorithm, "SSECustomerKey": sseKey}
         )
-    copyEncryptionArgs = {}
+    copyEncryptionArgs: dict[str, Any] = {}
     if copySourceSseKey is not None:
         copyEncryptionArgs.update(
             {
@@ -288,6 +290,6 @@ def copyKeyMultipart(
     return info.get("VersionId", None)
 
 
-def retryable_ssl_error(e):
+def retryable_ssl_error(e: BaseException) -> bool:
     # https://github.com/BD2KGenomics/toil/issues/978
     return isinstance(e, SSLError) and e.reason == "DECRYPTION_FAILED_OR_BAD_RECORD_MAC"
