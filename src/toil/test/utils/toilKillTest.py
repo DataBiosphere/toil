@@ -48,7 +48,7 @@ class _ToilKillTest:
                 ]
                 kill_cmd = ["toil", "kill", job_store]
                 clean_cmd = ["toil", "clean", job_store]
-                
+
                 try:
                     # run the sleep workflow
                     logger.info("Running workflow: %s", " ".join(run_cmd))

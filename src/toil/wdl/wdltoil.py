@@ -635,7 +635,9 @@ def pack_toil_uri(
 
     :param parent: bare path or URI to the parent of the file. Only one unique
         value may be used for a given parent location. Must be the same as the
-        name parameter of :meth:`toil.lib.directory.encode_directory`.
+        name parameter of :meth:`toil.lib.directory.encode_directory`. May be
+        absolute or relative, but to avoid collisions should only be relative
+        for worker temp storage.
     """
 
     # We urlencode everything, including any slashes. We need to use a slash to
@@ -954,7 +956,9 @@ def choose_human_readable_directory(
     :param root_dir: Directory that the path will be under
     :param source_task_path: The dotted WDL name of whatever generated the
         file. We assume this is an acceptable filename component.
-    :param parent: Directory path or parent URI that the file came from,
+    :param parent: Directory path or parent URI that the file came from. If a
+        path, may be either absolute (on the worker or leader filesystem) or
+        relative.
     """
 
     logger.debug(
@@ -971,12 +975,14 @@ def choose_human_readable_directory(
         # Parent might contain exciting things like "/../" or "///". The spec
         # says the parent is everything up to the last / so we just encode the
         # URL.
-        parent_component = "_toil_url/" + quote(parent, safe="")
+        parent_component = os.path.join("url", quote(parent, safe=""))
     elif parent.startswith("/"):
-        # Make sure we can handle both absolute and relative paths in a sort of
-        # sensible way.
-        # TODO: Will they always be absolute?
-        parent_component = f"_toil_root{parent}"
+        # Absolute source paths need to be stashed somewhere.
+        parent_component = f"root{parent}"
+    else:
+        # Relative source paths need to be kept out of the absolute ones.
+        parent_component = os.path.join("local", parent)
+
 
     if is_any_url(parent):
         # Don't include task name because it's from a URL and invariant across
@@ -1192,7 +1198,7 @@ def virtualize_inodes_in_bindings(
             # TODO: Implement directory virtualization here!
             raise NotImplementedError
 
-        candidate_uri = file_to_metadata[inode.value][0]
+        candidate_uri = file_to_metadata[inode.value].source
         file_id = file_to_id[candidate_uri]
 
         # Work out what the basename for the inode was
@@ -1206,7 +1212,10 @@ def virtualize_inodes_in_bindings(
             )
 
         toil_uri = pack_toil_uri(
-            file_id, task_path, file_to_metadata[inode.value][1], file_basename
+            file_id,
+            task_path,
+            file_to_metadata[inode.value].parent_dir,
+            file_basename,
         )
 
         # Don't mutate the original file object
@@ -1533,7 +1542,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         Extend _devirtualize_file to also work on Directory objects.
         """
 
-        # We track whether files do not exist with the nonexistent flag in order to coerce to Null/error on use
+        # We track whether files do not exist with the nonexistent flag in
+        # order to coerce to Null/error on use
         logger.debug("Devirtualizing %s", inode)
         if get_inode_nonexistent(inode):
             logger.debug("Marked nonexistent so passing it through")
@@ -1952,15 +1962,49 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
             return result
 
+    def _nice_source_name(self, path: str) -> str:
+        """
+        Given a local directory path, produce a nice human-readable version.
+
+        When we send files to other jobs, or export them, those jobs will have
+        to arrange them hierarchically based on the original source path the
+        files had when we virtualized them. But Toil puts a lot of things in
+        ugly temp directories with long hexadecimal workflow IDs and such in
+        them, and we don't want to have those ugly directory names reporduced
+        whenever someone downloads or exports the files.
+
+        So we adjust the real source paths to replace any of the Toil-managed
+        temp directories with descriptive, human-readable paths.
+
+        This means the workflow can't properly reach into the Toil-managed temp
+        directory tree by absolute path and get WDL-specified behavior in
+        there, but it shouldn't be doing that anyway.
+        """
+
+        # We need to use realpath instead of abspath here to account for MacOS
+        # /var and /private/var being the same thing.
+        real_path = os.path.realpath(path)
+        ltd_prefix = os.path.realpath(self._file_store.localTempDir).rstrip("/") + "/"
+
+        if real_path.startswith(ltd_prefix):
+            return real_path[len(ltd_prefix):]
+
+        return path
+
+
     @memoize
     def _virtualize_filename(self, filename: str) -> str:
         """
-        From a local path or other URL, 'virtualize' into the filename as it should present in a File/Directory value.
+        From a local path or other URL, 'virtualize' it to be portable.
 
         New in Toil: the path or URL may not actually exist.
 
-        :param filename: Can be a local file path, URL (http, https, s3, gs), or toilfile
-        :raises FileNotFoundError: if the file doesn't actually exist (new addition in Toil over MiniWDL)
+        :param filename: Can be a local file path, URL (http, https, s3, gs),
+            or toilfile
+        :returns: The value the engine should present to the workflow in a
+            File/Directory value.
+        :raises FileNotFoundError: if the file doesn't actually exist (new
+            addition in Toil over MiniWDL)
         """
 
         if is_toil_url(filename):
@@ -2032,7 +2076,12 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             file_basename = os.path.basename(urlsplit(normalized_uri).path)
             # Get the URL to the parent directory and use that.
             parent_dir = urljoin(normalized_uri, ".")
-            result = pack_toil_uri(imported, self.task_path, parent_dir, file_basename)
+            result = pack_toil_uri(
+                imported,
+                self.task_path,
+                self._nice_source_name(parent_dir),
+                file_basename,
+            )
             logger.debug("Virtualized %s as WDL %s", normalized_uri, result)
             # We can't put the Toil URI in the virtualized_to_devirtualized
             # cache because it would point to the URL instead of a local file
@@ -2062,7 +2111,10 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
             file_dir = os.path.dirname(abs_filename)
             result = pack_toil_uri(
-                file_id, self.task_path, file_dir, os.path.basename(abs_filename)
+                file_id,
+                self.task_path,
+                self._nice_source_name(file_dir),
+                os.path.basename(abs_filename),
             )
             logger.debug("Virtualized %s as WDL %s", filename, result)
             # Remember the upload in case we share a cache
