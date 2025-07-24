@@ -226,7 +226,7 @@ class ExceptionalThread(threading.Thread):
         if not self.is_alive() and self.exc_info is not None:
             exc_type, exc_value, traceback = self.exc_info
             self.exc_info = None
-            raise_(exc_type, exc_value, traceback)  # type: ignore
+            raise_(exc_type, exc_value, traceback) 
 
 
 def cpu_count() -> int:

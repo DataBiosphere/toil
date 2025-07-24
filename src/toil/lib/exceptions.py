@@ -18,6 +18,7 @@ import sys
 from typing import Optional
 import logging
 from urllib.parse import ParseResult
+from types import TracebackType
 
 
 # TODO: isn't this built in to Python 3 now?
@@ -56,7 +57,7 @@ class panic:
         raise_(exc_type, exc_value, traceback)
 
 
-def raise_(exc_type: Optional[str], exc_value: Optional[str], traceback: Optional[str]) -> None:
+def raise_(exc_type: Optional[type[BaseException]], exc_value: Optional[BaseException], traceback: Optional[TracebackType]) -> None:
     if exc_value is not None:
         exc = exc_value
     else:
