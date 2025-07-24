@@ -975,8 +975,8 @@ def choose_human_readable_directory(
     if is_any_url(parent):
         # Parent might contain exciting things like "/../" or "///". The spec
         # says the parent is everything up to the last / so we just encode the
-        # URL.
-        parent_component = os.path.join("url", quote(parent, safe=""))
+        # URL. We alos make sure we can't collide with a task or workflow name.
+        parent_component = os.path.join("@url", quote(parent, safe=""))
 
         # Don't include task name because it's from a URL and invariant across
         # tasks.
@@ -1453,10 +1453,20 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         Set up the standard library.
         :param wdl_options: Options to pass into the standard library to use.
         """
+        if share_files_with is not None:
+            # Use the existing file writing directory
+            write_dir = share_files_with._write_dir
+        else:
+            # We need a new file writing directory.
+
+            # Where should we be writing files that write_file() makes?
+            # This can't be inside the container work dir because the container
+            # work dir needs to not exist until MiniWDL makes it.
+            write_dir = file_store.localTempDir
+
         # TODO: Just always be the 1.2 standard library.
         wdl_version = "1.2"
-        # Where should we be writing files that write_file() makes?
-        write_dir = file_store.getLocalTempDir()
+
         # Set up miniwdl's implementation (which may be WDL.StdLib.TaskOutputs)
         super().__init__(wdl_version, write_dir)
 
@@ -1464,10 +1474,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # to always download the file.
         self.size = NonDownloadingSize(self)
 
+        # Set up _wdl_options
+        self._wdl_options: WDLContext = wdl_options
+
         # Keep the file store around so we can access files.
         self._file_store = file_store
-
-        self._wdl_options: WDLContext = wdl_options
 
         if share_files_with is None:
             # We get fresh file download/upload state
@@ -1487,9 +1498,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             )
 
     @property
-    def execution_dir(self) -> str | None:
-        execution_dir: str | None = self._wdl_options.get("execution_dir")
-        return execution_dir
+    def execution_dir(self) -> str:
+        return self._wdl_options.get("execution_dir", ".")
 
     @property
     def task_path(self) -> str:
@@ -1973,6 +1983,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         """
         Given a local directory path, produce a nice human-readable version.
 
+        The human-readable version may be "" (an empty relative path).
+
         When we send files to other jobs, or export them, those jobs will have
         to arrange them hierarchically based on the original source path the
         files had when we virtualized them. But Toil puts a lot of things in
@@ -1988,16 +2000,30 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         there, but it shouldn't be doing that anyway.
         """
 
+        assert not is_any_url(path), f"URL {path} passed to path niceification function"
+
         # We need to use realpath instead of abspath here to account for MacOS
         # /var and /private/var being the same thing.
-        real_path = os.path.realpath(path)
-        # The main Toil temp directory is here.
-        ltd_prefix = os.path.realpath(self._file_store.localTempDir).rstrip("/") + "/"
-        # The container working directory is here.
-        work_prefix = ltd_prefix + "work/"
+        real_path = os.path.realpath(path).rstrip("/") + "/"
+        # The execution directory is here
+        execution_prefix = os.path.realpath(self.execution_dir).rstrip("/") + "/"
 
-        if real_path.startswith(work_prefix):
-            return real_path[len(work_prefix):]
+        # And the job's local temp directory (where WDL-code-written files might go) is here
+        ltd_prefix = os.path.realpath(self._file_store.localTempDir).rstrip("/") + "/"
+
+        if real_path.startswith(execution_prefix):
+            # This is a task working firectory relative file
+            return real_path[len(execution_prefix):]
+
+        if real_path.startswith(ltd_prefix):
+            # This file is relative to the Toil working directory.
+            #
+            # TODO: How are we allowed to hide this in the task working
+            # directory's hierarchy without a risk of name conflicts?
+            #
+            # We already inject _miniwdl_inputs in there, so just inject
+            # another underscore-prefixed thing.
+            return "_toil_job/" + real_path[len(ltd_prefix):]
 
         return path
 
@@ -2089,7 +2115,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             result = pack_toil_uri(
                 imported,
                 self.task_path,
-                self._nice_source_name(parent_dir),
+                parent_dir,
                 file_basename,
             )
             logger.debug("Virtualized %s as WDL %s", normalized_uri, result)
@@ -2526,7 +2552,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         # So we send a little Bash script that can delimit the files with something, and assume the Bash really is a Bash.
 
         # This needs to run in the work directory that the container used, if any.
-        work_dir = "." if not self.execution_dir else self.execution_dir
+        work_dir = self.execution_dir
 
         # TODO: get this to run in the right container if there is one
         # We would use compgen -G to resolve the glob but that doesn't output
@@ -2585,7 +2611,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         if not is_any_url(filename) and not filename.startswith("/"):
             # We are getting a bare relative path from the WDL side.
             # Find a real path to it relative to the current directory override.
-            work_dir = "." if not self.execution_dir else self.execution_dir
+            work_dir = self.execution_dir
             filename = os.path.join(work_dir, filename)
 
         return super()._devirtualize_filename(filename)
@@ -2605,7 +2631,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         if not is_any_url(filename) and not filename.startswith("/"):
             # We are getting a bare relative path on the supposedly devirtualized side.
             # Find a real path to it relative to the current directory override.
-            work_dir = "." if not self.execution_dir else self.execution_dir
+            work_dir = self.execution_dir
             filename = os.path.join(work_dir, filename)
 
         if filename in self._devirtualized_to_virtualized:
@@ -3003,7 +3029,7 @@ def drop_if_missing(
     else:
         # Get the absolute path, not resolving symlinks
         effective_path = os.path.abspath(
-            os.path.join(work_dir or os.getcwd(), reference)
+            os.path.join(work_dir, reference)
         )
         if os.path.islink(effective_path) or os.path.exists(effective_path):
             # This is a broken symlink or a working symlink or a file/directory.
@@ -3660,7 +3686,9 @@ class WDLTaskWrapperJob(WDLBaseJob):
             runtime_accelerators = [accelerator_requirement]
 
         task_wdl_options = self._wdl_options.copy()
-        # A task is not guaranteed to have access to the current execution directory, so get rid of it. The execution directory also is not needed as all files will be virtualized
+        # A task is not guaranteed to have access to the current execution
+        # directory, so get rid of it. The execution directory also is not
+        # needed as all files will be virtualized
         task_wdl_options.pop("execution_dir")
         # Schedule to get resources. Pass along the bindings from evaluating
         # all the inputs and decls, and the runtime, with files virtualized.
@@ -4021,10 +4049,21 @@ class WDLTaskJob(WDLBaseJob):
             self._wdl_options["namespace"],
         )
 
-        # Set up the WDL standard library
-        # UUID to use for virtualizing files
-        # We process nonexistent files in WDLTaskWrapperJob as those must be run locally, so don't try to devirtualize them
-        standard_library = ToilWDLStdLibBase(file_store, wdl_options=self._wdl_options)
+        # Pick a host directory for if we use a container.
+        host_dir = file_store.localTempDir
+
+        # Adjust the wdl_options so everything sees the working directory of
+        # the command as the working directory.
+        wdl_options: WDLContext = self._wdl_options.copy()
+        # Need to work relative to the command's working directory.
+        # MiniWDL guarantees that this will be "work" under the host directory.
+        # MiniWDL also insists on creating it.
+        wdl_options["execution_dir"] = os.path.join(host_dir, "work")
+
+        # Set up the WDL standard library.
+        # We process nonexistent files in WDLTaskWrapperJob as those must be
+        # run locally, so don't try to devirtualize them.
+        standard_library = ToilWDLStdLibBase(file_store, wdl_options=wdl_options)
 
         # Create mount points and get a mapping of target mount points to locations on disk
         mount_mapping = self.ensure_mount_point(file_store, self._mount_spec)
@@ -4120,10 +4159,6 @@ class WDLTaskJob(WDLBaseJob):
             setattr(TaskContainerImplementation, "toil_initialized__", True)
             # TODO: not thread safe!
 
-        # Records, if we use a container, where its workdir is on our
-        # filesystem, so we can interpret file anmes and globs relative to
-        # there.
-        workdir_in_container: str | None = None
         task_path = self._wdl_options["task_path"]
 
         if self._task.command:
@@ -4147,12 +4182,6 @@ class WDLTaskJob(WDLBaseJob):
             # Make the container object
             # TODO: What is this?
             run_id = str(uuid.uuid4())
-            # Directory on the host where the container is allowed to put
-            # files.
-            host_dir = os.path.abspath(".")
-            # Container working directory is guaranteed (?) by MiniWDL to be at
-            # "work" inside there
-            workdir_in_container = os.path.join(host_dir, "work")
             task_container = TaskContainerImplementation(
                 miniwdl_config, run_id, host_dir
             )
@@ -4317,12 +4346,11 @@ class WDLTaskJob(WDLBaseJob):
                 bindings, get_path_in_container
             )
 
-            # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
-            command_wdl_options: WDLContext = self._wdl_options.copy()
-            if workdir_in_container is not None:
-                command_wdl_options["execution_dir"] = workdir_in_container
+            # Make a new standard library for evaluating the command
+            # specifically, which only deals with in-container paths and
+            # out-of-container paths.
             command_library = ToilWDLStdLibTaskCommand(
-                file_store, task_container, wdl_options=command_wdl_options
+                file_store, task_container, wdl_options=wdl_options
             )
 
             # Work out the command string, and unwrap it
@@ -4431,21 +4459,12 @@ class WDLTaskJob(WDLBaseJob):
             host_stderr_txt = "/dev/null"
 
         # Evaluate all the outputs in their special library context
-        # We need to evaluate globs and relative paths relative to the
-        # container's workdir if any, but everything else doesn't need to seem
-        # to run in the container; there's no way to go from
-        # container-determined strings that are absolute paths to WDL File
-        # objects, and like MiniWDL we can say we only support
-        # working-directory-based relative paths for globs.
-        output_wdl_options: WDLContext = self._wdl_options.copy()
-        if workdir_in_container is not None:
-            output_wdl_options["execution_dir"] = workdir_in_container
         outputs_library = ToilWDLStdLibTaskOutputs(
             file_store,
             host_stdout_txt,
             host_stderr_txt,
             task_container.input_path_map,
-            wdl_options=output_wdl_options,
+            wdl_options=wdl_options,
             share_files_with=standard_library,
         )
         output_bindings = evaluate_decls_to_bindings(
