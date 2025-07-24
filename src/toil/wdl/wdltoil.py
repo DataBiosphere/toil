@@ -2071,7 +2071,16 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
             contents = handle_directory(normalized_uri)
 
-            result = encode_directory(contents, name=normalized_uri, source=self.task_path)
+            if is_file_url(normalized_uri):
+                # For the "name" (source path) field, we need to have a path
+                # for local locations, not a file URI. And it needs to be
+                # prettified, to match what we do for files.
+                name = self._nice_source_name(unquote(urlsplit(normalized_uri).path))
+            else:
+                # For URLs, just pass them through
+                name = normalized_uri
+
+            result = encode_directory(contents, name=name, source=self.task_path)
             self._devirtualized_to_virtualized[normalized_uri] = result
             return result
         elif is_standard_url(normalized_uri):
