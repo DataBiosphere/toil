@@ -463,11 +463,18 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             # associate this job with this file; then the file reference will be deleted when the job is
             self.associate_job_with_file(job_id, file_id)
 
+        # Each file gets a prefix under which we put exactly one key, to hide
+        # metadata in the key.
+        prefix = self._key_in_bucket(
+            identifier=file_id,
+            prefix=self.content_key_prefix
+        )
+
         copy_local_to_s3(
             s3_resource=self.s3_resource,
             local_file_path=local_path,
             dst_bucket=self.bucket_name,
-            dst_key=f'{file_id}/{1 if executable else 0}/{os.path.basename(local_path)}',
+            dst_key=f'{prefix}/{1 if executable else 0}/{os.path.basename(local_path)}',
             extra_args=self.encryption_args
         )
         return FileID(file_id, size, executable)
@@ -480,7 +487,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         )
         s3_keys = [s3_item for s3_item in list_s3_items(self.s3_resource, bucket=self.bucket_name, prefix=prefix)]
         if len(s3_keys) == 0:
-            raise NoSuchFileException(f'File ID: {file_id} not found!')
+            raise NoSuchFileException(file_id)
         if len(s3_keys) > 1:
             # There can be only one.
             raise RuntimeError(f'File ID: {file_id} should be unique, but includes: {s3_keys}')
