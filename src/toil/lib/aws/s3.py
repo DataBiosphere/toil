@@ -38,12 +38,11 @@ from toil.lib.aws.utils import enable_public_objects, flatten_tags
 from toil.lib.conversions import modify_url, MB, MIB, TB
 from toil.lib.pipes import WritablePipe, ReadablePipe, HashingPipe
 
-# This file cannot be imported without boto modules. We need these types to set
-# up @retry annotations, and @retry annotations really need to be passed the
-# real types at import time, since they do annotation-time type checking
-# internally.
+# This file cannot be imported without the botocore/boto3 modules. We need
+# these types to set up @retry annotations, and @retry annotations really need
+# to be passed the real types at import time, since they do annotation-time
+# type checking internally.
 from botocore.exceptions import ClientError
-from boto.exception import BotoServerError, S3ResponseError
 
 from mypy_boto3_s3 import S3Client, S3ServiceResource
 from mypy_boto3_s3.literals import BucketLocationConstraintType
@@ -78,7 +77,7 @@ class AWSBadEncryptionKeyError(Exception):
     pass
 
 
-@retry(errors=[BotoServerError, S3ResponseError, ClientError])
+@retry(errors=[ClientError])
 def create_s3_bucket(
     s3_resource: S3ServiceResource,
     bucket_name: str,
@@ -116,7 +115,7 @@ def create_s3_bucket(
     return bucket
 
 
-@retry(errors=[BotoServerError, S3ResponseError, ClientError])
+@retry(errors=[ClientError])
 def delete_s3_bucket(
     s3_resource: S3ServiceResource,
     bucket_name: str,
@@ -174,7 +173,7 @@ def delete_s3_bucket(
         logger.debug("S3 bucket no longer exists '%s'.", bucket_name)
 
 
-@retry(errors=[BotoServerError])
+@retry(errors=[AWSServerErrors])
 def bucket_exists(s3_resource: S3ServiceResource, bucket: str) -> Union[bool, Bucket]:
     s3_client = s3_resource.meta.client
     try:
@@ -209,7 +208,7 @@ def list_multipart_uploads(bucket: str, region: str, prefix: str, max_uploads: i
     return s3_client.list_multipart_uploads(Bucket=bucket, MaxUploads=max_uploads, Prefix=prefix)
 
 
-@retry(errors=[BotoServerError])
+@retry(errors=[AWSServerErrors])
 def copy_s3_to_s3(s3_resource: S3ServiceResource, src_bucket: str, src_key: str, dst_bucket: str, dst_key: str, extra_args: Optional[Dict[Any, Any]] = None) -> None:
     source = {'Bucket': src_bucket, 'Key': src_key}
     # Note: this may have errors if using sse-c because of
@@ -222,7 +221,7 @@ def copy_s3_to_s3(s3_resource: S3ServiceResource, src_bucket: str, src_key: str,
 
 
 # TODO: Determine specific retries
-@retry(errors=[BotoServerError])
+@retry(errors=[AWSServerErrors])
 def copy_local_to_s3(
         s3_resource: S3ServiceResource,
         local_file_path: str,
@@ -235,7 +234,7 @@ def copy_local_to_s3(
 
 
 # TODO: Determine specific retries
-@retry(errors=[BotoServerError])
+@retry(errors=[AWSServerErrors])
 def copy_s3_to_local(
         s3_resource: S3ServiceResource,
         local_file_path: str,
@@ -327,7 +326,7 @@ def list_s3_items(s3_resource: S3ServiceResource, bucket: str, prefix: str, star
             yield key
 
 
-@retry(errors=[ErrorCondition(error=ClientError, error_codes=[404, 500, 502, 503, 504])])
+@retry(errors=[AWSServerErrors])
 def upload_to_s3(readable: IO[Any],
                  s3_resource: S3ServiceResource,
                  bucket: str,
