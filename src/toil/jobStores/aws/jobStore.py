@@ -924,9 +924,12 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                                      extra_args=self.encryption_args) as readable:
                     callback(readable)
                 items_processed += 1
-        self.write_to_bucket(identifier=LOG_MARKER,
-                             prefix=self.shared_key_prefix,
-                             data=read_log_marker)
+
+        if items_processed > 0:
+            # We processed something, so we need to update the marker.
+            self.write_to_bucket(identifier=LOG_MARKER,
+                                 prefix=self.shared_key_prefix,
+                                 data=read_log_marker)
         return items_processed
 
     def configure_encryption(self, sse_key_path: Optional[str] = None) -> None:
