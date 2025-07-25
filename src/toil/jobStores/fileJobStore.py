@@ -427,7 +427,8 @@ class FileJobStore(AbstractJobStore, URLAccess):
         """
         return open(cls._extract_path_from_url(url), "rb")
 
-    def _write_to_url(self, readable, url, executable=False):
+    @classmethod
+    def _write_to_url(cls, readable, url, executable=False):
         """
         Writes the contents of a file to a source (writes readable to url)
         using a ~10Mb buffer.
@@ -438,7 +439,7 @@ class FileJobStore(AbstractJobStore, URLAccess):
         # we use a ~10Mb buffer to improve speed
         atomic_copyobj(
             readable,
-            self._extract_path_from_url(url),
+            cls._extract_path_from_url(url),
             length=self.BUFFER_SIZE,
             executable=executable,
         )
