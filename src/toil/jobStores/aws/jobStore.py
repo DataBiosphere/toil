@@ -53,6 +53,8 @@ from typing import (
     Literal,
     overload
 )
+
+# This file can't be imported if the AWS modules are not available.
 from botocore.exceptions import ClientError
 
 from toil.fileStores import FileID
@@ -60,24 +62,25 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              JobStoreExistsException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
-from toil.lib.aws.s3 import (create_s3_bucket,
-                             delete_s3_bucket,
-                             bucket_exists,
-                             copy_s3_to_s3,
-                             copy_local_to_s3,
-                             copy_s3_to_local,
-                             parse_s3_uri,
-                             MultiPartPipe,
-                             list_s3_items,
-                             upload_to_s3,
-                             download_stream,
-                             s3_key_exists,
-                             head_s3_object,
-                             get_s3_object,
-                             put_s3_object,
-                             create_public_url,
-                             AWSKeyNotFoundError,
-                             AWSKeyAlreadyExistsError)
+from toil.lib.aws.s3 import (
+    create_s3_bucket,
+    delete_s3_bucket,
+    bucket_exists,
+    copy_s3_to_s3,
+    copy_local_to_s3,
+    copy_s3_to_local,
+    parse_s3_uri,
+    MultiPartPipe,
+    list_s3_items,
+    upload_to_s3,
+    download_stream,
+    s3_key_exists,
+    head_s3_object,
+    get_s3_object,
+    put_s3_object,
+    create_public_url,
+    AWSKeyNotFoundError,
+)
 from toil.lib.aws.utils import get_object_for_url, list_objects_for_url
 from toil.common import Config
 from toil.jobStores.abstractJobStore import NoSuchFileException

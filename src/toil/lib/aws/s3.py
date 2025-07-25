@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import hashlib
 import itertools
 import urllib.parse
@@ -28,14 +29,7 @@ from typing import (Any,
                     cast,
                     Literal,
                     Iterator,
-                    TYPE_CHECKING,
                     IO)
-
-try:
-    from botocore.exceptions import ClientError
-    from boto.exception import BotoServerError, S3ResponseError
-except ImportError:
-    BotoServerError, S3ResponseError, ClientError = Exception, Exception, Exception  # type: ignore
 
 from toil.lib.retry import retry, get_error_status, ErrorCondition
 from toil.lib.misc import printq
@@ -44,11 +38,17 @@ from toil.lib.aws.utils import enable_public_objects, flatten_tags
 from toil.lib.conversions import modify_url, MB, MIB, TB
 from toil.lib.pipes import WritablePipe, ReadablePipe, HashingPipe
 
-if TYPE_CHECKING:
-    from mypy_boto3_s3 import S3Client, S3ServiceResource
-    from mypy_boto3_s3.literals import BucketLocationConstraintType
-    from mypy_boto3_s3.service_resource import Bucket, Object
-    from mypy_boto3_s3.type_defs import ListMultipartUploadsOutputTypeDef, HeadObjectOutputTypeDef, GetObjectOutputTypeDef, PutObjectOutputTypeDef, ObjectTypeDef
+# This file cannot be imported without boto modules. We need these types to set
+# up @retry annotations, and @retry annotations really need to be passed the
+# real types at import time, since they do annotation-time type checking
+# internally.
+from botocore.exceptions import ClientError
+from boto.exception import BotoServerError, S3ResponseError
+
+from mypy_boto3_s3 import S3Client, S3ServiceResource
+from mypy_boto3_s3.literals import BucketLocationConstraintType
+from mypy_boto3_s3.service_resource import Bucket, Object
+from mypy_boto3_s3.type_defs import ListMultipartUploadsOutputTypeDef, HeadObjectOutputTypeDef, GetObjectOutputTypeDef, PutObjectOutputTypeDef, ObjectTypeDef
 
 
 logger = logging.getLogger(__name__)
@@ -80,9 +80,9 @@ class AWSBadEncryptionKeyError(Exception):
 
 @retry(errors=[BotoServerError, S3ResponseError, ClientError])
 def create_s3_bucket(
-    s3_resource: "S3ServiceResource",
+    s3_resource: S3ServiceResource,
     bucket_name: str,
-    region: Union["BucketLocationConstraintType", Literal["us-east-1"]],
+    region: Union[BucketLocationConstraintType, Literal["us-east-1"]],
     tags: Optional[Dict[str, str]] = None,
     public: bool = True
 ) -> "Bucket":
@@ -118,7 +118,7 @@ def create_s3_bucket(
 
 @retry(errors=[BotoServerError, S3ResponseError, ClientError])
 def delete_s3_bucket(
-    s3_resource: "S3ServiceResource",
+    s3_resource: S3ServiceResource,
     bucket_name: str,
     quiet: bool = True
 ) -> None:
@@ -175,7 +175,7 @@ def delete_s3_bucket(
 
 
 @retry(errors=[BotoServerError])
-def bucket_exists(s3_resource: "S3ServiceResource", bucket: str) -> Union[bool, "Bucket"]:
+def bucket_exists(s3_resource: S3ServiceResource, bucket: str) -> Union[bool, Bucket]:
     s3_client = s3_resource.meta.client
     try:
         s3_client.head_bucket(Bucket=bucket)
@@ -189,7 +189,7 @@ def bucket_exists(s3_resource: "S3ServiceResource", bucket: str) -> Union[bool, 
 
 
 @retry(errors=[AWSServerErrors])
-def head_s3_object(bucket: str, key: str, header: Dict[str, Any], region: Optional[str] = None) -> "HeadObjectOutputTypeDef":
+def head_s3_object(bucket: str, key: str, header: Dict[str, Any], region: Optional[str] = None) -> HeadObjectOutputTypeDef:
     """
     Attempt to HEAD an s3 object and return its response.
 
@@ -204,13 +204,13 @@ def head_s3_object(bucket: str, key: str, header: Dict[str, Any], region: Option
 
 
 @retry(errors=[AWSServerErrors])
-def list_multipart_uploads(bucket: str, region: str, prefix: str, max_uploads: int = 1) -> "ListMultipartUploadsOutputTypeDef":
+def list_multipart_uploads(bucket: str, region: str, prefix: str, max_uploads: int = 1) -> ListMultipartUploadsOutputTypeDef:
     s3_client = session.client("s3", region_name=region)
     return s3_client.list_multipart_uploads(Bucket=bucket, MaxUploads=max_uploads, Prefix=prefix)
 
 
 @retry(errors=[BotoServerError])
-def copy_s3_to_s3(s3_resource: "S3ServiceResource", src_bucket: str, src_key: str, dst_bucket: str, dst_key: str, extra_args: Optional[Dict[Any, Any]] = None) -> None:
+def copy_s3_to_s3(s3_resource: S3ServiceResource, src_bucket: str, src_key: str, dst_bucket: str, dst_key: str, extra_args: Optional[Dict[Any, Any]] = None) -> None:
     source = {'Bucket': src_bucket, 'Key': src_key}
     # Note: this may have errors if using sse-c because of
     # a bug with encryption using copy_object and copy (which uses copy_object for files <5GB):
@@ -224,7 +224,7 @@ def copy_s3_to_s3(s3_resource: "S3ServiceResource", src_bucket: str, src_key: st
 # TODO: Determine specific retries
 @retry(errors=[BotoServerError])
 def copy_local_to_s3(
-        s3_resource: "S3ServiceResource",
+        s3_resource: S3ServiceResource,
         local_file_path: str,
         dst_bucket: str,
         dst_key: str,
@@ -237,7 +237,7 @@ def copy_local_to_s3(
 # TODO: Determine specific retries
 @retry(errors=[BotoServerError])
 def copy_s3_to_local(
-        s3_resource: "S3ServiceResource",
+        s3_resource: S3ServiceResource,
         local_file_path: str,
         src_bucket: str,
         src_key: str,
@@ -248,7 +248,7 @@ def copy_s3_to_local(
 
 
 class MultiPartPipe(WritablePipe):
-    def __init__(self, part_size: int, s3_resource: "S3ServiceResource", bucket_name: str, file_id: str, encryption_args: Optional[Dict[Any, Any]], encoding: Optional[str] = None, errors: Optional[str] = None) -> None:
+    def __init__(self, part_size: int, s3_resource: S3ServiceResource, bucket_name: str, file_id: str, encryption_args: Optional[Dict[Any, Any]], encoding: Optional[str] = None, errors: Optional[str] = None) -> None:
         super(MultiPartPipe, self).__init__()
         self.encoding = encoding
         self.errors = errors
@@ -316,7 +316,7 @@ def parse_s3_uri(uri: str) -> Tuple[str, str]:
     return bucket_name, key_name
 
 
-def list_s3_items(s3_resource: "S3ServiceResource", bucket: str, prefix: str, startafter: Optional[str] = None) -> Iterator["ObjectTypeDef"]:
+def list_s3_items(s3_resource: S3ServiceResource, bucket: str, prefix: str, startafter: Optional[str] = None) -> Iterator[ObjectTypeDef]:
     s3_client = s3_resource.meta.client
     paginator = s3_client.get_paginator('list_objects_v2')
     kwargs = dict(Bucket=bucket, Prefix=prefix)
@@ -329,7 +329,7 @@ def list_s3_items(s3_resource: "S3ServiceResource", bucket: str, prefix: str, st
 
 @retry(errors=[ErrorCondition(error=ClientError, error_codes=[404, 500, 502, 503, 504])])
 def upload_to_s3(readable: IO[Any],
-                 s3_resource: "S3ServiceResource",
+                 s3_resource: S3ServiceResource,
                  bucket: str,
                  key: str,
                  extra_args: Optional[Dict[Any, Any]] = None) -> None:
@@ -374,7 +374,7 @@ def upload_to_s3(readable: IO[Any],
 
 
 @contextmanager
-def download_stream(s3_resource: "S3ServiceResource", bucket: str, key: str, checksum_to_verify: Optional[str] = None,
+def download_stream(s3_resource: S3ServiceResource, bucket: str, key: str, checksum_to_verify: Optional[str] = None,
                     extra_args: Optional[Dict[Any, Any]] = None, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[IO[Any]]:
     """Context manager that gives out a download stream to download data."""
     bucket_obj: Bucket = s3_resource.Bucket(bucket)
@@ -411,7 +411,7 @@ def download_stream(s3_resource: "S3ServiceResource", bucket: str, key: str, che
         raise
 
 
-def download_fileobject(s3_resource: "S3ServiceResource", bucket: "Bucket", key: str, fileobj: BytesIO, extra_args: Optional[Dict[Any, Any]] = None) -> None:
+def download_fileobject(s3_resource: S3ServiceResource, bucket: Bucket, key: str, fileobj: BytesIO, extra_args: Optional[Dict[Any, Any]] = None) -> None:
     try:
         bucket.download_fileobj(Key=key, Fileobj=fileobj, ExtraArgs=extra_args)
     except s3_resource.meta.client.exceptions.NoSuchKey:
@@ -428,7 +428,7 @@ def download_fileobject(s3_resource: "S3ServiceResource", bucket: "Bucket", key:
         raise
 
 
-def s3_key_exists(s3_resource: "S3ServiceResource", bucket: str, key: str, check: bool = False, extra_args: Optional[Dict[Any, Any]] = None) -> bool:
+def s3_key_exists(s3_resource: S3ServiceResource, bucket: str, key: str, check: bool = False, extra_args: Optional[Dict[Any, Any]] = None) -> bool:
     """Return True if the s3 obect exists, and False if not.  Will error if encryption args are incorrect."""
     extra_args = extra_args or {}
     s3_client = s3_resource.meta.client
@@ -454,21 +454,21 @@ def s3_key_exists(s3_resource: "S3ServiceResource", bucket: str, key: str, check
             raise
 
 
-def get_s3_object(s3_resource: "S3ServiceResource", bucket: str, key: str, extra_args: Optional[Dict[Any, Any]] = None) -> "GetObjectOutputTypeDef":
+def get_s3_object(s3_resource: S3ServiceResource, bucket: str, key: str, extra_args: Optional[Dict[Any, Any]] = None) -> GetObjectOutputTypeDef:
     if extra_args is None:
         extra_args = dict()
     s3_client = s3_resource.meta.client
     return s3_client.get_object(Bucket=bucket, Key=key, **extra_args)
 
 
-def put_s3_object(s3_resource: "S3ServiceResource", bucket: str, key: str, body: Union[str, bytes], extra_args: Optional[Dict[Any, Any]] = None) -> "PutObjectOutputTypeDef":
+def put_s3_object(s3_resource: S3ServiceResource, bucket: str, key: str, body: Union[str, bytes], extra_args: Optional[Dict[Any, Any]] = None) -> PutObjectOutputTypeDef:
     if extra_args is None:
         extra_args = dict()
     s3_client = s3_resource.meta.client
     return s3_client.put_object(Bucket=bucket, Key=key, Body=body, **extra_args)
 
 
-def generate_presigned_url(s3_resource: "S3ServiceResource", bucket: str, key_name: str, expiration: int) -> str:
+def generate_presigned_url(s3_resource: S3ServiceResource, bucket: str, key_name: str, expiration: int) -> str:
     s3_client = s3_resource.meta.client
     return s3_client.generate_presigned_url(
         'get_object',
@@ -476,7 +476,7 @@ def generate_presigned_url(s3_resource: "S3ServiceResource", bucket: str, key_na
         ExpiresIn=expiration)
 
 
-def create_public_url(s3_resource: "S3ServiceResource", bucket: str, key: str) -> str:
+def create_public_url(s3_resource: S3ServiceResource, bucket: str, key: str) -> str:
     bucket_obj = Bucket(bucket)
     bucket_obj.Object(key).Acl().put(ACL='public-read')  # TODO: do we need to generate a signed url after doing this?
     url = generate_presigned_url(s3_resource=s3_resource,
@@ -492,7 +492,7 @@ def create_public_url(s3_resource: "S3ServiceResource", bucket: str, key: str) -
     return modify_url(url, remove=['x-amz-security-token', 'AWSAccessKeyId', 'Signature'])
 
 
-def get_s3_bucket_region(s3_resource: "S3ServiceResource", bucket: str) -> str:
+def get_s3_bucket_region(s3_resource: S3ServiceResource, bucket: str) -> str:
     s3_client = s3_resource.meta.client
     # AWS returns None for the default of 'us-east-1'
     return s3_client.get_bucket_location(Bucket=bucket).get('LocationConstraint', None) or 'us-east-1'
