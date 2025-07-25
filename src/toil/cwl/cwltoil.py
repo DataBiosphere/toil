@@ -110,6 +110,11 @@ from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
 from toil.cwl import check_cwltool_version
+from toil.lib.directory import (
+    DirectoryContents,
+    decode_directory,
+    encode_directory,
+)
 from toil.lib.trs import resolve_workflow
 from toil.lib.misc import call_command
 from toil.provisioners.clusterScaler import JobTooBigError
@@ -1222,79 +1227,6 @@ def toil_make_tool(
 # URI instead of raising an error right away, in case it is optional.
 MISSING_FILE = "missing://"
 
-DirectoryContents = dict[str, Union[str, "DirectoryContents"]]
-
-
-def check_directory_dict_invariants(contents: DirectoryContents) -> None:
-    """
-    Make sure a directory structure dict makes sense. Throws an error
-    otherwise.
-
-    Currently just checks to make sure no empty-string keys exist.
-    """
-
-    for name, item in contents.items():
-        if name == "":
-            raise RuntimeError(
-                "Found nameless entry in directory: " + json.dumps(contents, indent=2)
-            )
-        if isinstance(item, dict):
-            check_directory_dict_invariants(item)
-
-
-def decode_directory(
-    dir_path: str,
-) -> tuple[DirectoryContents, Optional[str], str]:
-    """
-    Decode a directory from a "toildir:" path to a directory (or a file in it).
-
-    Returns the decoded directory dict, the remaining part of the path (which may be
-    None), and the deduplication key string that uniquely identifies the
-    directory.
-    """
-    if not dir_path.startswith("toildir:"):
-        raise RuntimeError(f"Cannot decode non-directory path: {dir_path}")
-
-    # We will decode the directory and then look inside it
-
-    # Since this was encoded by upload_directory we know the
-    # next piece is encoded JSON describing the directory structure,
-    # and it can't contain any slashes.
-    parts = dir_path[len("toildir:") :].split("/", 1)
-
-    # Before the first slash is the encoded data describing the directory contents
-    dir_data = parts[0]
-
-    # Decode what to download
-    contents = json.loads(
-        base64.urlsafe_b64decode(dir_data.encode("utf-8")).decode("utf-8")
-    )
-
-    check_directory_dict_invariants(contents)
-
-    if len(parts) == 1 or parts[1] == "/":
-        # We didn't have any subdirectory
-        return contents, None, dir_data
-    else:
-        # We have a path below this
-        return contents, parts[1], dir_data
-
-
-def encode_directory(contents: DirectoryContents) -> str:
-    """
-    Encode a directory from a "toildir:" path to a directory (or a file in it).
-
-    Takes the directory dict, which is a dict from name to URI for a file or
-    dict for a subdirectory.
-    """
-
-    check_directory_dict_invariants(contents)
-
-    return "toildir:" + base64.urlsafe_b64encode(
-        json.dumps(contents).encode("utf-8")
-    ).decode("utf-8")
-
-
 class ToilFsAccess(StdFsAccess):
     """
     Custom filesystem access class which handles toil filestore references.
@@ -1363,7 +1295,7 @@ class ToilFsAccess(StdFsAccess):
 
             # Decode its contents, the path inside it to the file (if any), and
             # the key to use for caching the directory.
-            contents, subpath, cache_key = decode_directory(path)
+            contents, subpath, cache_key, _, _ = decode_directory(path)
             logger.debug("Decoded directory contents: %s", contents)
 
             if cache_key not in self.dir_to_download:
@@ -1465,7 +1397,7 @@ class ToilFsAccess(StdFsAccess):
             # Handle local files
             return open(self._abs(fn), mode)
         elif parse.scheme == "toildir":
-            contents, subpath, cache_key = decode_directory(fn)
+            contents, subpath, cache_key, _, _ = decode_directory(fn)
             if cache_key in self.dir_to_download:
                 # This is already available locally, so fall back on the local copy
                 return open(self._abs(fn), mode)
@@ -1506,7 +1438,7 @@ class ToilFsAccess(StdFsAccess):
             except NoSuchFileException:
                 return False
         elif parse.scheme == "toildir":
-            contents, subpath, cache_key = decode_directory(path)
+            contents, subpath, cache_key, _, _ = decode_directory(path)
             if subpath is None:
                 # The toildir directory itself exists
                 return True
@@ -1533,7 +1465,7 @@ class ToilFsAccess(StdFsAccess):
         elif parse.scheme == "toildir":
             # Decode its contents, the path inside it to the file (if any), and
             # the key to use for caching the directory.
-            contents, subpath, cache_key = decode_directory(path)
+            contents, subpath, cache_key, _, _ = decode_directory(path)
 
             # We can't get the size of just a directory.
             if subpath is None:
@@ -1567,7 +1499,7 @@ class ToilFsAccess(StdFsAccess):
             # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
             return True
         elif parse.scheme == "toildir":
-            contents, subpath, cache_key = decode_directory(fn)
+            contents, subpath, cache_key, _, _ = decode_directory(fn)
             if subpath is None:
                 # This is the toildir directory itself
                 return False
@@ -1586,7 +1518,7 @@ class ToilFsAccess(StdFsAccess):
         elif parse.scheme == "toilfile":
             return False
         elif parse.scheme == "toildir":
-            contents, subpath, cache_key = decode_directory(fn)
+            contents, subpath, cache_key, _, _ = decode_directory(fn)
             if subpath is None:
                 # This is the toildir directory itself.
                 # TODO: We assume directories can't be deleted.
@@ -1614,7 +1546,7 @@ class ToilFsAccess(StdFsAccess):
         elif parse.scheme == "toilfile":
             raise RuntimeError(f"Cannot list a file: {fn}")
         elif parse.scheme == "toildir":
-            contents, subpath, cache_key = decode_directory(fn)
+            contents, subpath, cache_key, _, _ = decode_directory(fn)
             here = contents
             if subpath is not None:
                 got = get_from_structure(contents, subpath)
@@ -2405,7 +2337,7 @@ def toilStageFiles(
 
                     if file_id_or_contents.startswith("toildir:"):
                         # Get the directory contents and the path into them, if any
-                        here, subpath, _ = decode_directory(file_id_or_contents)
+                        here, subpath, _, _, _ = decode_directory(file_id_or_contents)
                         if subpath is not None:
                             for part in subpath.split("/"):
                                 here = cast(DirectoryContents, here[part])
