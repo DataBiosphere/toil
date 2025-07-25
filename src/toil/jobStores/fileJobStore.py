@@ -440,7 +440,7 @@ class FileJobStore(AbstractJobStore, URLAccess):
         atomic_copyobj(
             readable,
             cls._extract_path_from_url(url),
-            length=self.BUFFER_SIZE,
+            length=cls.BUFFER_SIZE,
             executable=executable,
         )
 
