@@ -596,7 +596,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
     def read_file(self, file_id: str, local_path: str, symlink: bool = False) -> None:
         full_s3_key = self.find_s3_key_from_file_id(file_id)
-        executable = int(full_s3_key.split('/')[1])  # 0 or 1
+        executable = int(full_s3_key.split('/')[-2])  # 0 or 1
         try:
             copy_s3_to_local(
                 s3_resource=self.s3_resource,
