@@ -394,8 +394,13 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
         ) as writable:
             yield writable, fileID
 
-    def get_empty_file_store_id(self, jobStoreID=None, cleanup=False, basename=None):
-        fileID = self._new_id(isFile=True, jobStoreID=jobStoreID if cleanup else None)
+    def get_empty_file_store_id(
+        self,
+        job_id=None,
+        cleanup=False,
+        basename=None,
+    ):
+        fileID = self._new_id(isFile=True, jobStoreID=job_id if cleanup else None)
         self._write_file(fileID, BytesIO(b""))
         return fileID
 
@@ -617,7 +622,10 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
         return filesRead
 
     @staticmethod
-    def _new_id(isFile=False, jobStoreID=None):
+    def _new_id(
+        isFile=False,
+        jobStoreID=None,
+    ) -> str:
         if isFile and jobStoreID:  # file associated with job
             return jobStoreID + str(uuid.uuid4())
         elif isFile:  # nonassociated file

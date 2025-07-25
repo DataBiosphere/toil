@@ -107,9 +107,8 @@ class AWSJobStore(AbstractJobStore, URLAccess):
        A job's file is deleted when finished, and its absence means it completed.
 
     2. Files: The inputs and outputs of jobs.  Each file is written in s3 with the file pattern:
-       "files/{uuid4}/0/{original_filename}" or "files/{uuid4}/1/{original_filename}", where the file prefix
+       "files/{uuid4}/{original_filename}", where the file prefix
        "files/{uuid4}" should only point to one file.
-       where 0 or 1 represent its executability (1 == executable).
     3. Logs: The written log files of jobs that have run, plus the log file for the main Toil process.
 
     4. Shared Files: Files with himan=-readable names, used by Toil itself or Python workflows.
@@ -474,7 +473,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             s3_resource=self.s3_resource,
             local_file_path=local_path,
             dst_bucket=self.bucket_name,
-            dst_key=f'{prefix}/{1 if executable else 0}/{os.path.basename(local_path)}',
+            dst_key=f'{prefix}/{os.path.basename(local_path)}',
             extra_args=self.encryption_args
         )
         return FileID(file_id, size, executable)
@@ -513,7 +512,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         pipe = MultiPartPipe(part_size=self.part_size,
                              s3_resource=self.s3_resource,
                              bucket_name=self.bucket_name,
-                             file_id=f'{prefix}/0/{str(basename)}',
+                             file_id=f'{prefix}/{str(basename)}',
                              encryption_args=self.encryption_args,
                              encoding=encoding,
                              errors=errors)
@@ -596,7 +595,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
     def read_file(self, file_id: str, local_path: str, symlink: bool = False) -> None:
         full_s3_key = self.find_s3_key_from_file_id(file_id)
-        executable = int(full_s3_key.split('/')[-2])  # 0 or 1
+        executable = getattr(file_id, "executable", False)
         try:
             copy_s3_to_local(
                 s3_resource=self.s3_resource,
@@ -723,7 +722,6 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 # cannot determine exec bit from foreign s3 so default to False
                 dst_key = "/".join([
                     self._key_in_bucket(identifier=file_id, prefix=self.content_key_prefix),
-                    "0",
                     src_key_name.split("/")[-1],
                 ])
 
@@ -870,8 +868,8 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         job_id: Optional[str] = None,
         cleanup: bool = False,
         basename: Optional[str] = None,
-    ) -> FileID:
-        """Create an empty file in s3 and return a file_id referencing it."""
+    ) -> str:
+        """Create an empty file in s3 and return a bare string file ID."""
         file_id = str(uuid.uuid4())
         self.write_to_bucket(
             identifier=f'{file_id}/0/{basename}',
@@ -881,7 +879,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         )
         if job_id and cleanup:
             self.associate_job_with_file(job_id, file_id)
-        return FileID(fileStoreID=file_id, size=0, executable=False)
+        return file_id
 
         ###################################### LOGGING API ######################################
 

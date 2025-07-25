@@ -1206,14 +1206,14 @@ class AbstractJobStore(ABC):
         Creates an empty file in the job store and returns its ID.
         Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
 
-        :param str job_id: the id of a job, or None. If specified, the may be associated
+        :param job_id: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
 
-        :param bool cleanup: Whether to attempt to delete the file when the job
+        :param cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
 
-        :param str basename: If supported by the implementation, use the given
+        :param basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
 
