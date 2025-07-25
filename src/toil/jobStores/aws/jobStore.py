@@ -243,7 +243,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         return s3_key_exists(
             s3_resource=self.s3_resource,
             bucket=bucket,
-            key=self._key_in_bucket(prefix, identifier),
+            key=self._key_in_bucket(identifier=identifier, prefix=prefix),
             extra_args=self.encryption_args
         )
 
@@ -264,6 +264,8 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         # only used if exporting to a URL
         encryption_args = {} if not encrypted else self.encryption_args
         bucket = bucket or self.bucket_name
+        
+        logger.debug("Writing identifier %s prefix %s into %s", identifier, prefix, bucket)
 
         if isinstance(data, dict):
             data = json.dumps(data).encode('utf-8')
@@ -273,11 +275,13 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             data = b''
 
         assert isinstance(data, bytes)
-        put_s3_object(s3_resource=self.s3_resource,
-                      bucket=bucket,
-                      key=self._key_in_bucket(prefix, identifier),
-                      body=data,
-                      extra_args=encryption_args)
+        put_s3_object(
+            s3_resource=self.s3_resource,
+            bucket=bucket,
+            key=self._key_in_bucket(identifier=identifier, prefix=prefix),
+            body=data,
+            extra_args=encryption_args,
+        )
 
     def read_from_bucket(
         self,
@@ -300,10 +304,12 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         bucket = bucket or self.bucket_name
 
         try:
-            return get_s3_object(s3_resource=self.s3_resource,
-                                 bucket=bucket,
-                                 key=self._key_in_bucket(prefix, identifier),
-                                 extra_args=self.encryption_args)['Body'].read()
+            return get_s3_object(
+                s3_resource=self.s3_resource,
+                bucket=bucket,
+                key=self._key_in_bucket(identifier=identifier, prefix=prefix),
+                extra_args=self.encryption_args,
+            )['Body'].read()
         except self.s3_client.exceptions.NoSuchKey:
             if prefix == self.job_key_prefix:
                 raise NoSuchJobException(identifier)
@@ -329,7 +335,15 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         logger.debug("Assigning Job ID %s", jobDescription.jobStoreID)
 
     def create_job(self, jobDescription: JobDescription) -> JobDescription:
-        """Pickle a jobDescription object and write it to the jobstore as a file."""
+        """
+        Pickle a jobDescription object and write it to the jobstore as a file.
+
+        Responsible for calling :meth:`toil.job.JobDescription.pre_update_hook`
+        on the job description.
+        """
+
+        jobDescription.pre_update_hook()
+
         self.write_to_bucket(identifier=str(jobDescription.jobStoreID),
                              prefix=self.job_key_prefix,
                              data=pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
@@ -486,10 +500,12 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         file_id = str(uuid.uuid4())
         if job_id and cleanup:
             self.associate_job_with_file(job_id, file_id)
+        logger.debug("Writing identifier %s prefix %s via multipart upload", file_id, self.content_key_prefix)
         prefix = self._key_in_bucket(
             identifier=file_id,
             prefix=self.content_key_prefix
         )
+
         pipe = MultiPartPipe(part_size=self.part_size,
                              s3_resource=self.s3_resource,
                              bucket_name=self.bucket_name,
@@ -507,6 +523,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             encoding: Optional[str] = None,
             errors: Optional[str] = None
     ) -> Iterator[IO[Any]]:
+        logger.debug("Replacing file %s via multipart upload", file_id)
         pipe = MultiPartPipe(
             part_size=self.part_size,
             s3_resource=self.s3_resource,
@@ -527,6 +544,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
     ) -> Iterator[IO[bytes]]:
+        logger.debug("Writing shared file %s prefix %s via multipart upload", shared_file_name, self.shared_key_prefix)
         pipe = MultiPartPipe(
             part_size=self.part_size,
             s3_resource=self.s3_resource,
