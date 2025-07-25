@@ -28,7 +28,7 @@ class FileID(str):
     the job store if unavailable in the ID.
     """
 
-    def __new__(cls, fileStoreID: str, *args: Any) -> "FileID":
+    def __new__(cls, fileStoreID: str, *args: Any, **kwargs: dict[str, Any]) -> "FileID":
         return super().__new__(cls, fileStoreID)
 
     def __init__(self, fileStoreID: str, size: int, executable: bool = False) -> None:
