@@ -265,8 +265,6 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         encryption_args = {} if not encrypted else self.encryption_args
         bucket = bucket or self.bucket_name
         
-        logger.debug("Writing identifier %s prefix %s into %s", identifier, prefix, bucket)
-
         if isinstance(data, dict):
             data = json.dumps(data).encode('utf-8')
         elif isinstance(data, str):
@@ -500,7 +498,6 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         file_id = str(uuid.uuid4())
         if job_id and cleanup:
             self.associate_job_with_file(job_id, file_id)
-        logger.debug("Writing identifier %s prefix %s via multipart upload", file_id, self.content_key_prefix)
         prefix = self._key_in_bucket(
             identifier=file_id,
             prefix=self.content_key_prefix
@@ -544,7 +541,6 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
     ) -> Iterator[IO[bytes]]:
-        logger.debug("Writing shared file %s prefix %s via multipart upload", shared_file_name, self.shared_key_prefix)
         pipe = MultiPartPipe(
             part_size=self.part_size,
             s3_resource=self.s3_resource,
