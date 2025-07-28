@@ -457,7 +457,7 @@ cwl_badge:
     rm -rf badges1.2
     echo -e "\e[0Ksection_end:`date +%s`:download_tests\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the CWL v1.2 conformance tests."
-    make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" threads="${TEST_THREADS}" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
+    make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" threads="${TEST_THREADS}" pytest_args="--randomly-dont-reorganize --cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
   allow_failure: true
   artifacts:
@@ -490,7 +490,7 @@ cwl_badge_release:
     rm -rf badges1.2
     echo -e "\e[0Ksection_end:`date +%s`:download_tests\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the CWL v1.2 conformance tests."
-    make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" threads="${TEST_THREADS}" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
+    make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" threads="${TEST_THREADS}" pytest_args="--randomly-dont-reorganize --cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
   allow_failure: true
   artifacts:
