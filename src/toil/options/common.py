@@ -758,6 +758,7 @@ def add_base_toil_options(
     )
     cpu_note = "Fractions of a core (for example 0.1) are supported on some batch systems [mesos, single_machine]"
     disk_mem_note = "Standard suffixes like K, Ki, M, Mi, G or Gi are supported"
+    disk_walltime_note = "Values are assumed to be in seconds. A value of 0 does not limit the walltime"
     accelerators_note = (
         "Each accelerator specification can have a type (gpu [default], nvidia, amd, cuda, rocm, opencl, "
         "or a specific model like nvidia-tesla-k80), and a count [default: 1]. If both a type and a count "
@@ -775,6 +776,16 @@ def add_base_toil_options(
         action=make_open_interval_action(1),
         help=resource_help_msg.format(
             "default", "memory", disk_mem_note, bytes2human(2147483648)
+        ),
+    )
+    resource_options.add_argument(
+        "--defaultWalltime",
+        dest="defaultWalltime",
+        default="0",
+        type=int,
+        action=make_open_interval_action(1),
+        help=resource_help_msg.format(
+            "default", "walltime", disk_walltime_note, str(0)
         ),
     )
     resource_options.add_argument(
