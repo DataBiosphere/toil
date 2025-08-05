@@ -84,7 +84,6 @@ def main():
         'src/toil/test/cactus',
         'src/toil/test/docs',
         'src/toil/test/jobStores',
-        'src/toil/test/lib/aws',
         'src/toil/test/lib/test_conversions.py',
         'src/toil/test/lib/test_ec2.py',
         'src/toil/test/lib/test_misc.py',

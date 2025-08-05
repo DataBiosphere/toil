@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Optional
 
 from toil.jobStores.aws.jobStore import AWSJobStore
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.utils import create_s3_bucket, get_bucket_region
+from toil.lib.aws.utils import create_s3_bucket, delete_s3_bucket, get_bucket_region
 from toil.test import ToilTest, needs_aws_s3
 
 logger = logging.getLogger(__name__)
@@ -80,5 +80,5 @@ class S3Test(ToilTest):
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.bucket:
-            AWSJobStore._delete_bucket(cls.bucket)
+            delete_s3_bucket(cls.s3_resource, cls.bucket)
         super().tearDownClass()
