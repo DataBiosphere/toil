@@ -24,14 +24,13 @@ from toil.test import ToilTest, needs_aws_s3
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3ServiceResource
+    from mypy_boto3_s3.service_resource import Bucket
 
 @needs_aws_s3
 class S3Test(ToilTest):
     """Confirm the workarounds for us-east-1."""
-
-    if TYPE_CHECKING:
-        from mypy_boto3_s3 import S3ServiceResource
-        from mypy_boto3_s3.service_resource import Bucket
 
     s3_resource: Optional["S3ServiceResource"]
 
