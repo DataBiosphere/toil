@@ -170,10 +170,14 @@ test: check_venv check_build_reqs
 	TOIL_HISTORY=0 \
 	    python -m pytest $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) $(cov) $(tests) $(pytest_args)
 
+# When running doctests, we need to not capture output, because on CI we can
+# get failures where doctest saw no output and we report captured output, as in
+# <https://ucsc-ci.com/databiosphere/toil/-/jobs/96131>. doctest and pytest's
+# captures might not work properly together.
 doctest: check_venv check_build_reqs
 	TOIL_OWNER_TAG="shared" \
 	TOIL_HISTORY=0 \
-	    python -m pytest $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) $(cov) $(tests) --ignore src/toil/test $(pytest_args)
+	    python -m pytest --capture=no $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) $(cov) $(tests) --ignore src/toil/test $(pytest_args)
 
 test_debug: check_venv check_build_reqs
 	TOIL_OWNER_TAG="$(whoami)" \
