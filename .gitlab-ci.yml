@@ -208,6 +208,7 @@ py39_main:
     python3.9 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
+    make doctest threads="${TEST_THREADS}"
     make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
     TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
@@ -253,6 +254,7 @@ py310_main:
     python3.10 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10 && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
+    make doctest threads="${TEST_THREADS}"
     make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
     TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
@@ -298,6 +300,7 @@ py311_main:
     python3.11 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && pip install -U pip wheel && make prepare && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
+    make doctest threads="${TEST_THREADS}"
     make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
     TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
@@ -343,6 +346,7 @@ py312_main:
     python3.12 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && pip install -U pip wheel && make prepare && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
+    make doctest threads="${TEST_THREADS}"
     make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
     TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
@@ -379,6 +383,7 @@ py313_main:
     python3.13 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.13 && pip install -U pip wheel && make prepare && make develop extras=[all]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
+    make doctest threads="${TEST_THREADS}"
     make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
     TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"

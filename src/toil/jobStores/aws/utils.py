@@ -60,15 +60,15 @@ class SDBHelper:
 
     >>> import os
     >>> H=SDBHelper
-    >>> H.presenceIndicator() # doctest: +ALLOW_UNICODE
-    u'numChunks'
+    >>> H.presenceIndicator()
+    'numChunks'
     >>> H.binaryToAttributes(None)['numChunks']
-    0
-    >>> H.attributesToBinary({u'numChunks': 0})
+    '0'
+    >>> H.attributesToBinary([{'Name': 'numChunks', 'Value': 0}])
     (None, 0)
-    >>> H.binaryToAttributes(b'') # doctest: +ALLOW_UNICODE +ALLOW_BYTES
-    {u'000': b'VQ==', u'numChunks': 1}
-    >>> H.attributesToBinary({u'numChunks': 1, u'000': b'VQ=='}) # doctest: +ALLOW_BYTES
+    >>> H.binaryToAttributes(b'') # doctest: +ALLOW_BYTES
+    {'000': 'VQ==', 'numChunks': '1'}
+    >>> H.attributesToBinary([{"Name": 'numChunks', "Value": 1}, {"Name": "000", "Value": "VQ=="}]) 
     (b'', 1)
 
     Good pseudo-random data is very likely smaller than its bzip2ed form. Subtract 1 for the type
@@ -76,9 +76,9 @@ class SDBHelper:
 
     >>> s = os.urandom(H.maxRawValueSize-1)
     >>> d = H.binaryToAttributes(s)
-    >>> len(d), len(d['000'])
+    >>> len(d), len(d["000"])
     (2, 1024)
-    >>> H.attributesToBinary(d) == (s, 1)
+    >>> H.attributesToBinary([{"Name": k, "Value": v} for k, v in d.items()]) == (s, 1)
     True
 
     One byte more and we should overflow four bytes into the second chunk, two bytes for
@@ -86,9 +86,9 @@ class SDBHelper:
 
     >>> s += s[0:1]
     >>> d = H.binaryToAttributes(s)
-    >>> len(d), len(d['000']), len(d['001'])
+    >>> len(d), len(d["000"]), len(d["001"])
     (3, 1024, 4)
-    >>> H.attributesToBinary(d) == (s, 2)
+    >>> H.attributesToBinary([{"Name": k, "Value": v} for k, v in d.items()]) == (s, 2)
     True
 
     """

@@ -85,7 +85,8 @@ help:
 
 # This Makefile uses bash features like printf and <()
 SHELL=bash
-tests=src/toil/test
+# We need the default tests to include the doctests, but not htcondor which isn't on mac.
+tests=src/toil --ignore src/toil/batchSystems/htcondor.py
 arch=linux/amd64,linux/arm64
 cov=--cov=toil
 logging=--log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG -o log_cli=true --log-cli-level INFO
@@ -168,6 +169,11 @@ test: check_venv check_build_reqs
 	TOIL_OWNER_TAG="shared" \
 	TOIL_HISTORY=0 \
 	    python -m pytest $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) $(cov) $(tests) $(pytest_args)
+
+doctest: check_venv check_build_reqs
+	TOIL_OWNER_TAG="shared" \
+	TOIL_HISTORY=0 \
+	    python -m pytest $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) $(cov) $(tests) --ignore src/toil/test $(pytest_args)
 
 test_debug: check_venv check_build_reqs
 	TOIL_OWNER_TAG="$(whoami)" \
@@ -378,7 +384,7 @@ preflight: mypy touched_pylint
 		develop clean_develop \
 		sdist clean_sdist \
 		download_cwl_spec \
-		test test_offline test_1min \
+		test doctest test_offline test_1min \
 		docs clean_docs \
 		clean \
 		sort_imports remove_unused_imports remove_trailing_whitespace \

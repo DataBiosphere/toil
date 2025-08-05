@@ -61,16 +61,16 @@ def sync_memoize(f: Callable[[MAT], MRT]) -> Callable[[MAT], MRT]:
 def parse_iso_utc(s: str) -> datetime.datetime:
     """
     Parses an ISO time with a hard-coded Z for zulu-time (UTC) at the end. Other timezones are
-    not supported. Returns a timezone-naive datetime object.
+    not supported. Returns a timezone-aware UTC datetime object.
 
     :param s: The ISO-formatted time
 
-    :return: A timezone-naive datetime object
+    :return: A timezone-aware UTC datetime object
 
     >>> parse_iso_utc('2016-04-27T00:28:04.000Z')
-    datetime.datetime(2016, 4, 27, 0, 28, 4)
+    datetime.datetime(2016, 4, 27, 0, 28, 4, tzinfo=datetime.timezone.utc)
     >>> parse_iso_utc('2016-04-27T00:28:04Z')
-    datetime.datetime(2016, 4, 27, 0, 28, 4)
+    datetime.datetime(2016, 4, 27, 0, 28, 4, tzinfo=datetime.timezone.utc)
     >>> parse_iso_utc('2016-04-27T00:28:04X')
     Traceback (most recent call last):
     ...
@@ -83,8 +83,17 @@ def parse_iso_utc(s: str) -> datetime.datetime:
     if not m:
         raise ValueError(f"Not a valid ISO datetime in UTC: {s}")
     else:
-        fmt = "%Y-%m-%dT%H:%M:%S" + (".%f" if m.group(7) else "") + "Z"
-        return datetime.datetime.strptime(s, fmt)
+        if m.group(8) != "Z" and not m.group(8).endswith("00:00"):
+            raise ValueError(f"Not in the UTC time zone: {s}")
+        if m.group(8) == "Z":
+            # Convert to an offset for parsing
+            s = s[:-1] + "-00:00"
+
+        fmt = "%Y-%m-%dT%H:%M:%S" + (".%f" if m.group(7) else "") + "%z"
+        parsed = datetime.datetime.strptime(s, fmt)
+        # We should have guaranteed that this is in UTC
+        assert parsed.tzinfo is not None
+        return parsed
 
 
 def strict_bool(s: str) -> bool:
