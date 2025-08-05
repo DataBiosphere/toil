@@ -60,12 +60,17 @@ def sync_memoize(f: Callable[[MAT], MRT]) -> Callable[[MAT], MRT]:
 
 def parse_iso_utc(s: str) -> datetime.datetime:
     """
-    Parses an ISO time with a hard-coded Z for zulu-time (UTC) at the end. Other timezones are
-    not supported. Returns a timezone-aware UTC datetime object.
+    Parses an RFC 3339 ISO 8601 time in the UTC timezone.
+
+    Other timezones are not supported. Returns a timezone-aware UTC datetime
+    object.
 
     :param s: The ISO-formatted time
 
     :return: A timezone-aware UTC datetime object
+
+    :raises ValueError: if the string is not in the correct format or is not in
+        the UTC timezone.
 
     >>> parse_iso_utc('2016-04-27T00:28:04.000Z')
     datetime.datetime(2016, 4, 27, 0, 28, 4, tzinfo=datetime.timezone.utc)
