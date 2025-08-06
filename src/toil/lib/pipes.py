@@ -109,6 +109,7 @@ class WritablePipe(ABC):
         # Closing the writable end will send EOF to the readable and cause the reader thread
         # to finish.
         # TODO: Can close() fail? If so, would we try and clean up after the reader?
+        assert self.writable is not None
         self.writable.close()
         try:
             if self.thread is not None:
@@ -148,6 +149,7 @@ class WritablePipe(ABC):
         raise NotImplementedError()
 
     def _reader(self) -> None:
+        assert self.readable_fh is not None
         with os.fdopen(self.readable_fh, "rb") as readable:
             # TODO: If the reader somehow crashes here, both threads might try
             # to close readable_fh.  Fortunately we don't do anything that
@@ -233,6 +235,7 @@ class ReadablePipe(ABC):
         raise NotImplementedError()
 
     def _writer(self) -> None:
+        assert self.writable_fh is not None
         try:
             with os.fdopen(self.writable_fh, "wb") as writable:
                 self.writeTo(writable)
@@ -275,6 +278,7 @@ class ReadablePipe(ABC):
         # Close the read end of the pipe. The writing thread may
         # still be writing to the other end, but this will wake it up
         # if that's the case.
+        assert self.readable is not None
         self.readable.close()
         try:
             if self.thread is not None:
