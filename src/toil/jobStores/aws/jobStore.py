@@ -259,12 +259,14 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             prefix: str,
             data: Optional[Union[bytes, str, Dict[str, Any]]],
             bucket: Optional[str] = None,
-            encrypted: bool = None,
+            encrypted: Optional[bool] = None,
     ) -> None:
         """
         Write something directly to a bucket.
 
         Use for small files.  Does not parallelize or use multipart.
+
+        :param encrypted: Can be set to False to disable encryption.
         """
         # only used if exporting to a URL
         encryption_args = {} if encrypted is False else self._get_encryption_args()
@@ -832,7 +834,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         # TODO: export seems unused
         return url.scheme.lower() == 's3'
 
-    def get_public_url(self, file_id: str) -> str:  # type: ignore
+    def get_public_url(self, file_id: str) -> str: 
         """Turn s3:// into http:// and put a public-read ACL on it."""
         try:
             return create_public_url(
@@ -851,7 +853,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             else:
                 raise
 
-    def get_shared_public_url(self, file_id: str) -> str:  # type: ignore
+    def get_shared_public_url(self, file_id: str) -> str:
         """Turn s3:// into http:// and put a public-read ACL on it."""
         # since this is only for a few files like "config.pickle"... why and what is this used for?
         self._requireValidSharedFileName(file_id)
@@ -973,7 +975,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             return {}
 
         if config is not None and config.sseKey:
-            with open(self.config.sseKey, 'r') as f:
+            with open(config.sseKey, 'r') as f:
                 sse_key = f.read()
             if not len(sse_key) == 32:  # TODO: regex
                 raise ValueError(
