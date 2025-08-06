@@ -213,7 +213,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         super(AWSJobStore, self).resume()
         if not bucket_exists(self.s3_resource, self.bucket_name):
             raise NoSuchJobStoreException(self.locator, 'aws')
-        self.configure_encryption(config.sseKey)
+        self.configure_encryption(self.config.sseKey)
 
     def destroy(self) -> None:
         delete_s3_bucket(self.s3_resource, self.bucket_name)
