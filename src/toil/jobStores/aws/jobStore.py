@@ -151,7 +151,9 @@ class AWSJobStore(AbstractJobStore, URLAccess):
      - The config.sseKey field is the single source of truth for bucket encryption
        status. The key is never stored inside this class; it is always read
        from the file referenced by the config when needed. Modifying the config
-       at runtime will modify whether encryption is used.
+       at runtime will modify whether encryption is used. Note that files
+       written *without* encryption (i.e. config.pickle) can't be read when
+       encryption is enabled!
 
      - TODO: In general, job stores should log the version of Toil they were
        initialized with and warn the user if restarting with a different
@@ -257,7 +259,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             prefix: str,
             data: Optional[Union[bytes, str, Dict[str, Any]]],
             bucket: Optional[str] = None,
-            encrypted: bool = True,
+            encrypted: bool = None,
     ) -> None:
         """
         Write something directly to a bucket.
@@ -265,7 +267,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         Use for small files.  Does not parallelize or use multipart.
         """
         # only used if exporting to a URL
-        encryption_args = {} if not encrypted else self._get_encryption_args()
+        encryption_args = {} if encrypted is False else self._get_encryption_args()
         bucket = bucket or self.bucket_name
 
         if isinstance(data, dict):
@@ -551,7 +553,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
     ) -> Iterator[IO[bytes]]:
-        encryption_args = {} if not encrypted else self._get_encryption_args()
+        encryption_args = {} if encrypted is False else self._get_encryption_args()
         pipe = MultiPartPipe(
             part_size=self.part_size,
             s3_resource=self.s3_resource,
@@ -691,6 +693,8 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         except ClientError as e:
             if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                 raise NoSuchFileException(shared_file_name)
+            else:
+                raise
 
     def delete_file(self, file_id: str) -> None:
         try:
@@ -844,6 +848,8 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         except ClientError as e:
             if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                 raise NoSuchFileException(file_id)
+            else:
+                raise
 
     def get_shared_public_url(self, file_id: str) -> str:  # type: ignore
         """Turn s3:// into http:// and put a public-read ACL on it."""
@@ -863,6 +869,8 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         except ClientError as e:
             if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                 raise NoSuchFileException(file_id)
+            else:
+                raise
 
     @classmethod
     def _get_is_directory(cls, url: ParseResult) -> bool:
@@ -950,10 +958,21 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
         Reads live from the SSE key file referenced by the config.
 
+        If the config is not available, returns an empty dict.
+
         :raises ValueError: If the key data is not formatted correctly.
         """
         # TODO: Maybe memoize the file read, subject to config field changes?
-        if self.config.sseKey:
+
+        try:
+            config = self.config
+        except AttributeError:
+            # The config isn't set yet. This happens during resume(), when we
+            # need to get the encryption args to talk to the job store to
+            # download the config, before we have it.
+            return {}
+
+        if config is not None and config.sseKey:
             with open(self.config.sseKey, 'r') as f:
                 sse_key = f.read()
             if not len(sse_key) == 32:  # TODO: regex
@@ -962,7 +981,6 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                     f'is the path to a real SSE key. '
                     f'(Key length {len(sse_key)} != 32)'
                 )
-            self.sse_key = sse_key
             return {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': sse_key}
         else:
             return {}

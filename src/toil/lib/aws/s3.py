@@ -298,11 +298,13 @@ class MultiPartPipe(WritablePipe):
         else:
             # Save the checksum
             checksum = f'sha1${hasher.hexdigest()}'
+            # Encryption information is not needed here because the upload was
+            # not started with a checksum.
             response = self.s3_client.complete_multipart_upload(Bucket=self.bucket_name,  # type: ignore
                                                                 Key=self.file_id,
                                                                 UploadId=upload_id,
                                                                 MultipartUpload={"Parts": parts})  # type: ignore
-            logger.debug(f'[{upload_id}] Upload complete...')
+            logger.debug(f'[{upload_id}] Upload of {self.file_id} complete...')
 
 
 def parse_s3_uri(uri: str) -> Tuple[str, str]:
@@ -405,8 +407,8 @@ def download_stream(s3_resource: S3ServiceResource, bucket: str, key: str, check
                 e.response.get('Error', {}).get('Message') == 'Bad Request' and \
                 e.operation_name == 'HeadObject':
             # An error occurred (400) when calling the HeadObject operation: Bad Request
-            raise AWSBadEncryptionKeyError('Your AWS encryption key is most likely configured incorrectly '
-                                           '(HeadObject operation: Bad Request).')
+            raise AWSBadEncryptionKeyError("Your AWS encryption key is most likely configured incorrectly "
+                                           f"(HeadObject operation on key '{key}': Bad Request).")
         raise
 
 
@@ -422,8 +424,8 @@ def download_fileobject(s3_resource: S3ServiceResource, bucket: Bucket, key: str
                 e.response.get('Error', {}).get('Message') == 'Bad Request' and \
                 e.operation_name == 'HeadObject':
             # An error occurred (400) when calling the HeadObject operation: Bad Request
-            raise AWSBadEncryptionKeyError('Your AWS encryption key is most likely configured incorrectly '
-                                           '(HeadObject operation: Bad Request).')
+            raise AWSBadEncryptionKeyError("Your AWS encryption key is most likely configured incorrectly "
+                                           f"(HeadObject operation on key '{key}': Bad Request).")
         raise
 
 
@@ -447,8 +449,8 @@ def s3_key_exists(s3_resource: S3ServiceResource, bucket: str, key: str, check: 
                 e.response.get('Error', {}).get('Message') == 'Bad Request' and \
                 e.operation_name == 'HeadObject':
             # An error occurred (400) when calling the HeadObject operation: Bad Request
-            raise AWSBadEncryptionKeyError('Your AWS encryption key is most likely configured incorrectly '
-                                           '(HeadObject operation: Bad Request).')
+            raise AWSBadEncryptionKeyError("Your AWS encryption key is most likely configured incorrectly "
+                                           f"(HeadObject operation on key '{key}': Bad Request).")
         else:
             raise
 

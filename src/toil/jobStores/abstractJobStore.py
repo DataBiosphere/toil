@@ -241,7 +241,12 @@ class AbstractJobStore(ABC):
 
     @property
     def config(self) -> Config:
-        """Return the Toil configuration associated with this job store."""
+        """
+        Return the Toil configuration associated with this job store.
+
+        :raises AttributeError: if the config has not yet been assigned (i.e.
+            during :meth:`resume`).
+        """
         return self.__config
 
     @property

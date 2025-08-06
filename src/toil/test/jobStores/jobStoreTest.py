@@ -420,27 +420,31 @@ class AbstractJobStoreTest:
 
         def testReadWriteFileStreamTextMode(self):
             """Checks if text mode is compatible for file streams."""
-            jobstore = self.jobstore_initialized
+            jobstore1 = self.jobstore_initialized
+            jobstore2 = self.jobstore_resumed_noconfig
             job = self.arbitraryJob()
-            jobstore.assign_job_id(job)
-            jobstore.create_job(job)
+            jobstore1.assign_job_id(job)
+            jobstore1.create_job(job)
 
             foo = "foo"
             bar = "bar"
 
-            with jobstore.write_file_stream(job.jobStoreID, encoding="utf-8") as (
+            with jobstore1.write_file_stream(job.jobStoreID, encoding="utf-8") as (
                 f,
                 fileID,
             ):
                 f.write(foo)
 
-            with jobstore.read_file_stream(fileID, encoding="utf-8") as f:
+            with jobstore1.read_file_stream(fileID, encoding="utf-8") as f:
                 self.assertEqual(foo, f.read())
 
-            with jobstore.update_file_stream(fileID, encoding="utf-8") as f:
+            with jobstore1.update_file_stream(fileID, encoding="utf-8") as f:
                 f.write(bar)
 
-            with jobstore.read_file_stream(fileID, encoding="utf-8") as f:
+            with jobstore1.read_file_stream(fileID, encoding="utf-8") as f:
+                self.assertEqual(bar, f.read())
+
+            with jobstore2.read_file_stream(fileID, encoding="utf-8") as f:
                 self.assertEqual(bar, f.read())
 
         def testPerJobFiles(self):
@@ -1173,6 +1177,9 @@ class AbstractEncryptedJobStoreTest:
             Create an encrypted file. Read it in encrypted mode then try with encryption off
             to ensure that it fails.
             """
+
+            from toil.lib.aws.s3 import AWSBadEncryptionKeyError
+
             phrase = b"This file is encrypted."
             fileName = "foo"
             with self.jobstore_initialized.write_shared_file_stream(
@@ -1186,13 +1193,14 @@ class AbstractEncryptedJobStoreTest:
             self.jobstore_initialized.config.sseKey = None
             try:
                 with self.jobstore_initialized.read_shared_file_stream(fileName) as f:
-                    self.assertEqual(phrase, f.read())
-            except AssertionError as e:
-                self.assertEqual(
-                    "Content is encrypted but no key was provided.", e.args[0]
-                )
-            else:
-                self.fail("Read encryption content with encryption off.")
+                    # If the read goes through, we should fail the assert because
+                    # we read the cyphertext
+                    assert f.read() != phrase, (
+                        "Managed to read plaintext content with encryption off."
+                    )
+            except AWSBadEncryptionKeyError as e:
+                # If the read doesn't go through, we get this.
+                assert "Your AWS encryption key is most likely configured incorrectly" in str(e)
 
 
 class FileJobStoreTest(AbstractJobStoreTest.Test):
