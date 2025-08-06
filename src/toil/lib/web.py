@@ -17,9 +17,11 @@ Contains functions for making web requests with Toil.
 
 All web requests should go through this module, to make sure they use the right
 user agent.
-
+>>> httpserver = getfixture("httpserver")
+>>> handler = httpserver.expect_request("/path").respond_with_json({})
 >>> from toil.lib.web import web_session
->>> web_session.get("https://example.com")
+>>> web_session.get(httpserver.url_for("/path"))
+<Response [200]>
 
 """
 

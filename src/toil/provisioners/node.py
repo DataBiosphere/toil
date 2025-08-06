@@ -41,6 +41,21 @@ class Node:
         tags: Optional[dict[str, str]] = None,
         use_private_ip: Optional[bool] = None,
     ) -> None:
+        """
+        Create a new node.
+
+        :param launchTime: Time when the node was launched. If a naive
+            datetime, or a string without timezone information, is assumed to
+            be in UTC.
+
+        :raises ValueError: If launchTime is an improperly formatted string.
+
+        >>> node = Node("127.0.0.1", "127.0.0.1", "localhost",
+        ...             "Decembruary Eleventeenth", None, False)
+        Traceback (most recent call last):
+        ...
+        ValueError: Invalid isoformat string: 'Decembruary Eleventeenth'
+        """
         self.publicIP = publicIP
         self.privateIP = privateIP
         if use_private_ip:
@@ -48,13 +63,25 @@ class Node:
         else:
             self.effectiveIP = self.publicIP or self.privateIP
         self.name = name
+        # Typing should prevent an empty launch time, but just to make sure,
+        # check it at runtime.
+        assert launchTime is not None, (
+            f"Attempted to create a Node {name} without a launch time"
+        )
         if isinstance(launchTime, datetime.datetime):
             self.launchTime = launchTime
         else:
             try:
+                # Parse an RFC 3339 ISO 8601 UTC datetime
                 self.launchTime = parse_iso_utc(launchTime)
             except ValueError:
+                # Parse (almost) any ISO 8601 datetime
                 self.launchTime = datetime.datetime.fromisoformat(launchTime)
+        if self.launchTime.tzinfo is None:
+            # Read naive datatimes as in UTC
+            self.launchTime = self.launchTime.replace(
+                tzinfo=datetime.timezone.utc
+            )
         self.nodeType = nodeType
         self.preemptible = preemptible
         self.tags = tags
@@ -70,22 +97,43 @@ class Node:
 
     def remainingBillingInterval(self) -> float:
         """
-        If the node has a launch time, this function returns a floating point value
-        between 0 and 1.0 representing how far we are into the
-        current billing cycle for the given instance. If the return value is .25, we are one
-        quarter into the billing cycle, with three quarters remaining before we will be charged
-        again for that instance.
+        Returns a floating point value between 0 and 1.0 representing how much
+        time is left in the current billing cycle for the given instance. If
+        the return value is .25, we are three quarters into the billing cycle,
+        with one quarters remaining before we will be charged again for that
+        instance.
 
         Assumes a billing cycle of one hour.
 
-        :return: Float from 0 -> 1.0 representing percentage of pre-paid time left in cycle.
+        :return: Float from 1.0 -> 0.0 representing fraction of pre-paid time
+            remaining in cycle.
+
+        >>> node = Node("127.0.0.1", "127.0.0.1", "localhost",
+        ...             datetime.datetime.utcnow(), None, False)
+        >>> node.remainingBillingInterval() >= 0
+        True
+        >>> node.remainingBillingInterval() <= 1.0
+        True
+        >>> node.remainingBillingInterval() > 0.5
+        True
+        >>> interval1 = node.remainingBillingInterval()
+        >>> time.sleep(1)
+        >>> interval2 = node.remainingBillingInterval()
+        >>> interval2 < interval1
+        True
+
+        >>> node = Node("127.0.0.1", "127.0.0.1", "localhost",
+        ...             datetime.datetime.now(datetime.timezone.utc) - 
+        ...             datetime.timedelta(minutes=5), None, False)
+        >>> node.remainingBillingInterval() < 0.99
+        True
+        >>> node.remainingBillingInterval() > 0.9
+        True
+        
         """
-        if self.launchTime:
-            now = datetime.datetime.utcnow()
-            delta = now - self.launchTime
-            return 1 - delta.total_seconds() / 3600.0 % 1.0
-        else:
-            return 1
+        now = datetime.datetime.now(datetime.timezone.utc)
+        delta = now - self.launchTime
+        return 1 - delta.total_seconds() / 3600.0 % 1.0
 
     def waitForNode(self, role: str, keyName: str = "core") -> None:
         self._waitForSSHPort()

@@ -17,7 +17,7 @@ class WritablePipe(ABC):
     :meth:`.readFrom` to consume the readable end of the pipe, then instantiate the class as a
     context manager to get the writable end. See the example below.
 
-    >>> import sys, shutil
+    >>> import sys, shutil, codecs
     >>> class MyPipe(WritablePipe):
     ...     def readFrom(self, readable):
     ...         shutil.copyfileobj(codecs.getreader('utf-8')(readable), sys.stdout)
@@ -156,7 +156,7 @@ class ReadablePipe(ABC):
     :meth:`.writeTo` to place data into the writable end of the pipe, then instantiate the class
     as a context manager to get the writable end. See the example below.
 
-    >>> import sys, shutil
+    >>> import sys, shutil, codecs
     >>> class MyPipe(ReadablePipe):
     ...     def writeTo(self, writable):
     ...         writable.write('Hello, world!\\n'.encode('utf-8'))
@@ -288,7 +288,7 @@ class ReadableTransformingPipe(ReadablePipe):
 
     Clients should subclass it and implement :meth:`.transform`, like so:
 
-    >>> import sys, shutil
+    >>> import sys, shutil, codecs
     >>> class MyPipe(ReadableTransformingPipe):
     ...     def transform(self, readable, writable):
     ...         writable.write(readable.read().decode('utf-8').upper().encode('utf-8'))
