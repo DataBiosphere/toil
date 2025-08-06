@@ -147,8 +147,11 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
      - This class fills in self.config only when initialized/restarted; it is None upon class instantiation.  These
        are the options/config set by the user.  When jobs are loaded/unpickled, they must re-incorporate this.
-       The config.sse_key is the source of truth for bucket encryption and a clear error should be raised if
-       restarting a bucket with a different encryption key set than it was initialized with.
+
+     - The config.sseKey field is the single source of truth for bucket encryption
+       status. The key is never stored inside this class; it is always read
+       from the file referenced by the config when needed. Modifying the config
+       at runtime will modify whether encryption is used.
 
      - TODO: In general, job stores should log the version of Toil they were
        initialized with and warn the user if restarting with a different
@@ -183,10 +186,6 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         # read and unread; named with uuid4
         self.logs_key_prefix = 'logs/'
 
-        # encryption is not set until self.initialize() or self.resume() are called
-        self.sse_key: Optional[str] = None
-        self.encryption_args: Dict[str, Any] = {}
-
         ###################################### CREATE/DESTROY JOBSTORE ######################################
 
     def initialize(self, config: Config) -> None:
@@ -194,10 +193,9 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         Called when starting a new jobstore with a non-existent bucket.
 
         Create bucket, raise if it already exists.
-        Set options from config.  Set sse key from that.
+        Set options from config.
         """
         logger.debug(f"Instantiating {self.__class__} for region {self.region} with bucket: '{self.bucket_name}'")
-        self.configure_encryption(config.sseKey)
         if bucket_exists(self.s3_resource, self.bucket_name):
             raise JobStoreExistsException(self.locator, 'aws')
         self.bucket = create_s3_bucket(self.s3_resource, self.bucket_name, region=self.region)  # type: ignore
@@ -209,11 +207,11 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
         :raise NoSuchJobStoreException: if the bucket doesn't exist.
         """
-        # this sets self.config to not be None and loads the encryption key path from the unencrypted config
+        # this sets self.config to not be None and loads the encryption key
+        # path from the unencrypted config
         super(AWSJobStore, self).resume()
         if not bucket_exists(self.s3_resource, self.bucket_name):
             raise NoSuchJobStoreException(self.locator, 'aws')
-        self.configure_encryption(self.config.sseKey)
 
     def destroy(self) -> None:
         delete_s3_bucket(self.s3_resource, self.bucket_name)
@@ -249,7 +247,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             s3_resource=self.s3_resource,
             bucket=bucket,
             key=self._key_in_bucket(identifier=identifier, prefix=prefix),
-            extra_args=self.encryption_args
+            extra_args=self._get_encryption_args()
         )
 
 
@@ -267,7 +265,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         Use for small files.  Does not parallelize or use multipart.
         """
         # only used if exporting to a URL
-        encryption_args = {} if not encrypted else self.encryption_args
+        encryption_args = {} if not encrypted else self._get_encryption_args()
         bucket = bucket or self.bucket_name
 
         if isinstance(data, dict):
@@ -311,7 +309,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 s3_resource=self.s3_resource,
                 bucket=bucket,
                 key=self._key_in_bucket(identifier=identifier, prefix=prefix),
-                extra_args=self.encryption_args,
+                extra_args=self._get_encryption_args(),
             )['Body'].read()
         except self.s3_client.exceptions.NoSuchKey:
             if prefix == self.job_key_prefix:
@@ -366,7 +364,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                     identifier=job_id,
                     prefix=self.job_key_prefix,
                 ),
-                **self.encryption_args
+                **self._get_encryption_args()
             )
             return True
         except ClientError as e:
@@ -480,7 +478,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             local_file_path=local_path,
             dst_bucket=self.bucket_name,
             dst_key=f'{prefix}/{os.path.basename(local_path)}',
-            extra_args=self.encryption_args
+            extra_args=self._get_encryption_args()
         )
         return FileID(file_id, size, executable)
 
@@ -519,7 +517,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                              s3_resource=self.s3_resource,
                              bucket_name=self.bucket_name,
                              file_id=f'{prefix}/{str(basename)}',
-                             encryption_args=self.encryption_args,
+                             encryption_args=self._get_encryption_args(),
                              encoding=encoding,
                              errors=errors)
         with pipe as writable:
@@ -538,7 +536,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             s3_resource=self.s3_resource,
             bucket_name=self.bucket_name,
             file_id=self.find_s3_key_from_file_id(file_id),
-            encryption_args=self.encryption_args,
+            encryption_args=self._get_encryption_args(),
             encoding=encoding,
             errors=errors,
         )
@@ -553,7 +551,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
     ) -> Iterator[IO[bytes]]:
-        encryption_args = {} if not encrypted else self.encryption_args
+        encryption_args = {} if not encrypted else self._get_encryption_args()
         pipe = MultiPartPipe(
             part_size=self.part_size,
             s3_resource=self.s3_resource,
@@ -575,7 +573,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             local_file_path=local_path,
             dst_bucket=self.bucket_name,
             dst_key=self.find_s3_key_from_file_id(file_id),
-            extra_args=self.encryption_args
+            extra_args=self._get_encryption_args()
         )
 
     def file_exists(self, file_id: str) -> bool:
@@ -609,7 +607,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 local_file_path=local_path,
                 src_bucket=self.bucket_name,
                 src_key=full_s3_key,
-                extra_args=self.encryption_args
+                extra_args=self._get_encryption_args()
             )
             if executable:
                 os.chmod(local_path, os.stat(local_path).st_mode | stat.S_IXUSR)
@@ -633,7 +631,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             with download_stream(self.s3_resource,
                                  bucket=self.bucket_name,
                                  key=full_s3_key,
-                                 extra_args=self.encryption_args,
+                                 extra_args=self._get_encryption_args(),
                                  encoding=encoding,
                                  errors=errors) as readable:
                 yield readable
@@ -686,7 +684,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                                  key=key,
                                  encoding=encoding,
                                  errors=errors,
-                                 extra_args=self.encryption_args) as readable:
+                                 extra_args=self._get_encryption_args()) as readable:
                 yield readable
         except self.s3_client.exceptions.NoSuchKey:
             raise NoSuchFileException(shared_file_name)
@@ -740,7 +738,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 src_key=src_key_name,
                 dst_bucket=self.bucket_name,
                 dst_key=dst_key,
-                extra_args=self.encryption_args
+                extra_args=self._get_encryption_args()
             )
             # TODO: verify etag after copying here?
 
@@ -767,7 +765,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 src_key=src_full_s3_key,
                 dst_bucket=dst_bucket_name,
                 dst_key=dst_key_name,
-                extra_args=self.encryption_args
+                extra_args=self._get_encryption_args()
             )
         else:
             super(AWSJobStore, self)._default_export_file(otherCls, jobStoreFileID, url)
@@ -905,7 +903,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         )
         self.s3_client.upload_fileobj(Bucket=self.bucket_name,
                                       Key=key_name,
-                                      ExtraArgs=self.encryption_args,
+                                      ExtraArgs=self._get_encryption_args(),
                                       Fileobj=file_obj)
 
     def read_logs(self, callback: Callable[..., Any], read_all: bool = False) -> int:
@@ -935,7 +933,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 with download_stream(self.s3_resource,
                                      bucket=self.bucket_name,
                                      key=result['Key'],
-                                     extra_args=self.encryption_args) as readable:
+                                     extra_args=self._get_encryption_args()) as readable:
                     callback(readable)
                 items_processed += 1
 
@@ -946,20 +944,28 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                                  data=read_log_marker)
         return items_processed
 
-    def configure_encryption(self, sse_key_path: Optional[str] = None) -> None:
-        if sse_key_path:
-            with open(sse_key_path, 'r') as f:
+    def _get_encryption_args(self) -> dict[str, Any]:
+        """
+        Get the encryption arguments to pass to an AWS function.
+
+        Reads live from the SSE key file referenced by the config.
+
+        :raises ValueError: If the key data is not formatted correctly.
+        """
+        # TODO: Maybe memoize the file read, subject to config field changes?
+        if self.config.sseKey:
+            with open(self.config.sseKey, 'r') as f:
                 sse_key = f.read()
             if not len(sse_key) == 32:  # TODO: regex
-                raise ValueError(f'Check that {sse_key_path} is the path to a real SSE key.  '
-                                 f'(Key length {len(sse_key)} != 32)')
+                raise ValueError(
+                    f'Check that {self.config.sseKey} '
+                    f'is the path to a real SSE key. '
+                    f'(Key length {len(sse_key)} != 32)'
+                )
             self.sse_key = sse_key
-            self.encryption_args = {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': sse_key}
-            logger.info(
-                "Enabled server-side encryption algorithm: %s",
-                self.encryption_args["SSECustomerAlgorithm"]
-            )
-
+            return {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': sse_key}
+        else:
+            return {}
 
 def parse_jobstore_identifier(jobstore_identifier: str) -> Tuple[str, str]:
     region, jobstore_name = jobstore_identifier.split(':')
