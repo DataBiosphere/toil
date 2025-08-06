@@ -203,11 +203,17 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         self.bucket = create_s3_bucket(self.s3_resource, self.bucket_name, region=self.region)  # type: ignore
         super(AWSJobStore, self).initialize(config)
 
-    def resume(self, sse_key_path: Optional[str] = None) -> None:
-        """Called when reusing an old jobstore with an existing bucket.  Raise if the bucket doesn't exist."""
-        super(AWSJobStore, self).resume(sse_key_path)  # this sets self.config to not be None and configures encryption
+    def resume(self) -> None:
+        """
+        Called when reusing an old jobstore with an existing bucket.
+
+        :raise NoSuchJobStoreException: if the bucket doesn't exist.
+        """
+        # this sets self.config to not be None and loads the encryption key path from the unencrypted config
+        super(AWSJobStore, self).resume()
         if not bucket_exists(self.s3_resource, self.bucket_name):
             raise NoSuchJobStoreException(self.locator, 'aws')
+        self.configure_encryption(config.sseKey)
 
     def destroy(self) -> None:
         delete_s3_bucket(self.s3_resource, self.bucket_name)
@@ -263,7 +269,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         # only used if exporting to a URL
         encryption_args = {} if not encrypted else self.encryption_args
         bucket = bucket or self.bucket_name
-        
+
         if isinstance(data, dict):
             data = json.dumps(data).encode('utf-8')
         elif isinstance(data, str):
@@ -547,6 +553,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
     ) -> Iterator[IO[bytes]]:
+        encryption_args = {} if not encrypted else self.encryption_args
         pipe = MultiPartPipe(
             part_size=self.part_size,
             s3_resource=self.s3_resource,
@@ -555,7 +562,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 identifier=shared_file_name,
                 prefix=self.shared_key_prefix,
             ),
-            encryption_args=self.encryption_args,
+            encryption_args=encryption_args,
             encoding=encoding,
             errors=errors,
         )
@@ -611,6 +618,8 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         except ClientError as e:
             if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                 raise NoSuchFileException(file_id)
+            else:
+                raise
 
     @contextmanager  # type: ignore
     def read_file_stream(  # type: ignore
@@ -946,6 +955,10 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                                  f'(Key length {len(sse_key)} != 32)')
             self.sse_key = sse_key
             self.encryption_args = {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': sse_key}
+            logger.info(
+                "Enabled server-side encryption algorithm: %s",
+                self.encryption_args["SSECustomerAlgorithm"]
+            )
 
 
 def parse_jobstore_identifier(jobstore_identifier: str) -> Tuple[str, str]:

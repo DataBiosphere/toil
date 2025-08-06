@@ -227,7 +227,7 @@ class AbstractJobStore(ABC):
         ) as fileHandle:
             pickle.dump(self.__config, fileHandle, pickle.HIGHEST_PROTOCOL)
 
-    def resume(self, sse_key_path: Optional[str] = None) -> None:
+    def resume(self) -> None:
         """
         Connect this instance to the physical storage it represents and load the Toil configuration
         into the :attr:`AbstractJobStore.config` attribute.

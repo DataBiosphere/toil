@@ -261,6 +261,8 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
             raise NoSuchJobStoreException(self.locator, "google")
         super().resume()
 
+        # TODO: Don't we need to set up encryption here???
+
     @google_retry
     def destroy(self):
         try:
