@@ -478,7 +478,7 @@ def generate_presigned_url(s3_resource: S3ServiceResource, bucket: str, key_name
 
 
 def create_public_url(s3_resource: S3ServiceResource, bucket: str, key: str) -> str:
-    bucket_obj = Bucket(bucket)
+    bucket_obj = s3_resource.Bucket(bucket)
     bucket_obj.Object(key).Acl().put(ACL='public-read')  # TODO: do we need to generate a signed url after doing this?
     url = generate_presigned_url(s3_resource=s3_resource,
                                  bucket=bucket,
