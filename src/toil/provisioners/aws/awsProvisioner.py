@@ -1024,8 +1024,8 @@ class AWSProvisioner(AbstractProvisioner):
             userDataBytes = userData.encode("utf-8")
 
         spot_kwargs = {
-            "KeyName": self._keyName,
             "LaunchSpecification": {
+                "KeyName": self._keyName,
                 "SecurityGroupIds": self._getSecurityGroupIDs(),
                 "InstanceType": type_info.name,
                 "UserData": userDataBytes,
