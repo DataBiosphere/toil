@@ -28,9 +28,9 @@ logging.basicConfig(level=logging.DEBUG)
 class IAMTest(ToilTest):
     """Check that given permissions and associated functions perform correctly"""
 
-    def test_permissions_iam(self):
+    def test_permissions_iam(self) -> None:
         granted_perms = {
-            "*": {"Action": ["ec2:*", "iam:*", "s3:*", "sdb:*"], "NotAction": []}
+            "*": {"Action": ["ec2:*", "iam:*", "s3:*"], "NotAction": []}
         }
         assert (
             iam.policy_permissions_allow(
@@ -46,8 +46,8 @@ class IAMTest(ToilTest):
             is True
         )
 
-    def test_negative_permissions_iam(self):
-        granted_perms = {"*": {"Action": ["ec2:*", "s3:*", "sdb:*"], "NotAction": []}}
+    def test_negative_permissions_iam(self) -> None:
+        granted_perms = {"*": {"Action": ["ec2:*", "s3:*"], "NotAction": []}}
         assert (
             iam.policy_permissions_allow(
                 granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS
@@ -62,7 +62,7 @@ class IAMTest(ToilTest):
             is False
         )
 
-    def test_wildcard_handling(self):
+    def test_wildcard_handling(self) -> None:
         assert iam.permission_matches_any("iam:CreateRole", ["iam:Create**"]) is True
         assert iam.permission_matches_any("iam:GetUser", ["iam:???????"]) is True
         assert iam.permission_matches_any("iam:ListRoleTags", ["iam:*?*Tags"]) is True
@@ -71,7 +71,7 @@ class IAMTest(ToilTest):
 
     @mock_aws
     @needs_aws_s3  # mock is incomplete, this avoid 'botocore.exceptions.NoCredentialsError: Unable to locate credentials'
-    def test_get_policy_permissions(self):
+    def test_get_policy_permissions(self) -> None:
         mock_iam = boto3.client("iam")
 
         # username that moto pretends we have from client.get_user()
@@ -167,7 +167,7 @@ class IAMTest(ToilTest):
         assert notactions_set == set()
 
     @needs_aws_s3
-    def test_create_delete_iam_role(self):
+    def test_create_delete_iam_role(self) -> None:
         region = "us-west-2"
         role_name = f'test{str(uuid4()).replace("-", "")}'
         with self.subTest("Create role w/policies."):

@@ -813,7 +813,6 @@ class JobDescription(Requirer):
     Subclassed into variants for checkpoint jobs and service jobs that have
     their specific parameters.
     """
-
     def __init__(
         self,
         requirements: Mapping[str, Union[int, str, float, bool, list]],

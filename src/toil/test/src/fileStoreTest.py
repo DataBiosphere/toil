@@ -300,6 +300,18 @@ class hidden:
                         f"[executable: {executable}]\n"
                         f"[caching: {caching}]\n"
                     ):
+                        # Since we don't get a setUp and tearDown between
+                        # subTests, we need to run each with its own jobstore
+                        # if we want them to be independent.
+                        #
+                        # TODO: We have clean=always set, so we *should* be
+                        # able to re-use a job store name, but it might be
+                        # possible for an AWS jobstore clean to appear to
+                        # finish before the bucket name is really available for
+                        # re-use. See
+                        # <https://ucsc-ci.com/databiosphere/toil/-/jobs/96220>
+                        self.options.jobStore = self._getTestJobStore()
+
                         self.options.caching = caching
                         read_write_job = Job.wrapJobFn(
                             self._testWriteReadGlobalFilePermissions,

@@ -110,7 +110,7 @@ marker=""
 threads:="auto"
 
 dist:="worksteal"
-pytest_args:=""
+pytest_args:="--randomly-dont-reorganize"
 
 # Only pass the threading options if running parallel tests. Otherwise we lose
 # live logging. See <https://stackoverflow.com/q/62533239>
@@ -199,7 +199,7 @@ test_offline: check_venv check_build_reqs
 test_1min: check_venv check_build_reqs
 	TOIL_SKIP_DOCKER=False \
 	TOIL_HISTORY=0 \
-	    python -m pytest $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) --timeout=30  --maxfail=1 $(pytest_args) src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerBenchTest::test_get_service_info src/toil/test/cwl/cwlTest.py::TestCWLWorkflow::test_run_colon_output src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior
+	    python -m pytest $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) --timeout=30 --maxfail=1 $(pytest_args) src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerBenchTest::test_get_service_info src/toil/test/cwl/cwlTest.py::TestCWLWorkflow::test_run_colon_output src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior
 
 ifdef TOIL_DOCKER_REGISTRY
 

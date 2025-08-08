@@ -18,67 +18,64 @@ from typing import TYPE_CHECKING, Optional
 
 from toil.jobStores.aws.jobStore import AWSJobStore
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.utils import create_s3_bucket, get_bucket_region
+from toil.lib.aws.utils import create_s3_bucket, delete_s3_bucket, get_bucket_region
 from toil.test import ToilTest, needs_aws_s3
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3ServiceResource
+    from mypy_boto3_s3.service_resource import Bucket
 
 @needs_aws_s3
 class S3Test(ToilTest):
     """Confirm the workarounds for us-east-1."""
 
-    if TYPE_CHECKING:
-        from mypy_boto3_s3 import S3ServiceResource
-        from mypy_boto3_s3.service_resource import Bucket
-
     s3_resource: Optional["S3ServiceResource"]
-    bucket: Optional["Bucket"]
 
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
         session = establish_boto3_session(region_name="us-east-1")
         cls.s3_resource = session.resource("s3", region_name="us-east-1")
-        cls.bucket = None
 
     def test_create_bucket(self) -> None:
         """Test bucket creation for us-east-1."""
         bucket_name = f"toil-s3test-{uuid.uuid4()}"
         assert self.s3_resource
-        S3Test.bucket = create_s3_bucket(self.s3_resource, bucket_name, "us-east-1")
-        S3Test.bucket.wait_until_exists()
-        owner_tag = os.environ.get("TOIL_OWNER_TAG")
-        if owner_tag:
-            bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
-            bucket_tagging.put(
-                Tagging={"TagSet": [{"Key": "Owner", "Value": owner_tag}]}
-            )
-        self.assertEqual(get_bucket_region(bucket_name), "us-east-1")
+        bucket: Optional["Bucket"] = None
+        try:
+            bucket = create_s3_bucket(self.s3_resource, bucket_name, "us-east-1")
+            bucket.wait_until_exists()
+            owner_tag = os.environ.get("TOIL_OWNER_TAG")
+            if owner_tag:
+                bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
+                bucket_tagging.put(
+                    Tagging={"TagSet": [{"Key": "Owner", "Value": owner_tag}]}
+                )
+            self.assertEqual(get_bucket_region(bucket_name), "us-east-1")
 
-        # Make sure all the bucket location getting strategies work on a bucket we created
-        self.assertEqual(
-            get_bucket_region(bucket_name, only_strategies={1}), "us-east-1"
-        )
-        self.assertEqual(
-            get_bucket_region(bucket_name, only_strategies={2}), "us-east-1"
-        )
-        self.assertEqual(
-            get_bucket_region(bucket_name, only_strategies={3}), "us-east-1"
-        )
+            # Make sure all the bucket location getting strategies work on a bucket we created
+            self.assertEqual(
+                get_bucket_region(bucket_name, only_strategies={1}), "us-east-1"
+            )
+            self.assertEqual(
+                get_bucket_region(bucket_name, only_strategies={2}), "us-east-1"
+            )
+            self.assertEqual(
+                get_bucket_region(bucket_name, only_strategies={3}), "us-east-1"
+            )
+        finally:
+            # Clean up the bucket if we managed to make it
+            if bucket is not None:
+                delete_s3_bucket(self.s3_resource, bucket_name)
 
     def test_get_bucket_location_public_bucket(self) -> None:
         """
-        Test getting buket location for a bucket we don't own.
+        Test getting bucket location for a bucket we don't own.
         """
 
         bucket_name = "spacenet-dataset"
         # This bucket happens to live in us-east-1
         self.assertEqual(get_bucket_region(bucket_name), "us-east-1")
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        if cls.bucket:
-            AWSJobStore._delete_bucket(cls.bucket)
-        super().tearDownClass()

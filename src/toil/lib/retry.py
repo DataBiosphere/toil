@@ -172,7 +172,7 @@ class ErrorCondition:
 
     def __init__(
         self,
-        error: Optional[Any] = None,
+        error: Optional[type[BaseException]] = None,
         error_codes: list[int] = None,
         boto_error_codes: list[str] = None,
         error_message_must_include: str = None,

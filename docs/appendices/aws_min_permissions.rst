@@ -18,7 +18,6 @@ with the ``--awsEc2ProfileArn`` parameter.
                 "Action": [
                     "ec2:*",
                     "s3:*",
-                    "sdb:*",
                     "iam:PassRole"
                 ],
                 "Resource": "*"

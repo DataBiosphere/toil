@@ -1207,7 +1207,7 @@ class CachingFileStore(AbstractFileStore):
             # its temp dir and database entry.
             self._deallocateSpaceForJob()
 
-    def writeGlobalFile(self, localFileName, cleanup=False, executable=False):
+    def writeGlobalFile(self, localFileName, cleanup=False):
         """
         Creates a file in the jobstore and returns a FileID reference.
         """

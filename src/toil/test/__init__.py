@@ -49,7 +49,6 @@ from toil.lib.accelerators import (
     have_working_nvidia_smi,
 )
 from toil.lib.io import mkdtemp
-from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
 from toil.version import distVersion
@@ -224,7 +223,7 @@ class ToilTest(unittest.TestCase):
 
         :return: The output of the process' stdout if capture=True was passed, None otherwise.
         """
-        argl = list(concat(command, args))
+        argl = [command] + list(args)
         logger.info("Running %r", argl)
         capture = kwargs.pop("capture", False)
         _input = kwargs.pop("input", None)
@@ -442,7 +441,7 @@ def needs_aws_batch(test_item: MT) -> MT:
         test_item
     )
     test_item = needs_env_var(
-        "TOIL_AWS_BATCH_JOB_ROLE_ARN", "an IAM role ARN that grants S3 and SDB access"
+        "TOIL_AWS_BATCH_JOB_ROLE_ARN", "an IAM role ARN that grants S3 access"
     )(test_item)
     try:
         from toil.lib.aws import get_current_aws_region
@@ -1251,19 +1250,16 @@ class ApplianceTestSupport(ToilTest):
             with self.lock:
                 image = applianceSelf()
                 # Omitting --rm, it's unreliable, see https://github.com/docker/docker/issues/16575
-                args = list(
-                    concat(
-                        "docker",
-                        "run",
-                        "--entrypoint=" + self._entryPoint(),
-                        "--net=host",
-                        "-i",
-                        "--name=" + self.containerName,
-                        ["--volume=%s:%s" % mount for mount in self.mounts.items()],
-                        image,
-                        self._containerCommand(),
-                    )
-                )
+                args = [
+                    "docker",
+                    "run",
+                    f"--entrypoint={self._entryPoint()}",
+                    "--net=host",
+                    "-i",
+                    f"--name={self.containerName}"] + \
+                    ["--volume=%s:%s" % mount for mount in self.mounts.items()] + \
+                    [image] + \
+                    self._containerCommand()
                 logger.info("Running %r", args)
                 self.popen = subprocess.Popen(args)
             self.start()

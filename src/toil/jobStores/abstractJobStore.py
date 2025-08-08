@@ -90,7 +90,7 @@ class InvalidImportExportUrlException(Exception):
 class NoSuchJobException(Exception):
     """Indicates that the specified job does not exist."""
 
-    def __init__(self, jobStoreID: FileID):
+    def __init__(self, jobStoreID: Union[FileID, str]):
         """
         :param str jobStoreID: the jobStoreID that was mistakenly assumed to exist
         """
@@ -100,7 +100,7 @@ class NoSuchJobException(Exception):
 class ConcurrentFileModificationException(Exception):
     """Indicates that the file was attempted to be modified by multiple processes at once."""
 
-    def __init__(self, jobStoreFileID: FileID):
+    def __init__(self, jobStoreFileID: Union[FileID, str]):
         """
         :param jobStoreFileID: the ID of the file that was modified by multiple workers
                or processes concurrently
@@ -112,7 +112,7 @@ class NoSuchFileException(Exception):
     """Indicates that the specified file does not exist."""
 
     def __init__(
-        self, jobStoreFileID: FileID, customName: Optional[str] = None, *extra: Any
+        self, jobStoreFileID: Union[FileID, str], customName: Optional[str] = None, *extra: Any
     ):
         """
         :param jobStoreFileID: the ID of the file that was mistakenly assumed to exist
@@ -140,11 +140,12 @@ class NoSuchJobStoreException(LocatorException):
     def __init__(self, locator: str, prefix: str):
         """
         :param str locator: The location of the job store
+        :param str prefix: The type of job store
         """
         super().__init__(
             "The job store '%s' does not exist, so there is nothing to restart.",
             locator,
-            prefix,
+            prefix
         )
 
 
@@ -159,7 +160,7 @@ class JobStoreExistsException(LocatorException):
             "The job store '%s' already exists. Use --restart to resume the workflow, or remove "
             "the job store with 'toil clean' to start the workflow from scratch.",
             locator,
-            prefix,
+            prefix
         )
 
 
@@ -240,7 +241,12 @@ class AbstractJobStore(ABC):
 
     @property
     def config(self) -> Config:
-        """Return the Toil configuration associated with this job store."""
+        """
+        Return the Toil configuration associated with this job store.
+
+        :raises AttributeError: if the config has not yet been assigned (i.e.
+            during :meth:`resume`).
+        """
         return self.__config
 
     @property
@@ -560,7 +566,6 @@ class AbstractJobStore(ABC):
             if getattr(jobStoreFileID, "executable", False):
                 executable = jobStoreFileID.executable
             otherCls._write_to_url(readable, url, executable)
-
 
     @abstractmethod
     def destroy(self) -> None:
@@ -930,15 +935,6 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    @contextmanager
-    def batch(self) -> Iterator[None]:
-        """
-        If supported by the batch system, calls to create() with this context
-        manager active will be performed in a batch after the context manager
-        is released.
-        """
-        yield
-
     @deprecated(new_function_name="create_job")
     def create(self, jobDescription: JobDescription) -> JobDescription:
         return self.create_job(jobDescription)
@@ -1035,6 +1031,15 @@ class AbstractJobStore(ABC):
     @deprecated(new_function_name="update_job")
     def update(self, jobDescription: JobDescription) -> None:
         return self.update_job(jobDescription)
+
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        """
+        If supported by the batch system, calls to create() with this context
+        manager active will be performed in a batch after the context manager
+        is released.
+        """
+        yield
 
     @abstractmethod
     def update_job(self, job_description: JobDescription) -> None:
@@ -1206,14 +1211,14 @@ class AbstractJobStore(ABC):
         Creates an empty file in the job store and returns its ID.
         Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
 
-        :param str job_id: the id of a job, or None. If specified, the may be associated
+        :param job_id: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
 
-        :param bool cleanup: Whether to attempt to delete the file when the job
+        :param cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
 
-        :param str basename: If supported by the implementation, use the given
+        :param basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
 

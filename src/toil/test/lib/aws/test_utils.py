@@ -27,35 +27,35 @@ class TagGenerationTest(ToilTest):
     Test for tag generation from environment variables
     """
 
-    def test_build_tag(self):
+    def test_build_tag(self) -> None:
         environment = dict()
         environment["TOIL_OWNER_TAG"] = "😀"
-        environment["TOIL_AWS_TAGS"] = None
+        environment["TOIL_AWS_TAGS"] = ""
         tag_dict = build_tag_dict_from_env(environment)
         assert tag_dict == {"Owner": "😀"}
 
-    def test_empty_aws_tags(self):
+    def test_empty_aws_tags(self) -> None:
         environment = dict()
-        environment["TOIL_OWNER_TAG"] = None
+        environment["TOIL_OWNER_TAG"] = ""
         environment["TOIL_AWS_TAGS"] = "{}"
         tag_dict = build_tag_dict_from_env(environment)
         assert tag_dict == dict()
 
-    def test_incorrect_json_object(self):
+    def test_incorrect_json_object(self) -> None:
         with pytest.raises(SystemExit):
             environment = dict()
-            environment["TOIL_OWNER_TAG"] = None
+            environment["TOIL_OWNER_TAG"] = ""
             environment["TOIL_AWS_TAGS"] = "231"
             tag_dict = build_tag_dict_from_env(environment)
 
-    def test_incorrect_json_emoji(self):
+    def test_incorrect_json_emoji(self) -> None:
         with pytest.raises(SystemExit):
             environment = dict()
-            environment["TOIL_OWNER_TAG"] = None
+            environment["TOIL_OWNER_TAG"] = ""
             environment["TOIL_AWS_TAGS"] = "😀"
             tag_dict = build_tag_dict_from_env(environment)
 
-    def test_build_tag_with_tags(self):
+    def test_build_tag_with_tags(self) -> None:
         environment = dict()
         environment["TOIL_OWNER_TAG"] = "😀"
         environment["TOIL_AWS_TAGS"] = '{"1": "2", " ":")"}'
