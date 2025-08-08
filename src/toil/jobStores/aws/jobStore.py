@@ -209,11 +209,12 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
         :raise NoSuchJobStoreException: if the bucket doesn't exist.
         """
-        # this sets self.config to not be None and loads the encryption key
-        # path from the unencrypted config
-        super(AWSJobStore, self).resume()
         if not bucket_exists(self.s3_resource, self.bucket_name):
             raise NoSuchJobStoreException(self.locator, 'aws')
+        # This sets self.config to not be None and loads the encryption key
+        # path from the unencrypted config. So it needs the bucket to exist to
+        # read from.
+        super(AWSJobStore, self).resume()
 
     def destroy(self) -> None:
         delete_s3_bucket(self.s3_resource, self.bucket_name)
