@@ -285,7 +285,7 @@ def create_spot_instances(
     ):
         with attempt:
             requests_dict = boto3_ec2.request_spot_instances(
-                SpotPrice=price, InstanceCount=num_instances, **spec
+                SpotPrice=str(price), InstanceCount=num_instances, **spec
             )
             requests = requests_dict["SpotInstanceRequests"]
 
@@ -438,8 +438,8 @@ def create_instances(
     """
     logger.info("Creating %s instance(s) ... ", instance_type)
 
-    if isinstance(user_data, str):
-        user_data = user_data.encode("utf-8")
+    if isinstance(user_data, bytes):
+        user_data = user_data.decode("utf-8")
 
     request = {
         "ImageId": image_id,
