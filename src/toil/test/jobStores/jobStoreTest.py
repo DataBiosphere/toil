@@ -420,27 +420,31 @@ class AbstractJobStoreTest:
 
         def testReadWriteFileStreamTextMode(self):
             """Checks if text mode is compatible for file streams."""
-            jobstore = self.jobstore_initialized
+            jobstore1 = self.jobstore_initialized
+            jobstore2 = self.jobstore_resumed_noconfig
             job = self.arbitraryJob()
-            jobstore.assign_job_id(job)
-            jobstore.create_job(job)
+            jobstore1.assign_job_id(job)
+            jobstore1.create_job(job)
 
             foo = "foo"
             bar = "bar"
 
-            with jobstore.write_file_stream(job.jobStoreID, encoding="utf-8") as (
+            with jobstore1.write_file_stream(job.jobStoreID, encoding="utf-8") as (
                 f,
                 fileID,
             ):
                 f.write(foo)
 
-            with jobstore.read_file_stream(fileID, encoding="utf-8") as f:
+            with jobstore1.read_file_stream(fileID, encoding="utf-8") as f:
                 self.assertEqual(foo, f.read())
 
-            with jobstore.update_file_stream(fileID, encoding="utf-8") as f:
+            with jobstore1.update_file_stream(fileID, encoding="utf-8") as f:
                 f.write(bar)
 
-            with jobstore.read_file_stream(fileID, encoding="utf-8") as f:
+            with jobstore1.read_file_stream(fileID, encoding="utf-8") as f:
+                self.assertEqual(bar, f.read())
+
+            with jobstore2.read_file_stream(fileID, encoding="utf-8") as f:
                 self.assertEqual(bar, f.read())
 
         def testPerJobFiles(self):
@@ -1173,6 +1177,9 @@ class AbstractEncryptedJobStoreTest:
             Create an encrypted file. Read it in encrypted mode then try with encryption off
             to ensure that it fails.
             """
+
+            from toil.lib.aws.s3 import AWSBadEncryptionKeyError
+
             phrase = b"This file is encrypted."
             fileName = "foo"
             with self.jobstore_initialized.write_shared_file_stream(
@@ -1186,13 +1193,14 @@ class AbstractEncryptedJobStoreTest:
             self.jobstore_initialized.config.sseKey = None
             try:
                 with self.jobstore_initialized.read_shared_file_stream(fileName) as f:
-                    self.assertEqual(phrase, f.read())
-            except AssertionError as e:
-                self.assertEqual(
-                    "Content is encrypted but no key was provided.", e.args[0]
-                )
-            else:
-                self.fail("Read encryption content with encryption off.")
+                    # If the read goes through, we should fail the assert because
+                    # we read the cyphertext
+                    assert f.read() != phrase, (
+                        "Managed to read plaintext content with encryption off."
+                    )
+            except AWSBadEncryptionKeyError as e:
+                # If the read doesn't go through, we get this.
+                assert "Your AWS encryption key is most likely configured incorrectly" in str(e)
 
 
 class FileJobStoreTest(AbstractJobStoreTest.Test):
@@ -1435,113 +1443,6 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         assert isinstance(self.jobstore_initialized, AWSJobStore)  # type hinting
         self.jobstore_initialized.destroy()
 
-    def testSDBDomainsDeletedOnFailedJobstoreBucketCreation(self):
-        """
-        This test ensures that SDB domains bound to a jobstore are deleted if the jobstore bucket
-        failed to be created.  We simulate a failed jobstore bucket creation by using a bucket in a
-        different region with the same name.
-        """
-        from botocore.exceptions import ClientError
-
-        from toil.jobStores.aws.jobStore import BucketLocationConflictException
-        from toil.lib.aws.session import establish_boto3_session
-        from toil.lib.aws.utils import retry_s3
-
-        externalAWSLocation = "us-west-1"
-        for testRegion in "us-east-1", "us-west-2":
-            # We run this test twice, once with the default s3 server us-east-1 as the test region
-            # and once with another server (us-west-2).  The external server is always us-west-1.
-            # This incidentally tests that the BucketLocationConflictException is thrown when using
-            # both the default, and a non-default server.
-            testJobStoreUUID = str(uuid.uuid4())
-            # Create the bucket at the external region
-            bucketName = "domain-test-" + testJobStoreUUID + "--files"
-            client = establish_boto3_session().client(
-                "s3", region_name=externalAWSLocation
-            )
-            resource = establish_boto3_session().resource(
-                "s3", region_name=externalAWSLocation
-            )
-
-            for attempt in retry_s3(delays=(2, 5, 10, 30, 60), timeout=600):
-                with attempt:
-                    # Create the bucket at the home region
-                    client.create_bucket(
-                        Bucket=bucketName,
-                        CreateBucketConfiguration={
-                            "LocationConstraint": externalAWSLocation
-                        },
-                    )
-
-            owner_tag = os.environ.get("TOIL_OWNER_TAG")
-            if owner_tag:
-                for attempt in retry_s3(delays=(1, 1, 2, 4, 8, 16), timeout=33):
-                    with attempt:
-                        bucket_tagging = resource.BucketTagging(bucketName)
-                        bucket_tagging.put(
-                            Tagging={"TagSet": [{"Key": "Owner", "Value": owner_tag}]}
-                        )
-
-            options = Job.Runner.getDefaultOptions(
-                "aws:" + testRegion + ":domain-test-" + testJobStoreUUID
-            )
-            options.logLevel = "DEBUG"
-            try:
-                with Toil(options) as toil:
-                    pass
-            except BucketLocationConflictException:
-                # Catch the expected BucketLocationConflictException and ensure that the bound
-                # domains don't exist in SDB.
-                sdb = establish_boto3_session().client(
-                    region_name=self.awsRegion(), service_name="sdb"
-                )
-                next_token = None
-                allDomainNames = []
-                while True:
-                    if next_token is None:
-                        domains = sdb.list_domains(MaxNumberOfDomains=100)
-                    else:
-                        domains = sdb.list_domains(
-                            MaxNumberOfDomains=100, NextToken=next_token
-                        )
-                    allDomainNames.extend(domains["DomainNames"])
-                    next_token = domains.get("NextToken")
-                    if next_token is None:
-                        break
-                self.assertFalse([d for d in allDomainNames if testJobStoreUUID in d])
-            else:
-                self.fail()
-            finally:
-                try:
-                    for attempt in retry_s3():
-                        with attempt:
-                            client.delete_bucket(Bucket=bucketName)
-                except ClientError as e:
-                    # The actual HTTP code of the error is in status.
-                    if (
-                        e.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-                        == 404
-                    ):
-                        # The bucket doesn't exist; maybe a failed delete actually succeeded.
-                        pass
-                    else:
-                        raise
-
-    @slow
-    def testInlinedFiles(self):
-        from toil.jobStores.aws.jobStore import AWSJobStore
-
-        jobstore = self.jobstore_initialized
-        for encrypted in (True, False):
-            n = AWSJobStore.FileInfo.maxInlinedSize()
-            sizes = (1, n // 2, n - 1, n, n + 1, 2 * n)
-            for size in chain(sizes, islice(reversed(sizes), 1)):
-                s = os.urandom(size)
-                with jobstore.write_shared_file_stream("foo") as f:
-                    f.write(s)
-                with jobstore.read_shared_file_stream("foo") as f:
-                    self.assertEqual(s, f.read())
-
     def testOverlargeJob(self):
         jobstore = self.jobstore_initialized
         jobRequirements = dict(memory=12, cores=34, disk=35, preemptible=True)
@@ -1661,19 +1562,8 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         )
         delete_s3_bucket(resource, bucket.name)
 
-    def _largeLogEntrySize(self):
-        from toil.jobStores.aws.jobStore import AWSJobStore
 
-        # So we get into the else branch of reader() in uploadStream(multiPart=False):
-        return AWSJobStore.FileInfo.maxBinarySize() * 2
-
-    def _batchDeletionSize(self):
-        from toil.jobStores.aws.jobStore import AWSJobStore
-
-        return AWSJobStore.itemsPerBatchDelete
-
-
-@needs_aws_s3
+# @needs_aws_s3
 class InvalidAWSJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
         from toil.jobStores.aws.jobStore import AWSJobStore

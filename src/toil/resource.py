@@ -32,7 +32,6 @@ from zipfile import ZipFile
 
 from toil import inVirtualEnv
 from toil.lib.io import mkdtemp
-from toil.lib.iterables import concat
 from toil.lib.memoize import strict_bool
 from toil.lib.retry import ErrorCondition, retry
 from toil.version import exactPython
@@ -619,18 +618,9 @@ class ModuleDescriptor(
             initName = self._initModuleName(self.dirPath)
             if initName:
                 raise ResourceException(
-                    "Toil does not support loading a user script from a package directory. You "
-                    "may want to remove %s from %s or invoke the user script as a module via "
-                    "'PYTHONPATH=\"%s\" %s -m %s.%s'."
-                    % tuple(
-                        concat(
-                            initName,
-                            self.dirPath,
-                            exactPython,
-                            os.path.split(self.dirPath),
-                            self.name,
-                        )
-                    )
+                    f"Toil does not support loading a user script from a package directory. You "
+                    f"may want to remove {initName} from {self.dirPath} or invoke the user script as a module via: "
+                    f"PYTHONPATH='{self.dirPath}' {exactPython} -m {self.dirPath}.{self.name}"
                 )
             return self.dirPath
 
