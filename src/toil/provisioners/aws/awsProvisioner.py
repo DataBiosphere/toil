@@ -13,6 +13,7 @@
 # limitations under the License.
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -1018,12 +1019,17 @@ class AWSProvisioner(AbstractProvisioner):
         userData: str = self._getIgnitionUserData(
             "worker", keyPath, preemptible, self._architecture
         )
+        # Boto 3 demands we base64 the user data ourselves, but still wants a
+        # str.
+        encoded_user_data = base64.b64encode(
+            userData.encode("utf-8")
+        ).decode("utf-8")
         spot_kwargs = {
             "LaunchSpecification": {
                 "KeyName": self._keyName,
                 "SecurityGroupIds": self._getSecurityGroupIDs(),
                 "InstanceType": type_info.name,
-                "UserData": userData,
+                "UserData": encoded_user_data,
                 "BlockDeviceMappings": bdm,
                 "IamInstanceProfile": {"Arn": self._leaderProfileArn},
                 "Placement": {"AvailabilityZone": zone},
@@ -1034,7 +1040,7 @@ class AWSProvisioner(AbstractProvisioner):
             "KeyName": self._keyName,
             "SecurityGroupIds": self._getSecurityGroupIDs(),
             "InstanceType": type_info.name,
-            "UserData": userData,
+            "UserData": encoded_user_data,
             "BlockDeviceMappings": bdm,
             "IamInstanceProfile": {"Arn": self._leaderProfileArn},
             "Placement": {"AvailabilityZone": zone},
