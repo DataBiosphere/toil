@@ -449,7 +449,7 @@ class AWSProvisioner(AbstractProvisioner):
         :return: None
         """
 
-        if "network" in kwargs:
+        if kwargs.get("network") is not None:
             logger.warning(
                 "AWS provisioner does not support a network parameter. Ignoring %s!",
                 kwargs["network"],
