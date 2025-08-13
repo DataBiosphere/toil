@@ -206,16 +206,17 @@ def wait_spot_requests_active(
                 r: "SpotInstanceRequestTypeDef"  # pycharm thinks it is a string
                 if r["State"] == "open":
                     open_ids.add(r["SpotInstanceRequestId"])
-                    if r["Status"] == "pending-evaluation":
+                    if r["Status"]["Code"] == "pending-evaluation":
                         eval_ids.add(r["SpotInstanceRequestId"])
-                    elif r["Status"] == "pending-fulfillment":
+                    elif r["Status"]["Code"] == "pending-fulfillment":
                         fulfill_ids.add(r["SpotInstanceRequestId"])
                     else:
                         logger.info(
                             "Request %s entered status %s indicating that it will not be "
-                            "fulfilled anytime soon.",
+                            "fulfilled anytime soon. (Message: %s)",
                             r["SpotInstanceRequestId"],
-                            r["Status"],
+                            r["Status"]["Code"],
+                            r["Status"].get("Message"),
                         )
                 elif r["State"] == "active":
                     if r["SpotInstanceRequestId"] in active_ids:
