@@ -347,7 +347,7 @@ def create_spot_instances(
             page = boto3_ec2.describe_instances(InstanceIds=instance_ids)
             while page.get("NextToken") is not None:
                 yield page
-                page = boto3_ec2.describe_instances(NextToken=page["NextToken"])
+                page = boto3_ec2.describe_instances(InstanceIds=instance_ids, NextToken=page["NextToken"])
             yield page
     if not num_active:
         message = "None of the spot requests entered the active state"
