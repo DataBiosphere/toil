@@ -126,24 +126,24 @@ def choose_spot_zone(
 
     >>> zones = ['us-west-2a', 'us-west-2b']
     >>> FauxHistory = lambda p, z: {"SpotPrice": p, "AvailabilityZone": z}
-    >>> spot_history = [FauxHistory(0.1, 'us-west-2a'), \
-                        FauxHistory(0.2, 'us-west-2a'), \
-                        FauxHistory(0.3, 'us-west-2b'), \
-                        FauxHistory(0.6, 'us-west-2b')]
+    >>> spot_history = [FauxHistory("0.1", 'us-west-2a'), \
+                        FauxHistory("0.2", 'us-west-2a'), \
+                        FauxHistory("0.3", 'us-west-2b'), \
+                        FauxHistory("0.6", 'us-west-2b')]
     >>> choose_spot_zone(zones, 0.15, spot_history)
     'us-west-2a'
 
-    >>> spot_history=[FauxHistory(0.3, 'us-west-2a'), \
-                      FauxHistory(0.2, 'us-west-2a'), \
-                      FauxHistory(0.1, 'us-west-2b'), \
-                      FauxHistory(0.6, 'us-west-2b')]
+    >>> spot_history=[FauxHistory("0.3", 'us-west-2a'), \
+                      FauxHistory("0.2", 'us-west-2a'), \
+                      FauxHistory("0.1", 'us-west-2b'), \
+                      FauxHistory("0.6", 'us-west-2b')]
     >>> choose_spot_zone(zones, 0.15, spot_history)
     'us-west-2b'
 
-    >>> spot_history=[FauxHistory(0.1, 'us-west-2a'), \
-                      FauxHistory(0.7, 'us-west-2a'), \
-                      FauxHistory(0.1, 'us-west-2b'), \
-                      FauxHistory(0.6, 'us-west-2b')]
+    >>> spot_history=[FauxHistory("0.1", 'us-west-2a'), \
+                      FauxHistory("0.7", 'us-west-2a'), \
+                      FauxHistory("0.1", 'us-west-2b'), \
+                      FauxHistory("0.6", 'us-west-2b')]
     >>> choose_spot_zone(zones, 0.15, spot_history)
     'us-west-2b'
     """
@@ -158,8 +158,8 @@ def choose_spot_zone(
             if zone_history["AvailabilityZone"] == zone
         ]
         if zone_histories:
-            price_deviation = stdev([history["SpotPrice"] for history in zone_histories])
-            recent_price = zone_histories[0]["SpotPrice"]
+            price_deviation = stdev([float(history["SpotPrice"]) for history in zone_histories])
+            recent_price = float(zone_histories[0]["SpotPrice"])
         else:
             price_deviation, recent_price = 0.0, bid
         zone_tuple = ZoneTuple(name=zone, price_deviation=price_deviation)
@@ -201,10 +201,10 @@ def _check_spot_bid(spot_bid: float, spot_history: list["SpotPriceTypeDef"]) -> 
     :raises UserError: if bid is > 2X the spot price's average
 
     >>> FauxHistory = lambda p, z: {"SpotPrice": p, "AvailabilityZone": z}
-    >>> spot_data = [ FauxHistory( 0.1, "us-west-2a" ), \
-                      FauxHistory( 0.2, "us-west-2a" ), \
-                      FauxHistory( 0.3, "us-west-2b" ), \
-                      FauxHistory( 0.6, "us-west-2b" ) ]
+    >>> spot_data = [ FauxHistory( "0.1", "us-west-2a" ), \
+                      FauxHistory( "0.2", "us-west-2a" ), \
+                      FauxHistory( "0.3", "us-west-2b" ), \
+                      FauxHistory( "0.6", "us-west-2b" ) ]
     >>> # noinspection PyProtectedMember
     >>> _check_spot_bid( 0.1, spot_data )
     >>> # noinspection PyProtectedMember
@@ -214,7 +214,7 @@ def _check_spot_bid(spot_bid: float, spot_history: list["SpotPriceTypeDef"]) -> 
     ...
     UserError: Your bid $ 2.000000 is more than double this instance type's average spot price ($ 0.300000) over the last week
     """
-    average = mean([datum["SpotPrice"] for datum in spot_history])
+    average = mean([float(datum["SpotPrice"]) for datum in spot_history])
     if spot_bid > average * 2:
         logger.warning(
             "Your bid $ %f is more than double this instance type's average "

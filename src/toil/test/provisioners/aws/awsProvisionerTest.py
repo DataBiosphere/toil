@@ -29,7 +29,7 @@ import toil.lib.aws.session
 
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-from toil.provisioners.aws import _get_spot_history
+from toil.provisioners.aws import _get_spot_history, get_aws_zone_from_spot_market
 from toil.test import (
     ToilTest,
     get_data,
@@ -105,10 +105,23 @@ class AWSProvisionerBenchTest(ToilTest):
 
     @needs_aws_ec2
     def test_get_spot_history(self) -> None:
+        """
+        Make sure that we can download spot price history from AWS.
+        """
         ec2_client = toil.lib.aws.session.client("ec2")
         history = _get_spot_history(ec2_client, "t3.large")
         # We should have 7 days of history, newest first.
         assert history[0]["Timestamp"] - history[-1]["Timestamp"] > datetime.timedelta(days=6)
+
+    @needs_aws_ec2
+    def test_get_aws_zone_from_spot_market(self) -> None:
+        """
+        Make sure that we can process spot price history to pick a zone.
+        """
+        ec2_client = toil.lib.aws.session.client("ec2")
+        zone_options = ["us-west-2a", "af-south-1c"]
+        zone_choice = get_aws_zone_from_spot_market(0.01, "t3.large", ec2_client, zone_options)
+        assert zone_choice in zone_options
 
 
 @needs_aws_ec2
