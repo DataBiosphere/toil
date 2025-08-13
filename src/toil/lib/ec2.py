@@ -205,7 +205,6 @@ def wait_spot_requests_active(
         while True:
             open_ids, eval_ids, fulfill_ids = set(), set(), set()
             batch = []
-            logger.debug("Waiting on %s spot requests", len(requests))
             for r in requests:
                 r: "SpotInstanceRequestTypeDef"  # pycharm thinks it is a string
                 assert isinstance(r, dict), f"Found garbage posing as a spot request: {r}"
