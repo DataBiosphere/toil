@@ -5,7 +5,7 @@ from collections.abc import Generator, Iterable, Mapping
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.utils import flatten_tags
+from toil.lib.aws.utils import flatten_tags, boto3_pager
 from toil.lib.exceptions import panic
 from toil.lib.retry import (
     ErrorCondition,
@@ -151,12 +151,15 @@ def wait_instances_running(
         time.sleep(seconds)
         for attempt in retry_ec2():
             with attempt:
-                described_instances = boto3_ec2.describe_instances(
+                # describe_instances weirdly really describes reservations
+                reservations = boto3_pager(
+                    boto3_ec2.describe_instances,
+                    "Reservations",
                     InstanceIds=list(pending_ids)
                 )
                 instances = [
                     instance
-                    for reservation in described_instances["Reservations"]
+                    for reservation in reservations
                     for instance in reservation["Instances"]
                 ]
 
@@ -202,8 +205,10 @@ def wait_spot_requests_active(
         while True:
             open_ids, eval_ids, fulfill_ids = set(), set(), set()
             batch = []
+            logger.debug("Waiting on %s spot requests", len(requests))
             for r in requests:
                 r: "SpotInstanceRequestTypeDef"  # pycharm thinks it is a string
+                assert isinstance(r, dict), f"Found garbage posing as a spot request: {r}"
                 if r["State"] == "open":
                     open_ids.add(r["SpotInstanceRequestId"])
                     if r["Status"]["Code"] == "pending-evaluation":
@@ -251,8 +256,10 @@ def wait_spot_requests_active(
             time.sleep(sleep_time)
             for attempt in retry_ec2(retry_while=spot_request_not_found):
                 with attempt:
-                    requests = boto3_ec2.describe_spot_instance_requests(
-                        SpotInstanceRequestIds=list(open_ids)
+                    requests = boto3_pager(
+                        boto3_ec2.describe_spot_instance_requests,
+                        "SpotInstanceRequests",
+                        SpotInstanceRequestIds=list(open_ids),
                     )
     except BaseException:
         if open_ids:
@@ -296,6 +303,8 @@ def create_spot_instances(
             )
             requests = requests_dict["SpotInstanceRequests"]
 
+    assert isinstance(requests, list)
+
     if tags is not None:
         flat_tags = flatten_tags(tags)
         for requestID in (request["SpotInstanceRequestId"] for request in requests):
@@ -332,7 +341,14 @@ def create_spot_instances(
                         boto3_ec2.modify_instance_metadata_options(
                             InstanceId=instance_id, HttpPutResponseHopLimit=3
                         )
-            yield boto3_ec2.describe_instances(InstanceIds=instance_ids)
+            # We can't use the normal boto3_pager here because we're weirdly
+            # specced as yielding the pages ourselves.
+            # TODO: Change this to just yield instance descriptions instead.
+            page = boto3_ec2.describe_instances(InstanceIds=instance_ids)
+            while page.get("NextToken") is not None:
+                yield page
+                page = boto3_ec2.describe_instances(InstanceIds=instance_ids, NextToken=page["NextToken"])
+            yield page
     if not num_active:
         message = "None of the spot requests entered the active state"
         if tentative:
