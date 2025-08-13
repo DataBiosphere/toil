@@ -17,7 +17,7 @@ import logging
 import os
 import types
 from ssl import SSLError
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, IO, Optional, cast, Any
 
 from boto3.s3.transfer import TransferConfig
 from botocore.client import Config
@@ -37,8 +37,8 @@ from toil.lib.retry import (
 )
 
 if TYPE_CHECKING:
-    from mypy_boto3_s3 import S3ServiceResource
-    from mypy_boto3_sdb.type_defs import AttributeTypeDef, ItemTypeDef
+    from mypy_boto3_s3 import S3Client, S3ServiceResource
+    from mypy_boto3_s3.type_defs import CopySourceTypeDef
 
 logger = logging.getLogger(__name__)
 
@@ -54,210 +54,21 @@ DIAL_SPECIFIC_REGION_CONFIG = Config(
 )
 
 
-class SDBHelper:
-    """
-    A mixin with methods for storing limited amounts of binary data in an SDB item
-
-    >>> import os
-    >>> H=SDBHelper
-    >>> H.presenceIndicator()
-    'numChunks'
-    >>> H.binaryToAttributes(None)['numChunks']
-    '0'
-    >>> H.attributesToBinary([{'Name': 'numChunks', 'Value': 0}])
-    (None, 0)
-    >>> H.binaryToAttributes(b'') # doctest: +ALLOW_BYTES
-    {'000': 'VQ==', 'numChunks': '1'}
-    >>> H.attributesToBinary([{"Name": 'numChunks', "Value": 1}, {"Name": "000", "Value": "VQ=="}]) 
-    (b'', 1)
-
-    Good pseudo-random data is very likely smaller than its bzip2ed form. Subtract 1 for the type
-    character, i.e  'C' or 'U', with which the string is prefixed. We should get one full chunk:
-
-    >>> s = os.urandom(H.maxRawValueSize-1)
-    >>> d = H.binaryToAttributes(s)
-    >>> len(d), len(d["000"])
-    (2, 1024)
-    >>> H.attributesToBinary([{"Name": k, "Value": v} for k, v in d.items()]) == (s, 1)
-    True
-
-    One byte more and we should overflow four bytes into the second chunk, two bytes for
-    base64-encoding the additional character and two bytes for base64-padding to the next quartet.
-
-    >>> s += s[0:1]
-    >>> d = H.binaryToAttributes(s)
-    >>> len(d), len(d["000"]), len(d["001"])
-    (3, 1024, 4)
-    >>> H.attributesToBinary([{"Name": k, "Value": v} for k, v in d.items()]) == (s, 2)
-    True
-
-    """
-
-    # The SDB documentation is not clear as to whether the attribute value size limit of 1024
-    # applies to the base64-encoded value or the raw value. It suggests that responses are
-    # automatically encoded from which I conclude that the limit should apply to the raw,
-    # unencoded value. However, there seems to be a discrepancy between how Boto computes the
-    # request signature if a value contains a binary data, and how SDB does it. This causes
-    # requests to fail signature verification, resulting in a 403. We therefore have to
-    # base64-encode values ourselves even if that means we loose a quarter of capacity.
-
-    maxAttributesPerItem = 256
-    maxValueSize = 1024
-    maxRawValueSize = maxValueSize * 3 // 4
-    # Just make sure we don't have a problem with padding or integer truncation:
-    assert len(base64.b64encode(b" " * maxRawValueSize)) == 1024
-    assert len(base64.b64encode(b" " * (1 + maxRawValueSize))) > 1024
-
-    @classmethod
-    def _reservedAttributes(cls):
-        """
-        Override in subclass to reserve a certain number of attributes that can't be used for
-        chunks.
-        """
-        return 1
-
-    @classmethod
-    def _maxChunks(cls):
-        return cls.maxAttributesPerItem - cls._reservedAttributes()
-
-    @classmethod
-    def maxBinarySize(cls, extraReservedChunks=0):
-        return (
-            cls._maxChunks() - extraReservedChunks
-        ) * cls.maxRawValueSize - 1  # for the 'C' or 'U' prefix
-
-    @classmethod
-    def _maxEncodedSize(cls):
-        return cls._maxChunks() * cls.maxValueSize
-
-    @classmethod
-    def binaryToAttributes(cls, binary) -> dict[str, str]:
-        """
-        Turn a bytestring, or None, into SimpleDB attributes.
-        """
-        if binary is None:
-            return {"numChunks": "0"}
-        assert isinstance(binary, bytes)
-        assert len(binary) <= cls.maxBinarySize()
-        # The use of compression is just an optimization. We can't include it in the maxValueSize
-        # computation because the compression ratio depends on the input.
-        compressed = bz2.compress(binary)
-        if len(compressed) > len(binary):
-            compressed = b"U" + binary
-        else:
-            compressed = b"C" + compressed
-        encoded = base64.b64encode(compressed)
-        assert len(encoded) <= cls._maxEncodedSize()
-        n = cls.maxValueSize
-        chunks = (encoded[i : i + n] for i in range(0, len(encoded), n))
-        attributes = {
-            cls._chunkName(i): chunk.decode("utf-8") for i, chunk in enumerate(chunks)
-        }
-        attributes.update({"numChunks": str(len(attributes))})
-        return attributes
-
-    @classmethod
-    def attributeDictToList(
-        cls, attributes: dict[str, str]
-    ) -> list["AttributeTypeDef"]:
-        """
-        Convert the attribute dict (ex: from binaryToAttributes) into a list of attribute typed dicts
-        to be compatible with boto3 argument syntax
-        :param attributes: Dict[str, str], attribute in object form
-        :return: list of attributes in typed dict form
-        """
-        return [{"Name": name, "Value": value} for name, value in attributes.items()]
-
-    @classmethod
-    def attributeListToDict(
-        cls, attributes: list["AttributeTypeDef"]
-    ) -> dict[str, str]:
-        """
-        Convert the attribute boto3 representation of list of attribute typed dicts
-        back to a dictionary with name, value pairs
-        :param attribute: attribute in typed dict form
-        :return: Dict[str, str], attribute in dict form
-        """
-        return {attribute["Name"]: attribute["Value"] for attribute in attributes}
-
-    @classmethod
-    def get_attributes_from_item(
-        cls, item: "ItemTypeDef", keys: list[str]
-    ) -> list[Optional[str]]:
-        return_values: list[Optional[str]] = [None for _ in keys]
-        mapped_indices: dict[str, int] = {
-            name: index for index, name in enumerate(keys)
-        }
-        for attribute in item["Attributes"]:
-            name = attribute["Name"]
-            value = attribute["Value"]
-            if name in mapped_indices:
-                return_values[mapped_indices[name]] = value
-        return return_values
-
-    @classmethod
-    def _chunkName(cls, i):
-        return str(i).zfill(3)
-
-    @classmethod
-    def _isValidChunkName(cls, s):
-        return len(s) == 3 and s.isdigit()
-
-    @classmethod
-    def presenceIndicator(cls):
-        """
-        The key that is guaranteed to be present in the return value of binaryToAttributes().
-        Assuming that binaryToAttributes() is used with SDB's PutAttributes, the return value of
-        this method could be used to detect the presence/absence of an item in SDB.
-        """
-        return "numChunks"
-
-    @classmethod
-    def attributesToBinary(
-        cls, attributes: list["AttributeTypeDef"]
-    ) -> tuple[bytes, int]:
-        """
-        :rtype: (str|None,int)
-        :return: the binary data and the number of chunks it was composed from
-        """
-        chunks = []
-        numChunks: int = 0
-        for attribute in attributes:
-            name = attribute["Name"]
-            value = attribute["Value"]
-            if cls._isValidChunkName(name):
-                chunks.append((int(name), value))
-            if name == "numChunks":
-                numChunks = int(value)
-        chunks.sort()
-        if numChunks:
-            serializedJob = b"".join(v.encode() for k, v in chunks)
-            compressed = base64.b64decode(serializedJob)
-            if compressed[0] == b"C"[0]:
-                binary = bz2.decompress(compressed[1:])
-            elif compressed[0] == b"U"[0]:
-                binary = compressed[1:]
-            else:
-                raise RuntimeError(f"Unexpected prefix {compressed[0]}")
-        else:
-            binary = None
-        return binary, numChunks
-
-
-def fileSizeAndTime(localFilePath):
+def fileSizeAndTime(localFilePath: str) -> tuple[int, float]:
     file_stat = os.stat(localFilePath)
     return file_stat.st_size, file_stat.st_mtime
 
 
+# TODO: This function is unused.
 @retry(errors=[AWSServerErrors])
 def uploadFromPath(
     localFilePath: str,
-    resource,
+    resource: "S3ServiceResource",
     bucketName: str,
     fileID: str,
-    headerArgs: Optional[dict] = None,
+    headerArgs: Optional[dict[str, Any]] = None,
     partSize: int = 50 << 20,
-):
+) -> Optional[str]:
     """
     Uploads a file to s3, using multipart uploading if applicable
 
@@ -279,8 +90,12 @@ def uploadFromPath(
     version = uploadFile(
         localFilePath, resource, bucketName, fileID, headerArgs, partSize
     )
+
+    # Only pass along version if we got one.
+    version_args: dict[str, Any] = {"VersionId": version} if version is not None else {}
+
     info = client.head_object(
-        Bucket=bucketName, Key=compat_bytes(fileID), VersionId=version, **headerArgs
+        Bucket=bucketName, Key=compat_bytes(fileID), **version_args, **headerArgs
     )
     size = info.get("ContentLength")
 
@@ -293,13 +108,13 @@ def uploadFromPath(
 
 @retry(errors=[AWSServerErrors])
 def uploadFile(
-    readable,
-    resource,
+    readable: IO[bytes],
+    resource: "S3ServiceResource",
     bucketName: str,
     fileID: str,
-    headerArgs: Optional[dict] = None,
+    headerArgs: Optional[dict[str, Any]] = None,
     partSize: int = 50 << 20,
-):
+) -> Optional[str]:
     """
     Upload a readable object to s3, using multipart uploading if applicable.
     :param readable: a readable stream or a file path to upload to s3
@@ -361,7 +176,7 @@ def copyKeyMultipart(
     sseKey: Optional[str] = None,
     copySourceSseAlgorithm: Optional[str] = None,
     copySourceSseKey: Optional[str] = None,
-):
+) -> Optional[str]:
     """
     Copies a key from a source key to a destination key in multiple parts. Note that if the
     destination key exists it will be overwritten implicitly, and if it does not exist a new
@@ -393,12 +208,11 @@ def copyKeyMultipart(
     :param str copySourceSseAlgorithm: Server-side encryption algorithm for the source.
     :param str copySourceSseKey: Server-side encryption key for the source.
 
-    :rtype: str
     :return: The version of the copied file (or None if versioning is not enabled for dstBucket).
     """
     dstBucket = resource.Bucket(compat_bytes(dstBucketName))
     dstObject = dstBucket.Object(compat_bytes(dstKeyName))
-    copySource = {
+    copySource: "CopySourceTypeDef" = {
         "Bucket": compat_bytes(srcBucketName),
         "Key": compat_bytes(srcKeyName),
     }
@@ -410,23 +224,20 @@ def copyKeyMultipart(
     # object metadata. And we really want it to talk to the source region and
     # not wherever the bucket virtual hostnames go.
     source_region = get_bucket_region(srcBucketName)
-    source_client = cast(
-        "S3Client",
-        session.client(
-            "s3", region_name=source_region, config=DIAL_SPECIFIC_REGION_CONFIG
-        ),
+    source_client = session.client(
+        "s3", region_name=source_region, config=DIAL_SPECIFIC_REGION_CONFIG
     )
 
     # The boto3 functions don't allow passing parameters as None to
     # indicate they weren't provided. So we have to do a bit of work
     # to ensure we only provide the parameters when they are actually
     # required.
-    destEncryptionArgs = {}
+    destEncryptionArgs: dict[str, Any] = {}
     if sseKey is not None:
         destEncryptionArgs.update(
             {"SSECustomerAlgorithm": sseAlgorithm, "SSECustomerKey": sseKey}
         )
-    copyEncryptionArgs = {}
+    copyEncryptionArgs: dict[str, Any] = {}
     if copySourceSseKey is not None:
         copyEncryptionArgs.update(
             {
@@ -479,63 +290,6 @@ def copyKeyMultipart(
     return info.get("VersionId", None)
 
 
-def _put_attributes_using_post(
-    self, domain_or_name, item_name, attributes, replace=True, expected_value=None
-):
-    """
-    Monkey-patched version of SDBConnection.put_attributes that uses POST instead of GET
-
-    The GET version is subject to the URL length limit which kicks in before the 256 x 1024 limit
-    for attribute values. Using POST prevents that.
-
-    https://github.com/BD2KGenomics/toil/issues/502
-    """
-    domain, domain_name = self.get_domain_and_name(domain_or_name)
-    params = {"DomainName": domain_name, "ItemName": item_name}
-    self._build_name_value_list(params, attributes, replace)
-    if expected_value:
-        self._build_expected_value(params, expected_value)
-    # The addition of the verb keyword argument is the only difference to put_attributes (Hannes)
-    return self.get_status("PutAttributes", params, verb="POST")
-
-
-def monkeyPatchSdbConnection(sdb):
-    """
-    :type sdb: SDBConnection
-    """
-    sdb.put_attributes = types.MethodType(_put_attributes_using_post, sdb)
-
-
-def sdb_unavailable(e):
-    # Since we're checking against a collection here we absolutely need an
-    # integer status code. This is probably a BotoServerError, but other 500s
-    # and 503s probably ought to be retried too.
-    return get_error_status(e) in (500, 503)
-
-
-def no_such_sdb_domain(e):
-    return (
-        isinstance(e, ClientError)
-        and get_error_code(e)
-        and get_error_code(e).endswith("NoSuchDomain")
-    )
-
-
-def retryable_ssl_error(e):
+def retryable_ssl_error(e: BaseException) -> bool:
     # https://github.com/BD2KGenomics/toil/issues/978
     return isinstance(e, SSLError) and e.reason == "DECRYPTION_FAILED_OR_BAD_RECORD_MAC"
-
-
-def retryable_sdb_errors(e):
-    return (
-        sdb_unavailable(e)
-        or no_such_sdb_domain(e)
-        or connection_error(e)
-        or retryable_ssl_error(e)
-    )
-
-
-def retry_sdb(
-    delays=DEFAULT_DELAYS, timeout=DEFAULT_TIMEOUT, predicate=retryable_sdb_errors
-):
-    return old_retry(delays=delays, timeout=timeout, predicate=predicate)

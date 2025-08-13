@@ -16,8 +16,8 @@ import logging
 import os
 import socket
 from collections.abc import Iterable, Iterator
-from typing import TYPE_CHECKING, Any, Callable, ContextManager, Optional, cast
-from urllib.parse import ParseResult
+from typing import TYPE_CHECKING, Any, Callable, ContextManager, Optional, Union, cast
+from urllib.parse import ParseResult, urlparse
 
 # To import toil.lib.aws.session, the AWS libraries must be installed 
 from toil.lib.aws import AWSRegionName, AWSServerErrors, session
@@ -37,7 +37,6 @@ if TYPE_CHECKING:
     from mypy_boto3_s3 import S3ServiceResource
     from mypy_boto3_s3.service_resource import Bucket
     from mypy_boto3_s3.service_resource import Object as S3Object
-    from mypy_boto3_sdb.type_defs import AttributeTypeDef
 
 from botocore.exceptions import ClientError, EndpointConnectionError
 
@@ -323,17 +322,13 @@ def get_bucket_region(
                         raise
                 except KeyError as e:
                     # If we get a weird head response we will have a KeyError
-                    logger.debug(
-                        "Strategy %d to get bucket location did not work: %s", i + 1, e
-                    )
+                    logger.debug("Strategy %d to get bucket location did not work: %s", i + 1, e)
                     error_logs.append((i + 1, str(e)))
                     last_error = e
 
     error_messages = []
     for rank, message in error_logs:
-        error_messages.append(
-            f"Strategy {rank} failed to get bucket location because: {message}"
-        )
+        error_messages.append(f"Strategy {rank} failed to get bucket location because: {message}")
     # If we get here we ran out of attempts.
     raise NoBucketLocationError(
         "Could not get bucket location: " + "\n".join(error_messages)
@@ -385,7 +380,6 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None, anonym
     :raises RuntimeError: when existing is False but the object exists.
     :raises PermissionError: when we are not authorized to look at the object.
     """
-
     key_name = url.path[1:]
     bucket_name = url.netloc
 
@@ -458,7 +452,6 @@ def list_objects_for_url(url: ParseResult, anonymous: Optional[bool] = None) -> 
 
     :raises PermissionError: when we are not authorized to do the list operation.
     """
-
     key_name = url.path[1:]
     bucket_name = url.netloc
 
@@ -537,23 +530,3 @@ def boto3_pager(
     for page in paginator.paginate(**kwargs):
         # Invoke it and go through the pages, yielding from them
         yield from page.get(result_attribute_name, [])
-
-
-def get_item_from_attributes(attributes: list["AttributeTypeDef"], name: str) -> Any:
-    """
-    Given a list of attributes, find the attribute associated with the name and return its corresponding value.
-
-    The `attribute_list` will be a list of TypedDict's (which boto3 SDB functions commonly return),
-    where each TypedDict has a "Name" and "Value" key value pair.
-    This function grabs the value out of the associated TypedDict.
-
-    If the attribute with the name does not exist, the function will return None.
-
-    :param attributes: list of attributes
-    :param name: name of the attribute
-    :return: value of the attribute
-    """
-    return next(
-        (attribute["Value"] for attribute in attributes if attribute["Name"] == name),
-        None,
-    )

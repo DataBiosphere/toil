@@ -22,10 +22,7 @@ user agent.
 >>> from toil.lib.web import web_session
 >>> web_session.get(httpserver.url_for("/path"))
 <Response [200]>
-
 """
-
-import logging
 import requests
 import sys
 
