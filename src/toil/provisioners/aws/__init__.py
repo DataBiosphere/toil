@@ -182,13 +182,13 @@ def optimize_spot_bid(
     """
     spot_history = _get_spot_history(boto3_ec2, instance_type)
     if spot_history:
-        _check_spot_bid(spot_bid, spot_history)
+        _check_spot_bid(spot_bid, spot_history, name=instance_type)
     most_stable_zone = choose_spot_zone(zone_options, spot_bid, spot_history)
     logger.debug("Placing spot instances in zone %s.", most_stable_zone)
     return most_stable_zone
 
 
-def _check_spot_bid(spot_bid: float, spot_history: list["SpotPriceTypeDef"]) -> None:
+def _check_spot_bid(spot_bid: float, spot_history: list["SpotPriceTypeDef"], name: Optional[str] = None) -> None:
     """
     Prevents users from potentially over-paying for instances
 
@@ -214,12 +214,16 @@ def _check_spot_bid(spot_bid: float, spot_history: list["SpotPriceTypeDef"]) -> 
     ...
     UserError: Your bid $ 2.000000 is more than double this instance type's average spot price ($ 0.300000) over the last week
     """
+    if name is None:
+        # Describe the instance as something
+        name = "this instance type"
     average = mean([float(datum["SpotPrice"]) for datum in spot_history])
     if spot_bid > average * 2:
         logger.warning(
-            "Your bid $ %f is more than double this instance type's average "
+            "Your bid $ %f is more than double %s's average "
             "spot price ($ %f) over the last week",
             spot_bid,
+            name,
             average,
         )
 
