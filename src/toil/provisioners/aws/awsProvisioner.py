@@ -1018,17 +1018,12 @@ class AWSProvisioner(AbstractProvisioner):
         userData: str = self._getIgnitionUserData(
             "worker", keyPath, preemptible, self._architecture
         )
-        userDataBytes: bytes = b""
-        if isinstance(userData, str):
-            # Spot-market provisioning requires bytes for user data.
-            userDataBytes = userData.encode("utf-8")
-
         spot_kwargs = {
             "LaunchSpecification": {
                 "KeyName": self._keyName,
                 "SecurityGroupIds": self._getSecurityGroupIDs(),
                 "InstanceType": type_info.name,
-                "UserData": userDataBytes,
+                "UserData": userData,
                 "BlockDeviceMappings": bdm,
                 "IamInstanceProfile": {"Arn": self._leaderProfileArn},
                 "Placement": {"AvailabilityZone": zone},
@@ -1039,7 +1034,7 @@ class AWSProvisioner(AbstractProvisioner):
             "KeyName": self._keyName,
             "SecurityGroupIds": self._getSecurityGroupIDs(),
             "InstanceType": type_info.name,
-            "UserData": userDataBytes,
+            "UserData": userData,
             "BlockDeviceMappings": bdm,
             "IamInstanceProfile": {"Arn": self._leaderProfileArn},
             "Placement": {"AvailabilityZone": zone},
