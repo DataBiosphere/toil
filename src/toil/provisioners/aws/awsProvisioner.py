@@ -1533,11 +1533,15 @@ class AWSProvisioner(AbstractProvisioner):
         tags: list[TagDescriptionTypeDef] = ec2.describe_tags(Filters=[tag_filter])[
             "Tags"
         ]
+        # TODO: Does this reference instance or spot request? Or can it be either?
         idsToCancel = [tag["ResourceId"] for tag in tags]
         return [
             request["SpotInstanceRequestId"]
             for request in requests
-            if request["InstanceId"] in idsToCancel
+            if (
+                request.get("InstanceId") in idsToCancel
+                or request["SpotInstanceRequestId"] in idsToCancel
+            )
         ]
 
     def _createSecurityGroups(self) -> list[str]:
