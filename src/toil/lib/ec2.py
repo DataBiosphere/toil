@@ -184,6 +184,9 @@ def wait_spot_requests_active(
 
     if timeout is not None:
         timeout = time.time() + timeout
+
+    # These hold spot instance request IDs.
+    # Not to be confused with instance IDs.
     active_ids = set()
     other_ids = set()
     open_ids = None
@@ -202,31 +205,31 @@ def wait_spot_requests_active(
             for r in requests:
                 r: "SpotInstanceRequestTypeDef"  # pycharm thinks it is a string
                 if r["State"] == "open":
-                    open_ids.add(r["InstanceId"])
+                    open_ids.add(r["SpotInstanceRequestId"])
                     if r["Status"] == "pending-evaluation":
-                        eval_ids.add(r["InstanceId"])
+                        eval_ids.add(r["SpotInstanceRequestId"])
                     elif r["Status"] == "pending-fulfillment":
-                        fulfill_ids.add(r["InstanceId"])
+                        fulfill_ids.add(r["SpotInstanceRequestId"])
                     else:
                         logger.info(
                             "Request %s entered status %s indicating that it will not be "
                             "fulfilled anytime soon.",
-                            r["InstanceId"],
+                            r["SpotInstanceRequestId"],
                             r["Status"],
                         )
                 elif r["State"] == "active":
-                    if r["InstanceId"] in active_ids:
+                    if r["SpotInstanceRequestId"] in active_ids:
                         raise RuntimeError(
                             "A request was already added to the list of active requests. Maybe there are duplicate requests."
                         )
-                    active_ids.add(r["InstanceId"])
+                    active_ids.add(r["SpotInstanceRequestId"])
                     batch.append(r)
                 else:
-                    if r["InstanceId"] in other_ids:
+                    if r["SpotInstanceRequestId"] in other_ids:
                         raise RuntimeError(
                             "A request was already added to the list of other IDs. Maybe there are duplicate requests."
                         )
-                    other_ids.add(r["InstanceId"])
+                    other_ids.add(r["SpotInstanceRequestId"])
                     batch.append(r)
             if batch:
                 yield batch
@@ -314,7 +317,7 @@ def create_spot_instances(
             else:
                 logger.info(
                     "Request %s in unexpected state %s.",
-                    request["InstanceId"],
+                    request["SpotInstanceRequestId"],
                     request["State"],
                 )
                 num_other += 1
