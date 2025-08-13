@@ -1083,7 +1083,6 @@ class AWSProvisioner(AbstractProvisioner):
                         reservation
                         for subdict in generatedInstancesLaunched
                         for reservation in subdict["Reservations"]
-                        for key, value in subdict.items()
                     ]
                     # get a flattened list of all requested instances, as before instancesLaunched is a dict of reservations which is a dict of instance requests
                     instancesLaunched = [

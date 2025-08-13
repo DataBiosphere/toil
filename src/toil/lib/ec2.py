@@ -129,7 +129,7 @@ def wait_instances_running(
             elif i["State"]["Name"] == "running":
                 if i["InstanceId"] in running_ids:
                     raise RuntimeError(
-                        "An instance was already added to the list of running instance IDs. Maybe there is a duplicate."
+                        f"Instance {i['InstanceId']} was already added to the list of running instance IDs. Maybe there is a duplicate."
                     )
                 running_ids.add(i["InstanceId"])
                 yield i
@@ -237,6 +237,7 @@ def wait_spot_requests_active(
                     other_ids.add(r["SpotInstanceRequestId"])
                     batch.append(r)
             if batch:
+                logger.debug("Found %d new active/other spot requests", len(batch))
                 yield batch
             logger.info(
                 "%i spot requests(s) are open (%i of which are pending evaluation and %i "
@@ -346,7 +347,7 @@ def create_spot_instances(
             page = boto3_ec2.describe_instances(InstanceIds=instance_ids)
             while page.get("NextToken") is not None:
                 yield page
-                page = boto3_ec2.describe_instances(InstanceIds=instance_ids, NextToken=page["NextToken"])
+                page = boto3_ec2.describe_instances(NextToken=page["NextToken"])
             yield page
     if not num_active:
         message = "None of the spot requests entered the active state"
