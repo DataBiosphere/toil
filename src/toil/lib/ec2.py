@@ -268,10 +268,13 @@ def create_spot_instances(
     num_instances=1,
     timeout=None,
     tentative=False,
-    tags=None,
+    tags: dict[str, str] = None,
 ) -> Generator["DescribeInstancesResultTypeDef", None, None]:
     """
     Create instances on the spot market.
+
+    :param tags: Dict from tag key to tag value of tags to apply to the
+        request.
     """
 
     def spotRequestNotFound(e):
@@ -290,10 +293,11 @@ def create_spot_instances(
             requests = requests_dict["SpotInstanceRequests"]
 
     if tags is not None:
+        flat_tags = flatten_tags(tags)
         for requestID in (request["SpotInstanceRequestId"] for request in requests):
             for attempt in retry_ec2(retry_while=spotRequestNotFound):
                 with attempt:
-                    boto3_ec2.create_tags(Resources=[requestID], Tags=tags)
+                    boto3_ec2.create_tags(Resources=[requestID], Tags=flat_tags)
 
     num_active, num_other = 0, 0
     # noinspection PyUnboundLocalVariable,PyTypeChecker

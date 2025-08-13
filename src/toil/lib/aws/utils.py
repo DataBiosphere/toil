@@ -16,7 +16,16 @@ import logging
 import os
 import socket
 from collections.abc import Iterable, Iterator
-from typing import TYPE_CHECKING, Any, Callable, ContextManager, Optional, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ContextManager,
+    Literal,
+    Optional,
+    Union,
+    cast,
+)
 from urllib.parse import ParseResult, urlparse
 
 # To import toil.lib.aws.session, the AWS libraries must be installed 
@@ -502,7 +511,7 @@ def list_objects_for_url(url: ParseResult, anonymous: Optional[bool] = None) -> 
     return listing
 
 
-def flatten_tags(tags: dict[str, str]) -> list[dict[str, str]]:
+def flatten_tags(tags: dict[str, str]) -> list[dict[Union[Literal["Key"], Literal["Value"]], str]]:
     """
     Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
     """
