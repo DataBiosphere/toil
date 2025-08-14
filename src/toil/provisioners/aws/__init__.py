@@ -16,7 +16,7 @@ import logging
 from collections import namedtuple
 from operator import attrgetter
 from statistics import mean, stdev
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from botocore.client import BaseClient
 
@@ -26,10 +26,14 @@ from toil.lib.aws import (
     get_aws_zone_from_environment_region,
     get_aws_zone_from_metadata,
 )
+from toil.lib.aws.utils import boto3_pager
 
 logger = logging.getLogger(__name__)
 
 ZoneTuple = namedtuple("ZoneTuple", ["name", "price_deviation"])
+
+if TYPE_CHECKING:
+    from mypy_boto3_ec2.type_defs import SpotPriceTypeDef
 
 
 def get_aws_zone_from_spot_market(
@@ -109,7 +113,7 @@ def get_best_aws_zone(
 def choose_spot_zone(
     zones: list[str],
     bid: float,
-    spot_history: list["boto.ec2.spotpricehistory.SpotPriceHistory"],
+    spot_history: list["SpotPriceTypeDef"],
 ) -> str:
     """
     Returns the zone to put the spot request based on, in order of priority:
@@ -120,27 +124,26 @@ def choose_spot_zone(
 
     :return: the name of the selected zone
 
-    >>> from collections import namedtuple
-    >>> FauxHistory = namedtuple('FauxHistory', ['price', 'availability_zone'])
     >>> zones = ['us-west-2a', 'us-west-2b']
-    >>> spot_history = [FauxHistory(0.1, 'us-west-2a'), \
-                        FauxHistory(0.2, 'us-west-2a'), \
-                        FauxHistory(0.3, 'us-west-2b'), \
-                        FauxHistory(0.6, 'us-west-2b')]
+    >>> FauxHistory = lambda p, z: {"SpotPrice": p, "AvailabilityZone": z}
+    >>> spot_history = [FauxHistory("0.1", 'us-west-2a'), \
+                        FauxHistory("0.2", 'us-west-2a'), \
+                        FauxHistory("0.3", 'us-west-2b'), \
+                        FauxHistory("0.6", 'us-west-2b')]
     >>> choose_spot_zone(zones, 0.15, spot_history)
     'us-west-2a'
 
-    >>> spot_history=[FauxHistory(0.3, 'us-west-2a'), \
-                      FauxHistory(0.2, 'us-west-2a'), \
-                      FauxHistory(0.1, 'us-west-2b'), \
-                      FauxHistory(0.6, 'us-west-2b')]
+    >>> spot_history=[FauxHistory("0.3", 'us-west-2a'), \
+                      FauxHistory("0.2", 'us-west-2a'), \
+                      FauxHistory("0.1", 'us-west-2b'), \
+                      FauxHistory("0.6", 'us-west-2b')]
     >>> choose_spot_zone(zones, 0.15, spot_history)
     'us-west-2b'
 
-    >>> spot_history=[FauxHistory(0.1, 'us-west-2a'), \
-                      FauxHistory(0.7, 'us-west-2a'), \
-                      FauxHistory(0.1, 'us-west-2b'), \
-                      FauxHistory(0.6, 'us-west-2b')]
+    >>> spot_history=[FauxHistory("0.1", 'us-west-2a'), \
+                      FauxHistory("0.7", 'us-west-2a'), \
+                      FauxHistory("0.1", 'us-west-2b'), \
+                      FauxHistory("0.6", 'us-west-2b')]
     >>> choose_spot_zone(zones, 0.15, spot_history)
     'us-west-2b'
     """
@@ -152,11 +155,11 @@ def choose_spot_zone(
         zone_histories = [
             zone_history
             for zone_history in spot_history
-            if zone_history.availability_zone == zone
+            if zone_history["AvailabilityZone"] == zone
         ]
         if zone_histories:
-            price_deviation = stdev([history.price for history in zone_histories])
-            recent_price = zone_histories[0].price
+            price_deviation = stdev([float(history["SpotPrice"]) for history in zone_histories])
+            recent_price = float(zone_histories[0]["SpotPrice"])
         else:
             price_deviation, recent_price = 0.0, bid
         zone_tuple = ZoneTuple(name=zone, price_deviation=price_deviation)
@@ -169,7 +172,7 @@ def choose_spot_zone(
 
 def optimize_spot_bid(
     boto3_ec2: BaseClient, instance_type: str, spot_bid: float, zone_options: list[str]
-):
+) -> str:
     """
     Check whether the bid is in line with history and makes an effort to place
     the instance in a sensible zone.
@@ -179,30 +182,29 @@ def optimize_spot_bid(
     """
     spot_history = _get_spot_history(boto3_ec2, instance_type)
     if spot_history:
-        _check_spot_bid(spot_bid, spot_history)
+        _check_spot_bid(spot_bid, spot_history, name=instance_type)
     most_stable_zone = choose_spot_zone(zone_options, spot_bid, spot_history)
     logger.debug("Placing spot instances in zone %s.", most_stable_zone)
     return most_stable_zone
 
 
-def _check_spot_bid(spot_bid, spot_history):
+def _check_spot_bid(spot_bid: float, spot_history: list["SpotPriceTypeDef"], name: Optional[str] = None) -> None:
     """
     Prevents users from potentially over-paying for instances
 
     Note: this checks over the whole region, not a particular zone
 
-    :param spot_bid: float
+    :param spot_bid: The proposed bid in dollars per hour.
 
-    :type spot_history: list[SpotPriceHistory]
+    :type spot_history: The recent history of the spot price
 
     :raises UserError: if bid is > 2X the spot price's average
 
-    >>> from collections import namedtuple
-    >>> FauxHistory = namedtuple( "FauxHistory", [ "price", "availability_zone" ] )
-    >>> spot_data = [ FauxHistory( 0.1, "us-west-2a" ), \
-                      FauxHistory( 0.2, "us-west-2a" ), \
-                      FauxHistory( 0.3, "us-west-2b" ), \
-                      FauxHistory( 0.6, "us-west-2b" ) ]
+    >>> FauxHistory = lambda p, z: {"SpotPrice": p, "AvailabilityZone": z}
+    >>> spot_data = [ FauxHistory( "0.1", "us-west-2a" ), \
+                      FauxHistory( "0.2", "us-west-2a" ), \
+                      FauxHistory( "0.3", "us-west-2b" ), \
+                      FauxHistory( "0.6", "us-west-2b" ) ]
     >>> # noinspection PyProtectedMember
     >>> _check_spot_bid( 0.1, spot_data )
     >>> # noinspection PyProtectedMember
@@ -212,17 +214,21 @@ def _check_spot_bid(spot_bid, spot_history):
     ...
     UserError: Your bid $ 2.000000 is more than double this instance type's average spot price ($ 0.300000) over the last week
     """
-    average = mean([datum.price for datum in spot_history])
+    if name is None:
+        # Describe the instance as something
+        name = "this instance type"
+    average = mean([float(datum["SpotPrice"]) for datum in spot_history])
     if spot_bid > average * 2:
         logger.warning(
-            "Your bid $ %f is more than double this instance type's average "
+            "Your bid $ %f is more than double %s's average "
             "spot price ($ %f) over the last week",
             spot_bid,
+            name,
             average,
         )
 
 
-def _get_spot_history(boto3_ec2: BaseClient, instance_type: str):
+def _get_spot_history(boto3_ec2: BaseClient, instance_type: str) -> list["SpotPriceTypeDef"]:
     """
     Returns list of 1,000 most recent spot market data points represented as SpotPriceHistory
     objects. Note: The most recent object/data point will be first in the list.
@@ -230,10 +236,11 @@ def _get_spot_history(boto3_ec2: BaseClient, instance_type: str):
     :rtype: list[SpotPriceHistory]
     """
     one_week_ago = datetime.datetime.now() - datetime.timedelta(days=7)
-    spot_data = boto3_ec2.describe_spot_price_history(
+    spot_data = boto3_pager(
+        boto3_ec2.describe_spot_price_history,
+        "SpotPriceHistory",
         StartTime=one_week_ago.isoformat(),
         InstanceTypes=[instance_type],
         ProductDescriptions=["Linux/UNIX"],
     )
-    spot_data.sort(key=attrgetter("timestamp"), reverse=True)
-    return spot_data
+    return sorted(spot_data, key=lambda d: d["Timestamp"], reverse=True)

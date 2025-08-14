@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import datetime
 import logging
 import os
 import subprocess
@@ -24,13 +25,17 @@ from uuid import uuid4
 
 import pytest
 
+import toil.lib.aws.session
+
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+from toil.provisioners.aws import _get_spot_history, get_aws_zone_from_spot_market
 from toil.test import (
     ToilTest,
     get_data,
     integrative,
     needs_aws_ec2,
+    needs_aws_s3,
     needs_fetchable_appliance,
     needs_mesos,
     slow,
@@ -56,7 +61,7 @@ log = logging.getLogger(__name__)
 
 class AWSProvisionerBenchTest(ToilTest):
     """
-    Tests for the AWS provisioner that don't actually provision anything.
+    Tests for the AWS provisioner that don't actually provision instances.
     """
 
     # Needs to talk to EC2 for image discovery
@@ -71,6 +76,7 @@ class AWSProvisionerBenchTest(ToilTest):
             assert ami.startswith("ami-")
 
     @needs_aws_ec2
+    @needs_aws_s3
     def test_read_write_global_files(self):
         """
         Make sure the `_write_file_to_cloud()` and `_read_file_from_cloud()`
@@ -96,6 +102,26 @@ class AWSProvisionerBenchTest(ToilTest):
         finally:
             # the cluster was never launched, but we need to clean up the s3 bucket
             provisioner.destroyCluster()
+
+    @needs_aws_ec2
+    def test_get_spot_history(self) -> None:
+        """
+        Make sure that we can download spot price history from AWS.
+        """
+        ec2_client = toil.lib.aws.session.client("ec2")
+        history = _get_spot_history(ec2_client, "t3.large")
+        # We should have 7 days of history, newest first.
+        assert history[0]["Timestamp"] - history[-1]["Timestamp"] > datetime.timedelta(days=6)
+
+    @needs_aws_ec2
+    def test_get_aws_zone_from_spot_market(self) -> None:
+        """
+        Make sure that we can process spot price history to pick a zone.
+        """
+        ec2_client = toil.lib.aws.session.client("ec2")
+        zone_options = ["us-west-2a", "af-south-1c"]
+        zone_choice = get_aws_zone_from_spot_market(0.01, "t3.large", ec2_client, zone_options)
+        assert zone_choice in zone_options
 
 
 @needs_aws_ec2

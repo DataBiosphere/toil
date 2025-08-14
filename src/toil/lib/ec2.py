@@ -5,7 +5,7 @@ from collections.abc import Generator, Iterable, Mapping
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.utils import flatten_tags
+from toil.lib.aws.utils import flatten_tags, boto3_pager
 from toil.lib.exceptions import panic
 from toil.lib.retry import (
     ErrorCondition,
@@ -129,7 +129,7 @@ def wait_instances_running(
             elif i["State"]["Name"] == "running":
                 if i["InstanceId"] in running_ids:
                     raise RuntimeError(
-                        "An instance was already added to the list of running instance IDs. Maybe there is a duplicate."
+                        f"Instance {i['InstanceId']} was already added to the list of running instance IDs. Maybe there is a duplicate."
                     )
                 running_ids.add(i["InstanceId"])
                 yield i
@@ -151,12 +151,15 @@ def wait_instances_running(
         time.sleep(seconds)
         for attempt in retry_ec2():
             with attempt:
-                described_instances = boto3_ec2.describe_instances(
+                # describe_instances weirdly really describes reservations
+                reservations = boto3_pager(
+                    boto3_ec2.describe_instances,
+                    "Reservations",
                     InstanceIds=list(pending_ids)
                 )
                 instances = [
                     instance
-                    for reservation in described_instances["Reservations"]
+                    for reservation in reservations
                     for instance in reservation["Instances"]
                 ]
 
@@ -184,6 +187,9 @@ def wait_spot_requests_active(
 
     if timeout is not None:
         timeout = time.time() + timeout
+
+    # These hold spot instance request IDs.
+    # Not to be confused with instance IDs.
     active_ids = set()
     other_ids = set()
     open_ids = None
@@ -201,34 +207,37 @@ def wait_spot_requests_active(
             batch = []
             for r in requests:
                 r: "SpotInstanceRequestTypeDef"  # pycharm thinks it is a string
+                assert isinstance(r, dict), f"Found garbage posing as a spot request: {r}"
                 if r["State"] == "open":
-                    open_ids.add(r["InstanceId"])
-                    if r["Status"] == "pending-evaluation":
-                        eval_ids.add(r["InstanceId"])
-                    elif r["Status"] == "pending-fulfillment":
-                        fulfill_ids.add(r["InstanceId"])
+                    open_ids.add(r["SpotInstanceRequestId"])
+                    if r["Status"]["Code"] == "pending-evaluation":
+                        eval_ids.add(r["SpotInstanceRequestId"])
+                    elif r["Status"]["Code"] == "pending-fulfillment":
+                        fulfill_ids.add(r["SpotInstanceRequestId"])
                     else:
                         logger.info(
                             "Request %s entered status %s indicating that it will not be "
-                            "fulfilled anytime soon.",
-                            r["InstanceId"],
-                            r["Status"],
+                            "fulfilled anytime soon. (Message: %s)",
+                            r["SpotInstanceRequestId"],
+                            r["Status"]["Code"],
+                            r["Status"].get("Message"),
                         )
                 elif r["State"] == "active":
-                    if r["InstanceId"] in active_ids:
+                    if r["SpotInstanceRequestId"] in active_ids:
                         raise RuntimeError(
                             "A request was already added to the list of active requests. Maybe there are duplicate requests."
                         )
-                    active_ids.add(r["InstanceId"])
+                    active_ids.add(r["SpotInstanceRequestId"])
                     batch.append(r)
                 else:
-                    if r["InstanceId"] in other_ids:
+                    if r["SpotInstanceRequestId"] in other_ids:
                         raise RuntimeError(
                             "A request was already added to the list of other IDs. Maybe there are duplicate requests."
                         )
-                    other_ids.add(r["InstanceId"])
+                    other_ids.add(r["SpotInstanceRequestId"])
                     batch.append(r)
             if batch:
+                logger.debug("Found %d new active/other spot requests", len(batch))
                 yield batch
             logger.info(
                 "%i spot requests(s) are open (%i of which are pending evaluation and %i "
@@ -247,8 +256,10 @@ def wait_spot_requests_active(
             time.sleep(sleep_time)
             for attempt in retry_ec2(retry_while=spot_request_not_found):
                 with attempt:
-                    requests = boto3_ec2.describe_spot_instance_requests(
-                        SpotInstanceRequestIds=list(open_ids)
+                    requests = boto3_pager(
+                        boto3_ec2.describe_spot_instance_requests,
+                        "SpotInstanceRequests",
+                        SpotInstanceRequestIds=list(open_ids),
                     )
     except BaseException:
         if open_ids:
@@ -268,10 +279,13 @@ def create_spot_instances(
     num_instances=1,
     timeout=None,
     tentative=False,
-    tags=None,
+    tags: dict[str, str] = None,
 ) -> Generator["DescribeInstancesResultTypeDef", None, None]:
     """
     Create instances on the spot market.
+
+    :param tags: Dict from tag key to tag value of tags to apply to the
+        request.
     """
 
     def spotRequestNotFound(e):
@@ -285,15 +299,18 @@ def create_spot_instances(
     ):
         with attempt:
             requests_dict = boto3_ec2.request_spot_instances(
-                SpotPrice=price, InstanceCount=num_instances, **spec
+                SpotPrice=str(price), InstanceCount=num_instances, **spec
             )
             requests = requests_dict["SpotInstanceRequests"]
 
+    assert isinstance(requests, list)
+
     if tags is not None:
+        flat_tags = flatten_tags(tags)
         for requestID in (request["SpotInstanceRequestId"] for request in requests):
             for attempt in retry_ec2(retry_while=spotRequestNotFound):
                 with attempt:
-                    boto3_ec2.create_tags(Resources=[requestID], Tags=tags)
+                    boto3_ec2.create_tags(Resources=[requestID], Tags=flat_tags)
 
     num_active, num_other = 0, 0
     # noinspection PyUnboundLocalVariable,PyTypeChecker
@@ -310,7 +327,7 @@ def create_spot_instances(
             else:
                 logger.info(
                     "Request %s in unexpected state %s.",
-                    request["InstanceId"],
+                    request["SpotInstanceRequestId"],
                     request["State"],
                 )
                 num_other += 1
@@ -324,7 +341,14 @@ def create_spot_instances(
                         boto3_ec2.modify_instance_metadata_options(
                             InstanceId=instance_id, HttpPutResponseHopLimit=3
                         )
-            yield boto3_ec2.describe_instances(InstanceIds=instance_ids)
+            # We can't use the normal boto3_pager here because we're weirdly
+            # specced as yielding the pages ourselves.
+            # TODO: Change this to just yield instance descriptions instead.
+            page = boto3_ec2.describe_instances(InstanceIds=instance_ids)
+            while page.get("NextToken") is not None:
+                yield page
+                page = boto3_ec2.describe_instances(InstanceIds=instance_ids, NextToken=page["NextToken"])
+            yield page
     if not num_active:
         message = "None of the spot requests entered the active state"
         if tentative:
@@ -438,8 +462,8 @@ def create_instances(
     """
     logger.info("Creating %s instance(s) ... ", instance_type)
 
-    if isinstance(user_data, str):
-        user_data = user_data.encode("utf-8")
+    if isinstance(user_data, bytes):
+        user_data = user_data.decode("utf-8")
 
     request = {
         "ImageId": image_id,
