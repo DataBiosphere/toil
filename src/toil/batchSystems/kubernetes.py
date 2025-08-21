@@ -37,6 +37,7 @@ from threading import Condition, Event, RLock, Thread
 from typing import Any, Callable, Literal, Optional, TypeVar, Union, cast, overload
 
 from toil.lib.conversions import opt_strtobool
+from toil.lib.throttle import LocalThrottle
 
 if sys.version_info < (3, 10):
     from typing_extensions import ParamSpec
@@ -280,6 +281,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # A condition set to true when there is more work to do. e.g.: new job
         # in the queue or any resource becomes available.
         self._work_available: Condition = Condition(lock=self._mutex)
+
+        # To make sure we don't spam the log when the metrics server is down,
+        # we use a throttle
+        self._metrics_throttle = LocalThrottle(600)
 
         self.schedulingThread: Thread = Thread(target=self._scheduler, daemon=True)
         self.schedulingThread.start()
@@ -1363,7 +1368,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # This is the sort of error we would expect from an overloaded
                 # Kubernetes or a dead metrics service.
                 # We can't tell that the pod is stuck, so say that it isn't.
-                logger.warning("Could not query metrics service: %s", e)
+                if self._metrics_throttle(False):
+                    logger.warning("Kubernetes metrics service is not available: %s", e)
                 return False
             else:
                 raise
