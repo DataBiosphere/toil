@@ -284,7 +284,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # To make sure we don't spam the log when the metrics server is down,
         # we use a throttle
-        self._metrics_throttle = LocalThrottle(600)
+        self._metrics_throttle: LocalThrottle = LocalThrottle(600)
 
         self.schedulingThread: Thread = Thread(target=self._scheduler, daemon=True)
         self.schedulingThread.start()
@@ -1368,7 +1368,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # This is the sort of error we would expect from an overloaded
                 # Kubernetes or a dead metrics service.
                 # We can't tell that the pod is stuck, so say that it isn't.
-                if self._metrics_throttle(False):
+                if self._metrics_throttle.throttle(False):
                     logger.warning("Kubernetes metrics service is not available: %s", e)
                 return False
             else:

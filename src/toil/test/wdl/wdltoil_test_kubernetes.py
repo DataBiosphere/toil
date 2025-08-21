@@ -55,6 +55,7 @@ class WDLKubernetesClusterTest(AbstractClusterTest):
         workflow that performs an image pull on the worker.
         :return:
         """
+
         self.numWorkers = "1"
         self.requestedLeaderStorage = 30
         # create the cluster
