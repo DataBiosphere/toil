@@ -1019,9 +1019,9 @@ class AWSProvisioner(AbstractProvisioner):
         userData: str = self._getIgnitionUserData(
             "worker", keyPath, preemptible, self._architecture
         )
-        # Boto 3 demands we base64 the user data ourselves, but still wants a
-        # str.
-        encoded_user_data = base64.b64encode(
+        # Boto 3 demands we base64 the user data ourselves *only* for spot
+        # instances, and still wants a str.
+        spot_user_data = base64.b64encode(
             userData.encode("utf-8")
         ).decode("utf-8")
         spot_kwargs = {
@@ -1029,18 +1029,19 @@ class AWSProvisioner(AbstractProvisioner):
                 "KeyName": self._keyName,
                 "SecurityGroupIds": self._getSecurityGroupIDs(),
                 "InstanceType": type_info.name,
-                "UserData": encoded_user_data,
+                "UserData": spot_user_data,
                 "BlockDeviceMappings": bdm,
                 "IamInstanceProfile": {"Arn": self._leaderProfileArn},
                 "Placement": {"AvailabilityZone": zone},
                 "SubnetId": subnet_id,
             },
         }
+
         on_demand_kwargs = {
             "KeyName": self._keyName,
             "SecurityGroupIds": self._getSecurityGroupIDs(),
             "InstanceType": type_info.name,
-            "UserData": encoded_user_data,
+            "UserData": userData,
             "BlockDeviceMappings": bdm,
             "IamInstanceProfile": {"Arn": self._leaderProfileArn},
             "Placement": {"AvailabilityZone": zone},
@@ -1056,6 +1057,7 @@ class AWSProvisioner(AbstractProvisioner):
                 # every request in this method
                 if not preemptible:
                     logger.debug("Launching %s non-preemptible nodes", numNodes)
+                    # TODO: Use create_instances() instead
                     instancesLaunched = create_ondemand_instances(
                         boto3_ec2=boto3_ec2,
                         image_id=self._discoverAMI(),

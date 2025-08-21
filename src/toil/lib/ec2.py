@@ -284,6 +284,9 @@ def create_spot_instances(
     """
     Create instances on the spot market.
 
+    The "UserData" field in spec MUST ALREADY BE base64-encoded. It will NOT be
+    automatically encoded.
+
     :param tags: Dict from tag key to tag value of tags to apply to the
         request.
     """
@@ -359,6 +362,7 @@ def create_spot_instances(
         logger.warning("%i request(s) entered a state other than active.", num_other)
 
 
+@deprecated("create_ondemand_instances is replaced by create_instances")
 def create_ondemand_instances(
     boto3_ec2: "EC2Client",
     image_id: str,
@@ -368,6 +372,10 @@ def create_ondemand_instances(
     """
     Requests the RunInstances EC2 API call but accounts for the race between recently created
     instance profiles, IAM roles and an instance creation that refers to them.
+
+    The "UserData" field in spec MUST NOT be base64 encoded; it will be
+    base64-encoded by boto3 automatically. See
+    <https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2/client/run_instances.html>.
     """
     instance_type = spec["InstanceType"]
     logger.info("Creating %s instance(s) ... ", instance_type)
@@ -458,7 +466,8 @@ def create_instances(
     Not to be confused with "run_instances" (same input args; returns a dictionary):
       https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.run_instances
 
-    Tags, if given, are applied to the instances, and all volumes.
+    :param user_data: non-base64-encoded user data to control instance startup.
+    :param tags: if given, these tags are applied to the instances, and all volumes.
     """
     logger.info("Creating %s instance(s) ... ", instance_type)
 
