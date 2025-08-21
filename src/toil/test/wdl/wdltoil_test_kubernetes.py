@@ -1,6 +1,7 @@
 import unittest
 from uuid import uuid4
 
+import logging
 import pytest
 
 from toil.provisioners import cluster_factory
@@ -11,6 +12,8 @@ from toil.test.wdl.wdltoil_test import (
     WDL_CONFORMANCE_TEST_REPO,
 )
 
+
+logger = logging.getLogger(__name__)
 
 @integrative
 @slow
@@ -64,6 +67,8 @@ class WDLKubernetesClusterTest(AbstractClusterTest):
 
         wdl_dir = "wdl_conformance_tests"
 
+        logger.info("Cloning WDL tests onto cluster...")
+
         # get the wdl-conformance-tests repo to get WDL tasks to run
         self.sshUtil(
             [
@@ -78,6 +83,9 @@ class WDLKubernetesClusterTest(AbstractClusterTest):
 
         # run WDL workflow that will run singularity
         test_options = [f"tests/md5sum/md5sum.wdl", f"tests/md5sum/md5sum.json"]
+
+        logger.info("Running workflow...")
+
         self.sshUtil(
             [
                 "bash",
