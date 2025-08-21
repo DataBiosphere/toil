@@ -89,7 +89,7 @@ SHELL=bash
 tests=src/toil --ignore src/toil/batchSystems/htcondor.py
 arch=linux/amd64,linux/arm64
 cov=--cov=toil
-logging=--log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG -o log_cli=true --log-cli-level DEBUG -s
+logging=--log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG -o log_cli=true --log-cli-level INFO
 verbose=-vv
 durations=--durations=0
 extras=
