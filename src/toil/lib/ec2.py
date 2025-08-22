@@ -305,7 +305,7 @@ def create_spot_instances(
     """
     Create instances on the spot market.
 
-    The "UserData" field in :AlunchSpecification" in spec MUST ALREADY BE
+    The "UserData" field in "LaunchSpecification" in spec MUST ALREADY BE
     base64-encoded. It will NOT be automatically encoded.
 
     :param tags: Dict from tag key to tag value of tags to apply to the
