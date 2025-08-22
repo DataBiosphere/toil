@@ -95,11 +95,10 @@ def heredoc(s):
 
 motd = heredoc('''
 
-    This is the Toil appliance. You can run your Toil script directly on the appliance.
-    Run toil <workflow>.py --help to see all options for running your workflow.
+    This is the Toil appliance. You can run your Toil workflow directly on the appliance.
     For more information see http://toil.readthedocs.io/en/latest/
 
-    Copyright (C) 2015-2022 Regents of the University of California
+    Copyright (C) 2015-2025 Regents of the University of California
 
     Version: {applianceSelf}
 
