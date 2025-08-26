@@ -180,9 +180,10 @@ doctest: check_venv check_build_reqs
 	    python -m pytest --capture=no $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) $(cov) $(tests) --ignore src/toil/test $(pytest_args)
 
 test_debug: check_venv check_build_reqs
+	# Don't include threadopts to make sure we can see our live logging.
 	TOIL_OWNER_TAG="$(whoami)" \
 	TOIL_HISTORY=0 \
-	    python -m pytest $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) $(tests) $(pytest_args) --maxfail=1
+	    python -m pytest $(verbose) $(durations) -m "$(marker)" $(logging) $(tests) $(pytest_args) --maxfail=1
 
 
 # This target will skip building docker and all docker based tests

@@ -1,8 +1,16 @@
 import logging
 import time
-from base64 import b64encode
+from base64 import b64encode, b64decode
+import binascii
 from collections.abc import Generator, Iterable, Mapping
-from typing import TYPE_CHECKING, Any, Callable, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Literal,
+    Optional,
+    Union,
+)
 
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import flatten_tags, boto3_pager
@@ -28,6 +36,19 @@ if TYPE_CHECKING:
 a_short_time = 5
 a_long_time = 60 * 60
 logger = logging.getLogger(__name__)
+
+def is_base64(value: str) -> bool:
+    """
+    Return True if value is base64-decodeable, and False otherwise.
+    """
+    try:
+        b64decode(
+            value.encode("utf-8"),
+            validate=True
+        )
+        return True
+    except binascii.Error:
+        return False
 
 
 class UserError(RuntimeError):
@@ -275,7 +296,7 @@ def create_spot_instances(
     boto3_ec2: "EC2Client",
     price,
     image_id,
-    spec,
+    spec: dict[Literal["LaunchSpecification"], dict[str, Any]],
     num_instances=1,
     timeout=None,
     tentative=False,
@@ -283,6 +304,9 @@ def create_spot_instances(
 ) -> Generator["DescribeInstancesResultTypeDef", None, None]:
     """
     Create instances on the spot market.
+
+    The "UserData" field in "LaunchSpecification" in spec MUST ALREADY BE
+    base64-encoded. It will NOT be automatically encoded.
 
     :param tags: Dict from tag key to tag value of tags to apply to the
         request.
@@ -294,6 +318,10 @@ def create_spot_instances(
     spec["LaunchSpecification"].update(
         {"ImageId": image_id}
     )  # boto3 image id is in the launch specification
+
+    user_data = spec["LaunchSpecification"].get("UserData", "")
+    assert is_base64(user_data), f"Spot user data needs to be base64-encoded: {user_data}"
+
     for attempt in retry_ec2(
         retry_for=a_long_time, retry_while=inconsistencies_detected
     ):
@@ -359,6 +387,9 @@ def create_spot_instances(
         logger.warning("%i request(s) entered a state other than active.", num_other)
 
 
+# TODO: Get rid of this and use create_instances instead.
+# Right now we need it because we have code that needs an InstanceTypeDef for
+# either a spot or an ondemand instance.
 def create_ondemand_instances(
     boto3_ec2: "EC2Client",
     image_id: str,
@@ -368,7 +399,19 @@ def create_ondemand_instances(
     """
     Requests the RunInstances EC2 API call but accounts for the race between recently created
     instance profiles, IAM roles and an instance creation that refers to them.
+
+    The "UserData" field in spec MUST NOT be base64 encoded; it will be
+    base64-encoded by boto3 automatically. See
+    <https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2/client/run_instances.html>.
+
+    Replaced by create_instances.
     """
+
+    user_data: str = spec.get("UserData", "")
+    if user_data:
+        # Hope any real user data contains some characters not allowed in base64
+        assert not is_base64(user_data), f"On-demand user data needs to not be base64-encoded: {user_data}"
+
     instance_type = spec["InstanceType"]
     logger.info("Creating %s instance(s) ... ", instance_type)
     boto_instance_list = []
@@ -458,7 +501,8 @@ def create_instances(
     Not to be confused with "run_instances" (same input args; returns a dictionary):
       https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.run_instances
 
-    Tags, if given, are applied to the instances, and all volumes.
+    :param user_data: non-base64-encoded user data to control instance startup.
+    :param tags: if given, these tags are applied to the instances, and all volumes.
     """
     logger.info("Creating %s instance(s) ... ", instance_type)
 

@@ -690,7 +690,7 @@ provisioner_integration:
     - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
-    - make test threads="${TEST_THREADS}" tests="src/toil/test/sort/sortTest.py src/toil/test/provisioners/clusterScalerTest.py src/toil/test/utils/utilsTest.py::TestUtils::testAWSProvisionerUtils src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSProvisionerBenchTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSManagedAutoscaleTest src/toil/test/wdl/wdltoil_test_kubernetes.py::WDLKubernetesClusterTest"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/sort/sortTest.py src/toil/test/provisioners/clusterScalerTest.py src/toil/test/utils/utilsTest.py::TestUtils::testAWSProvisionerUtils src/toil/test/provisioners/aws/awsProvisionerTest.py::TestAWSProvisionerBenchTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSManagedAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSStaticAutoscaleTest src/toil/test/wdl/wdltoil_test_kubernetes.py::WDLKubernetesClusterTest"
 #    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
 
 google_jobstore:
