@@ -18,9 +18,11 @@ import logging
 import math
 import os
 import sys
-from argparse import SUPPRESS, ArgumentParser, _ArgumentGroup
 import shlex
-from typing import Callable, NamedTuple, TypeVar
+
+from argparse import SUPPRESS, ArgumentParser, _ArgumentGroup
+from datetime import datetime, timedelta, timezone
+from typing import Callable, NamedTuple, Optional, TypeVar
 
 from toil.batchSystems.abstractBatchSystem import (
     EXIT_STATUS_UNAVAILABLE_VALUE,
@@ -390,12 +392,36 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             :return: dict of job statuses, where key is the integer job ID, and value is a tuple
             containing the job's state and exit code.
             """
+
+            status_dict = {}
+
             try:
-                status_dict = self._getJobDetailsFromSacct(job_id_list)
+                # Get all the job details we can from scontrol, which we think
+                # might be faster/less dangerous than sacct searching, even
+                # though it can't be aimed at more than one job.
+                status_dict.update(self._getJobDetailsFromScontrol(job_id_list))
+            except (CalledProcessErrorStderr, OSError) as e:
+                if isinstance(e, OSError):
+                    logger.warning("Could not run scontrol: %s", e)
+                # Ignore and fall back
+
+            # See what's not handy in scontrol (or everything if we couldn't
+            # call it).
+            sacct_job_id_list = self._remaining_jobs(job_id_list, status_dict)
+
+            try:
+                # Ask sacct about those jobs
+                status_dict.update(self._getJobDetailsFromSacct(sacct_job_id_list))
             except (CalledProcessErrorStderr, OSError) as e:
                 if isinstance(e, OSError):
                     logger.warning("Could not run sacct: %s", e)
-                status_dict = self._getJobDetailsFromScontrol(job_id_list)
+
+            if len(status_dict) != len(job_id_list):
+                # Neither method of talking to Slurm ran through; we know
+                # because we don't even have the (None, None) tuples for
+                # unmentioned jobs.
+                raise RuntimeError("Neither sacct nor scontrol could communicate with Slurm.")
+
             return status_dict
 
         def _get_job_return_code(
@@ -466,15 +492,120 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             return state_token
 
+        def _remaining_jobs(self, job_id_list: list[int], job_details: dict[int, tuple[str | None, int | None]]) -> list[int]:
+            """
+            Given a list of job IDs and a list of job details (state and exit
+            code), get the list of job IDs where the details are (None, None)
+            (or are missing).
+            """
+            return [
+                j
+                for j in job_id_list
+                if job_details.get(j, (None, None)) == (None, None)
+            ]
+
         def _getJobDetailsFromSacct(
-            self, job_id_list: list[int]
+            self,
+            job_id_list: list[int],
         ) -> dict[int, tuple[str | None, int | None]]:
             """
             Get SLURM job exit codes for the jobs in `job_id_list` by running `sacct`.
+
+            Handles querying manageable time periods until all jobs have information.
+
+            There is no guarantee of inter-job consistency: one job may really
+            finish after another, but we might see the earlier-finishing job
+            still running and the later-finishing job finished.
+
             :param job_id_list: list of integer batch job IDs.
-            :return: dict of job statuses, where key is the job-id, and value is a tuple
-            containing the job's state and exit code.
+            :return: dict of job statuses, where key is the job-id, and value
+                is a tuple containing the job's state and exit code. Jobs with
+                no information reported from Slurm will have (None, None).
             """
+
+            # Pick a now
+            now = datetime.now().astimezone(None)
+            # Decide when to start the search (first copy of past midnight)
+            begin_time = now.replace(
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+                fold=0
+            )
+            # And when to end (a day after that)
+            end_time = begin_time + timedelta(days=1)
+            while end_time < now:
+                # If something goes really weird, advance up to our chosen now
+                end_time += timedelta(days=1)
+            # If we don't go around the loop at least once, we might end up
+            # with an empty dict being returned, which shouldn't happen. We
+            # need the (None, None) entries for jobs we can't find.
+            assert end_time >= self.boss.start_time
+
+            results: dict[int, tuple[str | None, int | None]] = {}
+
+            while len(job_id_list) > 0 and end_time >= self.boss.start_time:
+                # There are still jobs to look for and our search isn't
+                # exclusively for stuff that only existed before our workflow
+                # started.
+                results.update(
+                    self._get_job_details_from_sacct_for_range(
+                        job_id_list,
+                        begin_time,
+                        end_time
+                    )
+                )
+                job_id_list = self._remaining_jobs(job_id_list, results)
+                # If we have to search again, search the previous day
+                end_time = begin_time
+                begin_time = end_time - timedelta(days=1)
+
+
+            if end_time < self.boss.start_time and len(job_id_list) > 0:
+                # This is suspicious.
+                logger.warning(
+                    "Could not find any information from sacct after %s "
+                    "about jobs: %s",
+                    self.boss.start_time.isoformat(),
+                    job_id_list
+                )
+
+            return results
+
+        def _get_job_details_from_sacct_for_range(
+            self,
+            job_id_list: list[int],
+            begin_time: datetime,
+            end_time: datetime,
+        ) -> dict[int, tuple[str | None, int | None]]:
+            """
+            Get SLURM job exit codes for the jobs in `job_id_list` by running `sacct`.
+
+            Internally, Slurm's accounting thinks in wall clock time, so for
+            efficiency you need to only search relevant real-time periods.
+
+            :param job_id_list: list of integer batch job IDs.
+            :param begin_time: An aware datetime of the earliest time to search
+            :param end_time: An aware datetime of the latest time to search
+            :return: dict of job statuses, where key is the job-id, and value
+                is a tuple containing the job's state and exit code. Jobs with
+                no information reported from Slurm will have (None, None).
+            """
+
+            assert begin_time.tzinfo is not None, "begin_time must be aware"
+            assert end_time.tzinfo is not None, "end_time must be aware"
+            def stringify(t: datetime) -> str:
+                """
+                Convert an aware time local time, and format it *without* a
+                trailing time zone indicator.
+                """
+                # TODO: What happens when we get an aware time that's ambiguous
+                # in local time? Or when the local timezone changes while we're
+                # sending things to Slurm or doing a progressive search back?
+                naive_t = t.astimezone(None).replace(tzinfo=None)
+                return naive_t.isoformat(timespec="seconds")
+
             job_ids = ",".join(str(id) for id in job_id_list)
             args = [
                 "sacct",
@@ -485,8 +616,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 "JobIDRaw,State,ExitCode",  # specify output columns
                 "-P",  # separate columns with pipes
                 "-S",
-                "1970-01-01",
-            ]  # override start time limit
+                stringify(begin_time),
+                "-E",
+                stringify(end_time),
+            ]
 
             # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
             # job state and exit status. Initialize dict before processing output of `sacct`.
@@ -500,8 +633,20 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     if len(job_id_list) == 1:
                         # 1 is too big, we can't recurse further, bail out
                         raise
-                    job_statuses.update(self._getJobDetailsFromSacct(job_id_list[:len(job_id_list)//2]))
-                    job_statuses.update(self._getJobDetailsFromSacct(job_id_list[len(job_id_list)//2:]))
+                    job_statuses.update(
+                        self._getJobDetailsFromSacct(
+                            job_id_list[:len(job_id_list)//2],
+                            begin_time,
+                            end_time,
+                        )
+                    )
+                    job_statuses.update(
+                        self._getJobDetailsFromSacct(
+                            job_id_list[len(job_id_list)//2:],
+                            begin_time,
+                            end_time,
+                        )
+                    )
                     return job_statuses
                 else:
                     raise
@@ -847,6 +992,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         self.partitions = SlurmBatchSystem.PartitionSet()
+        # Record when the workflow started, so we know when to stop looking for
+        # jobs we ran.
+        self.start_time = datetime.datetime.now().astimezone(None)
 
     # Override issuing jobs so we can check if we need to use Slurm's magic
     # whole-node-memory feature.
