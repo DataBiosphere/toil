@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 def call_sacct(args, **_) -> str:
     """
-    The arguments passed to `call_command` when executing `sacct` are:
+    The arguments passed to `call_command` when executing `sacct` are something like:
     ['sacct', '-n', '-j', '<comma-separated list of job-ids>', '--format',
     'JobIDRaw,State,ExitCode', '-P', '-S', '1970-01-01']
     The multi-line output is something like::
@@ -51,7 +51,14 @@ def call_sacct(args, **_) -> str:
         789868: "789868|PENDING|0:0\n",
         789869: "789869|COMPLETED|0:0\n789869.batch|COMPLETED|0:0\n789869.extern|COMPLETED|0:0\n",
     }
-    job_ids = [int(job_id) for job_id in args[3].split(",")]
+
+    # See if they asked for a job list
+    try:
+        j_index = args.indexof('-j')
+        job_ids = [int(job_id) for job_id in args[j_index + 1].split(",")]
+    except ValueError:
+        # We're not restricting to a list of jobs.
+        job_ids = list(sacct_info.keys())
     stdout = ""
     # Glue the fake outputs for the request job-ids together in a single string
     for job_id in job_ids:
