@@ -164,7 +164,8 @@ quick_test_offline:
     make develop extras=[aws,google,wdl]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the offline tests"
-    TOIL_TEST_QUICK=True make test_offline threads="${TEST_THREADS}"
+    # Make sure not to run the doctests here because we didn't install all possible extras
+    TOIL_TEST_QUICK=True make test_offline tests=src/toil/test threads="${TEST_THREADS}"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 py39_appliance_build:
@@ -208,6 +209,7 @@ py39_main:
     python3.9 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
+    make doctest threads="${TEST_THREADS}"
     make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
     TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
@@ -253,6 +255,7 @@ py310_main:
     python3.10 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10 && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
+    make doctest threads="${TEST_THREADS}"
     make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
     TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
@@ -298,6 +301,7 @@ py311_main:
     python3.11 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && pip install -U pip wheel && make prepare && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
+    make doctest threads="${TEST_THREADS}"
     make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
     TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
@@ -343,6 +347,7 @@ py312_main:
     python3.12 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && pip install -U pip wheel && make prepare && make develop extras=[all,htcondor]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
+    make doctest threads="${TEST_THREADS}"
     make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
     TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
@@ -379,10 +384,10 @@ py313_main:
     python3.13 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.13 && pip install -U pip wheel && make prepare && make develop extras=[all]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
+    make doctest threads="${TEST_THREADS}"
     make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
     TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
-
 
 slurm_test:
   rules:
@@ -458,7 +463,7 @@ cwl_badge:
     rm -rf badges1.2
     echo -e "\e[0Ksection_end:`date +%s`:download_tests\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the CWL v1.2 conformance tests."
-    make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" threads="${TEST_THREADS}" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
+    make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" threads="${TEST_THREADS}" pytest_args="--randomly-dont-reorganize --cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
   allow_failure: true
   artifacts:
@@ -491,7 +496,7 @@ cwl_badge_release:
     rm -rf badges1.2
     echo -e "\e[0Ksection_end:`date +%s`:download_tests\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the CWL v1.2 conformance tests."
-    make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" threads="${TEST_THREADS}" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
+    make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" threads="${TEST_THREADS}" pytest_args="--randomly-dont-reorganize --cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
   allow_failure: true
   artifacts:
@@ -685,7 +690,7 @@ provisioner_integration:
     - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
-    - make test threads="${TEST_THREADS}" tests="src/toil/test/sort/sortTest.py src/toil/test/provisioners/clusterScalerTest.py src/toil/test/utils/utilsTest.py::TestUtils::testAWSProvisionerUtils src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSProvisionerBenchTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSManagedAutoscaleTest src/toil/test/wdl/wdltoil_test_kubernetes.py::WDLKubernetesClusterTest"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/sort/sortTest.py src/toil/test/provisioners/clusterScalerTest.py src/toil/test/utils/utilsTest.py::TestUtils::testAWSProvisionerUtils src/toil/test/provisioners/aws/awsProvisionerTest.py::TestAWSProvisionerBenchTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSManagedAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSStaticAutoscaleTest src/toil/test/wdl/wdltoil_test_kubernetes.py::WDLKubernetesClusterTest"
 #    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
 
 google_jobstore:

@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import datetime
 import logging
 import os
 import subprocess
@@ -24,13 +25,22 @@ from uuid import uuid4
 
 import pytest
 
+import toil.lib.aws.session
+
+from toil.lib.aws import zone_to_region
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+from toil.provisioners.aws import (
+    _get_spot_history,
+    get_aws_zone_from_spot_market,
+    get_best_aws_zone,
+)
 from toil.test import (
     ToilTest,
     get_data,
     integrative,
     needs_aws_ec2,
+    needs_aws_s3,
     needs_fetchable_appliance,
     needs_mesos,
     slow,
@@ -53,10 +63,35 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-
-class AWSProvisionerBenchTest(ToilTest):
+@pytest.fixture
+def aws_zone():
     """
-    Tests for the AWS provisioner that don't actually provision anything.
+    Supply an appropriate AWS zone to work in to tests that need one.
+    """
+    zone = get_best_aws_zone()
+    assert (
+        zone is not None
+    ), "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
+    return zone
+
+@pytest.fixture
+def aws_region(aws_zone):
+    """
+    Supply an appropriate AWS region to work in to tests that need one.
+    """
+    return zone_to_region(aws_zone)
+
+@pytest.fixture
+def ec2_client(aws_region):
+    """
+    Supply an AWS EC2 client tests that need one.
+    """
+    return toil.lib.aws.session.client("ec2", aws_region)
+
+
+class TestAWSProvisionerBenchTest:
+    """
+    Tests for the AWS provisioner that don't actually provision instances.
     """
 
     # Needs to talk to EC2 for image discovery
@@ -71,7 +106,8 @@ class AWSProvisionerBenchTest(ToilTest):
             assert ami.startswith("ami-")
 
     @needs_aws_ec2
-    def test_read_write_global_files(self):
+    @needs_aws_s3
+    def test_read_write_global_files(self, aws_zone):
         """
         Make sure the `_write_file_to_cloud()` and `_read_file_from_cloud()`
         functions of the AWS provisioner work as intended.
@@ -79,7 +115,7 @@ class AWSProvisionerBenchTest(ToilTest):
         provisioner = AWSProvisioner(
             f"aws-provisioner-test-{uuid4()}",
             "mesos",
-            "us-west-2a",
+            aws_zone,
             50,
             None,
             None,
@@ -90,12 +126,29 @@ class AWSProvisionerBenchTest(ToilTest):
 
         try:
             url = provisioner._write_file_to_cloud(key, contents=contents)
-            self.assertTrue(url.startswith("s3://"))
+            assert url.startswith("s3://")
 
-            self.assertEqual(contents, provisioner._read_file_from_cloud(key))
+            assert provisioner._read_file_from_cloud(key) == contents
         finally:
             # the cluster was never launched, but we need to clean up the s3 bucket
             provisioner.destroyCluster()
+
+    @needs_aws_ec2
+    def test_get_spot_history(self, ec2_client) -> None:
+        """
+        Make sure that we can download spot price history from AWS.
+        """
+        history = _get_spot_history(ec2_client, "t3.large")
+        # We should have 7 days of history, newest first.
+
+    @needs_aws_ec2
+    def test_get_aws_zone_from_spot_market(self, ec2_client) -> None:
+        """
+        Make sure that we can process spot price history to pick a zone.
+        """
+        zone_options = ["us-west-2a", "af-south-1c"]
+        zone_choice = get_aws_zone_from_spot_market(0.01, "t3.large", ec2_client, zone_options)
+        assert zone_choice in zone_options
 
 
 @needs_aws_ec2

@@ -39,7 +39,7 @@ from toil.jobStores.abstractJobStore import (
     NoSuchJobException,
     NoSuchJobStoreException,
 )
-from toil.jobStores.utils import ReadablePipe, WritablePipe
+from toil.lib.pipes import ReadablePipe, WritablePipe
 from toil.lib.compatibility import compat_bytes
 from toil.lib.io import AtomicFileCreate
 from toil.lib.misc import truncExpBackoff
@@ -267,6 +267,8 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
             raise NoSuchJobStoreException(self.locator, "google")
         super().resume()
 
+        # TODO: Don't we need to set up encryption here???
+
     @google_retry
     def destroy(self):
         try:
@@ -400,8 +402,13 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
         ) as writable:
             yield writable, fileID
 
-    def get_empty_file_store_id(self, jobStoreID=None, cleanup=False, basename=None):
-        fileID = self._new_id(isFile=True, jobStoreID=jobStoreID if cleanup else None)
+    def get_empty_file_store_id(
+        self,
+        job_id=None,
+        cleanup=False,
+        basename=None,
+    ):
+        fileID = self._new_id(isFile=True, jobStoreID=job_id if cleanup else None)
         self._write_file(fileID, BytesIO(b""))
         return fileID
 
@@ -623,7 +630,10 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
         return filesRead
 
     @staticmethod
-    def _new_id(isFile=False, jobStoreID=None):
+    def _new_id(
+        isFile=False,
+        jobStoreID=None,
+    ) -> str:
         if isFile and jobStoreID:  # file associated with job
             return jobStoreID + str(uuid.uuid4())
         elif isFile:  # nonassociated file
@@ -677,7 +687,7 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
     ):
         """
         Yields a context manager that can be used to write to the bucket
-        with a stream. See :class:`~toil.jobStores.utils.WritablePipe` for an example.
+        with a stream. See :class:`~toil.lib.pipes.WritablePipe` for an example.
 
         Will throw assertion error if the file shouldn't be updated
         and yet exists.
@@ -698,7 +708,7 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :return: an instance of WritablePipe.
-        :rtype: :class:`~toil.jobStores.utils.writablePipe`
+        :rtype: :class:`~toil.lib.pipes.WritablePipe`
         """
         blob = self.bucket.blob(
             compat_bytes(fileName), encryption_key=self.sseKey if encrypt else None
@@ -721,7 +731,7 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
     def _download_stream(self, fileName, encrypt=True, encoding=None, errors=None):
         """
         Yields a context manager that can be used to read from the bucket
-        with a stream. See :class:`~toil.jobStores.utils.WritablePipe` for an example.
+        with a stream. See :class:`~toil.lib.pipes.WritablePipe` for an example.
 
         :param fileName: name of file in bucket to be read
         :type fileName: str
@@ -736,7 +746,7 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :return: an instance of ReadablePipe.
-        :rtype: :class:`~toil.jobStores.utils.ReadablePipe`
+        :rtype: :class:`~toil.lib.pipes.ReadablePipe`
         """
 
         blob = self.bucket.get_blob(

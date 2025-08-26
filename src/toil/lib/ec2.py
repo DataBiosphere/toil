@@ -1,11 +1,19 @@
 import logging
 import time
-from base64 import b64encode
+from base64 import b64encode, b64decode
+import binascii
 from collections.abc import Generator, Iterable, Mapping
-from typing import TYPE_CHECKING, Any, Callable, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Literal,
+    Optional,
+    Union,
+)
 
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.utils import flatten_tags
+from toil.lib.aws.utils import flatten_tags, boto3_pager
 from toil.lib.exceptions import panic
 from toil.lib.retry import (
     ErrorCondition,
@@ -28,6 +36,19 @@ if TYPE_CHECKING:
 a_short_time = 5
 a_long_time = 60 * 60
 logger = logging.getLogger(__name__)
+
+def is_base64(value: str) -> bool:
+    """
+    Return True if value is base64-decodeable, and False otherwise.
+    """
+    try:
+        b64decode(
+            value.encode("utf-8"),
+            validate=True
+        )
+        return True
+    except binascii.Error:
+        return False
 
 
 class UserError(RuntimeError):
@@ -129,7 +150,7 @@ def wait_instances_running(
             elif i["State"]["Name"] == "running":
                 if i["InstanceId"] in running_ids:
                     raise RuntimeError(
-                        "An instance was already added to the list of running instance IDs. Maybe there is a duplicate."
+                        f"Instance {i['InstanceId']} was already added to the list of running instance IDs. Maybe there is a duplicate."
                     )
                 running_ids.add(i["InstanceId"])
                 yield i
@@ -151,12 +172,15 @@ def wait_instances_running(
         time.sleep(seconds)
         for attempt in retry_ec2():
             with attempt:
-                described_instances = boto3_ec2.describe_instances(
+                # describe_instances weirdly really describes reservations
+                reservations = boto3_pager(
+                    boto3_ec2.describe_instances,
+                    "Reservations",
                     InstanceIds=list(pending_ids)
                 )
                 instances = [
                     instance
-                    for reservation in described_instances["Reservations"]
+                    for reservation in reservations
                     for instance in reservation["Instances"]
                 ]
 
@@ -184,6 +208,9 @@ def wait_spot_requests_active(
 
     if timeout is not None:
         timeout = time.time() + timeout
+
+    # These hold spot instance request IDs.
+    # Not to be confused with instance IDs.
     active_ids = set()
     other_ids = set()
     open_ids = None
@@ -201,34 +228,37 @@ def wait_spot_requests_active(
             batch = []
             for r in requests:
                 r: "SpotInstanceRequestTypeDef"  # pycharm thinks it is a string
+                assert isinstance(r, dict), f"Found garbage posing as a spot request: {r}"
                 if r["State"] == "open":
-                    open_ids.add(r["InstanceId"])
-                    if r["Status"] == "pending-evaluation":
-                        eval_ids.add(r["InstanceId"])
-                    elif r["Status"] == "pending-fulfillment":
-                        fulfill_ids.add(r["InstanceId"])
+                    open_ids.add(r["SpotInstanceRequestId"])
+                    if r["Status"]["Code"] == "pending-evaluation":
+                        eval_ids.add(r["SpotInstanceRequestId"])
+                    elif r["Status"]["Code"] == "pending-fulfillment":
+                        fulfill_ids.add(r["SpotInstanceRequestId"])
                     else:
                         logger.info(
                             "Request %s entered status %s indicating that it will not be "
-                            "fulfilled anytime soon.",
-                            r["InstanceId"],
-                            r["Status"],
+                            "fulfilled anytime soon. (Message: %s)",
+                            r["SpotInstanceRequestId"],
+                            r["Status"]["Code"],
+                            r["Status"].get("Message"),
                         )
                 elif r["State"] == "active":
-                    if r["InstanceId"] in active_ids:
+                    if r["SpotInstanceRequestId"] in active_ids:
                         raise RuntimeError(
                             "A request was already added to the list of active requests. Maybe there are duplicate requests."
                         )
-                    active_ids.add(r["InstanceId"])
+                    active_ids.add(r["SpotInstanceRequestId"])
                     batch.append(r)
                 else:
-                    if r["InstanceId"] in other_ids:
+                    if r["SpotInstanceRequestId"] in other_ids:
                         raise RuntimeError(
                             "A request was already added to the list of other IDs. Maybe there are duplicate requests."
                         )
-                    other_ids.add(r["InstanceId"])
+                    other_ids.add(r["SpotInstanceRequestId"])
                     batch.append(r)
             if batch:
+                logger.debug("Found %d new active/other spot requests", len(batch))
                 yield batch
             logger.info(
                 "%i spot requests(s) are open (%i of which are pending evaluation and %i "
@@ -247,8 +277,10 @@ def wait_spot_requests_active(
             time.sleep(sleep_time)
             for attempt in retry_ec2(retry_while=spot_request_not_found):
                 with attempt:
-                    requests = boto3_ec2.describe_spot_instance_requests(
-                        SpotInstanceRequestIds=list(open_ids)
+                    requests = boto3_pager(
+                        boto3_ec2.describe_spot_instance_requests,
+                        "SpotInstanceRequests",
+                        SpotInstanceRequestIds=list(open_ids),
                     )
     except BaseException:
         if open_ids:
@@ -264,14 +296,20 @@ def create_spot_instances(
     boto3_ec2: "EC2Client",
     price,
     image_id,
-    spec,
+    spec: dict[Literal["LaunchSpecification"], dict[str, Any]],
     num_instances=1,
     timeout=None,
     tentative=False,
-    tags=None,
+    tags: dict[str, str] = None,
 ) -> Generator["DescribeInstancesResultTypeDef", None, None]:
     """
     Create instances on the spot market.
+
+    The "UserData" field in "LaunchSpecification" in spec MUST ALREADY BE
+    base64-encoded. It will NOT be automatically encoded.
+
+    :param tags: Dict from tag key to tag value of tags to apply to the
+        request.
     """
 
     def spotRequestNotFound(e):
@@ -280,20 +318,27 @@ def create_spot_instances(
     spec["LaunchSpecification"].update(
         {"ImageId": image_id}
     )  # boto3 image id is in the launch specification
+
+    user_data = spec["LaunchSpecification"].get("UserData", "")
+    assert is_base64(user_data), f"Spot user data needs to be base64-encoded: {user_data}"
+
     for attempt in retry_ec2(
         retry_for=a_long_time, retry_while=inconsistencies_detected
     ):
         with attempt:
             requests_dict = boto3_ec2.request_spot_instances(
-                SpotPrice=price, InstanceCount=num_instances, **spec
+                SpotPrice=str(price), InstanceCount=num_instances, **spec
             )
             requests = requests_dict["SpotInstanceRequests"]
 
+    assert isinstance(requests, list)
+
     if tags is not None:
+        flat_tags = flatten_tags(tags)
         for requestID in (request["SpotInstanceRequestId"] for request in requests):
             for attempt in retry_ec2(retry_while=spotRequestNotFound):
                 with attempt:
-                    boto3_ec2.create_tags(Resources=[requestID], Tags=tags)
+                    boto3_ec2.create_tags(Resources=[requestID], Tags=flat_tags)
 
     num_active, num_other = 0, 0
     # noinspection PyUnboundLocalVariable,PyTypeChecker
@@ -310,7 +355,7 @@ def create_spot_instances(
             else:
                 logger.info(
                     "Request %s in unexpected state %s.",
-                    request["InstanceId"],
+                    request["SpotInstanceRequestId"],
                     request["State"],
                 )
                 num_other += 1
@@ -324,7 +369,14 @@ def create_spot_instances(
                         boto3_ec2.modify_instance_metadata_options(
                             InstanceId=instance_id, HttpPutResponseHopLimit=3
                         )
-            yield boto3_ec2.describe_instances(InstanceIds=instance_ids)
+            # We can't use the normal boto3_pager here because we're weirdly
+            # specced as yielding the pages ourselves.
+            # TODO: Change this to just yield instance descriptions instead.
+            page = boto3_ec2.describe_instances(InstanceIds=instance_ids)
+            while page.get("NextToken") is not None:
+                yield page
+                page = boto3_ec2.describe_instances(InstanceIds=instance_ids, NextToken=page["NextToken"])
+            yield page
     if not num_active:
         message = "None of the spot requests entered the active state"
         if tentative:
@@ -335,6 +387,9 @@ def create_spot_instances(
         logger.warning("%i request(s) entered a state other than active.", num_other)
 
 
+# TODO: Get rid of this and use create_instances instead.
+# Right now we need it because we have code that needs an InstanceTypeDef for
+# either a spot or an ondemand instance.
 def create_ondemand_instances(
     boto3_ec2: "EC2Client",
     image_id: str,
@@ -344,7 +399,19 @@ def create_ondemand_instances(
     """
     Requests the RunInstances EC2 API call but accounts for the race between recently created
     instance profiles, IAM roles and an instance creation that refers to them.
+
+    The "UserData" field in spec MUST NOT be base64 encoded; it will be
+    base64-encoded by boto3 automatically. See
+    <https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2/client/run_instances.html>.
+
+    Replaced by create_instances.
     """
+
+    user_data: str = spec.get("UserData", "")
+    if user_data:
+        # Hope any real user data contains some characters not allowed in base64
+        assert not is_base64(user_data), f"On-demand user data needs to not be base64-encoded: {user_data}"
+
     instance_type = spec["InstanceType"]
     logger.info("Creating %s instance(s) ... ", instance_type)
     boto_instance_list = []
@@ -434,12 +501,13 @@ def create_instances(
     Not to be confused with "run_instances" (same input args; returns a dictionary):
       https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.run_instances
 
-    Tags, if given, are applied to the instances, and all volumes.
+    :param user_data: non-base64-encoded user data to control instance startup.
+    :param tags: if given, these tags are applied to the instances, and all volumes.
     """
     logger.info("Creating %s instance(s) ... ", instance_type)
 
-    if isinstance(user_data, str):
-        user_data = user_data.encode("utf-8")
+    if isinstance(user_data, bytes):
+        user_data = user_data.decode("utf-8")
 
     request = {
         "ImageId": image_id,

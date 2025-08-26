@@ -85,7 +85,8 @@ help:
 
 # This Makefile uses bash features like printf and <()
 SHELL=bash
-tests=src/toil/test
+# We need the default tests to include the doctests, but not htcondor which isn't on mac.
+tests=src/toil --ignore src/toil/batchSystems/htcondor.py
 arch=linux/amd64,linux/arm64
 cov=--cov=toil
 logging=--log-format="%(asctime)s %(levelname)s %(message)s" --log-level DEBUG -o log_cli=true --log-cli-level INFO
@@ -109,7 +110,7 @@ marker=""
 threads:="auto"
 
 dist:="worksteal"
-pytest_args:=""
+pytest_args:="--randomly-dont-reorganize"
 
 # Only pass the threading options if running parallel tests. Otherwise we lose
 # live logging. See <https://stackoverflow.com/q/62533239>
@@ -169,10 +170,20 @@ test: check_venv check_build_reqs
 	TOIL_HISTORY=0 \
 	    python -m pytest $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) $(cov) $(tests) $(pytest_args)
 
+# When running doctests, we need to not capture output, because on CI we can
+# get failures where doctest saw no output and we report captured output, as in
+# <https://ucsc-ci.com/databiosphere/toil/-/jobs/96131>. doctest and pytest's
+# captures might not work properly together.
+doctest: check_venv check_build_reqs
+	TOIL_OWNER_TAG="shared" \
+	TOIL_HISTORY=0 \
+	    python -m pytest --capture=no $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) $(cov) $(tests) --ignore src/toil/test $(pytest_args)
+
 test_debug: check_venv check_build_reqs
+	# Don't include threadopts to make sure we can see our live logging.
 	TOIL_OWNER_TAG="$(whoami)" \
 	TOIL_HISTORY=0 \
-	    python -m pytest $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) $(tests) $(pytest_args) --maxfail=1
+	    python -m pytest $(verbose) $(durations) -m "$(marker)" $(logging) $(tests) $(pytest_args) --maxfail=1
 
 
 # This target will skip building docker and all docker based tests
@@ -189,7 +200,7 @@ test_offline: check_venv check_build_reqs
 test_1min: check_venv check_build_reqs
 	TOIL_SKIP_DOCKER=False \
 	TOIL_HISTORY=0 \
-	    python -m pytest $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) --timeout=30  --maxfail=1 $(pytest_args) src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerBenchTest::test_get_service_info src/toil/test/cwl/cwlTest.py::TestCWLWorkflow::test_run_colon_output src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior
+	    python -m pytest $(verbose) $(durations) $(threadopts) -m "$(marker)" $(logging) --timeout=30 --maxfail=1 $(pytest_args) src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerBenchTest::test_get_service_info src/toil/test/cwl/cwlTest.py::TestCWLWorkflow::test_run_colon_output src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior
 
 ifdef TOIL_DOCKER_REGISTRY
 
@@ -378,7 +389,7 @@ preflight: mypy touched_pylint
 		develop clean_develop \
 		sdist clean_sdist \
 		download_cwl_spec \
-		test test_offline test_1min \
+		test doctest test_offline test_1min \
 		docs clean_docs \
 		clean \
 		sort_imports remove_unused_imports remove_trailing_whitespace \

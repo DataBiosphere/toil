@@ -67,10 +67,10 @@ class Expando(dict):
     ...
     KeyError: 'foo'
 
-    >>> del o.foo
+    >>> del o.foo # doctest: +IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
     ...
-    AttributeError: foo
+    AttributeError: 'Expando' object has no attribute 'foo'
 
     And copied:
 

@@ -236,16 +236,16 @@ def parse_accelerator(
     {'count': 1, 'kind': 'gpu'}
 
     >>> parse_accelerator("nvidia-tesla-k80")
-    {'count': 1, 'kind': 'gpu', 'brand': 'nvidia', 'model': 'nvidia-tesla-k80'}
+    {'count': 1, 'kind': 'gpu', 'model': 'nvidia-tesla-k80', 'brand': 'nvidia'}
 
     >>> parse_accelerator("nvidia-tesla-k80:2")
-    {'count': 2, 'kind': 'gpu', 'brand': 'nvidia', 'model': 'nvidia-tesla-k80'}
+    {'count': 2, 'kind': 'gpu', 'model': 'nvidia-tesla-k80', 'brand': 'nvidia'}
 
     >>> parse_accelerator("gpu")
     {'count': 1, 'kind': 'gpu'}
 
     >>> parse_accelerator("cuda:1")
-    {'count': 1, 'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda'}
+    {'count': 1, 'kind': 'gpu', 'api': 'cuda', 'brand': 'nvidia'}
 
     >>> parse_accelerator({"kind": "gpu"})
     {'count': 1, 'kind': 'gpu'}
@@ -581,8 +581,8 @@ class Requirer:
         >>> Requirer._parseResource('cores', 1), Requirer._parseResource('disk', 1), \
         Requirer._parseResource('memory', 1)
         (1, 1, 1)
-        >>> Requirer._parseResource('cores', '1G'), Requirer._parseResource('disk', '1G'), \
-        Requirer._parseResource('memory', '1G')
+        >>> Requirer._parseResource('cores', '1Gi'), Requirer._parseResource('disk', '1Gi'), \
+        Requirer._parseResource('memory', '1Gi')
         (1073741824, 1073741824, 1073741824)
         >>> Requirer._parseResource('cores', 1.1)
         1.1
@@ -813,7 +813,6 @@ class JobDescription(Requirer):
     Subclassed into variants for checkpoint jobs and service jobs that have
     their specific parameters.
     """
-
     def __init__(
         self,
         requirements: Mapping[str, Union[int, str, float, bool, list]],

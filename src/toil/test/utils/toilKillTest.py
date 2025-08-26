@@ -47,34 +47,40 @@ class _ToilKillTest:
                     str(input_file),
                 ]
                 kill_cmd = ["toil", "kill", job_store]
+                clean_cmd = ["toil", "clean", job_store]
 
-                # run the sleep workflow
-                logger.info("Running workflow: %s", " ".join(run_cmd))
-                cwl_process = subprocess.Popen(run_cmd)
+                try:
+                    # run the sleep workflow
+                    logger.info("Running workflow: %s", " ".join(run_cmd))
+                    cwl_process = subprocess.Popen(run_cmd)
 
-                # wait until workflow starts running
-                while True:
-                    assert (
-                        cwl_process.poll() is None
-                    ), "toil-cwl-runner finished too soon"
-                    try:
-                        job_store_real = Toil.resumeJobStore(job_store)
-                        job_store_real.read_leader_pid()
-                        # pid file exists, now wait for the kill flag to exist
-                        if not job_store_real.read_kill_flag():
-                            # kill flag exists to be deleted to kill the leader
-                            break
-                        else:
-                            logger.info("Waiting for kill flag...")
-                    except (NoSuchJobStoreException, NoSuchFileException):
-                        logger.info("Waiting for job store to be openable...")
-                    time.sleep(2)
+                    # wait until workflow starts running
+                    while True:
+                        assert (
+                            cwl_process.poll() is None
+                        ), "toil-cwl-runner finished too soon"
+                        try:
+                            job_store_real = Toil.resumeJobStore(job_store)
+                            job_store_real.read_leader_pid()
+                            # pid file exists, now wait for the kill flag to exist
+                            if not job_store_real.read_kill_flag():
+                                # kill flag exists to be deleted to kill the leader
+                                break
+                            else:
+                                logger.info("Waiting for kill flag...")
+                        except (NoSuchJobStoreException, NoSuchFileException):
+                            logger.info("Waiting for job store to be openable...")
+                        time.sleep(2)
 
-                # run toil kill
-                subprocess.check_call(kill_cmd)
+                    # run toil kill
+                    subprocess.check_call(kill_cmd)
 
-                # after toil kill succeeds, the workflow should've exited
-                assert cwl_process.poll() is None
+                    # after toil kill succeeds, the workflow should've exited
+                    assert cwl_process.poll() is None
+                finally:
+                    # Clean up the job store since the workflow won't do it
+                    # since it got killed.
+                    subprocess.check_call(clean_cmd)
 
 
 class TestToilKill(_ToilKillTest):

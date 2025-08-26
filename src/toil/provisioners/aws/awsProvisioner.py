@@ -13,6 +13,7 @@
 # limitations under the License.
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -25,7 +26,7 @@ import uuid
 from collections.abc import Collection, Iterable
 from functools import wraps
 from shlex import quote
-from typing import TYPE_CHECKING, Any, Callable, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Callable, Literal, TypeVar, cast
 
 # We need these to exist as attributes we can get off of the boto object
 from botocore.exceptions import ClientError
@@ -449,7 +450,7 @@ class AWSProvisioner(AbstractProvisioner):
         :return: None
         """
 
-        if "network" in kwargs:
+        if kwargs.get("network") is not None:
             logger.warning(
                 "AWS provisioner does not support a network parameter. Ignoring %s!",
                 kwargs["network"],
@@ -1018,28 +1019,29 @@ class AWSProvisioner(AbstractProvisioner):
         userData: str = self._getIgnitionUserData(
             "worker", keyPath, preemptible, self._architecture
         )
-        userDataBytes: bytes = b""
-        if isinstance(userData, str):
-            # Spot-market provisioning requires bytes for user data.
-            userDataBytes = userData.encode("utf-8")
-
-        spot_kwargs = {
-            "KeyName": self._keyName,
+        # Boto 3 demands we base64 the user data ourselves *only* for spot
+        # instances, and still wants a str.
+        spot_user_data = base64.b64encode(
+            userData.encode("utf-8")
+        ).decode("utf-8")
+        spot_kwargs: dict[Literal["LaunchSpecification"], dict[str, Any]] = {
             "LaunchSpecification": {
+                "KeyName": self._keyName,
                 "SecurityGroupIds": self._getSecurityGroupIDs(),
                 "InstanceType": type_info.name,
-                "UserData": userDataBytes,
+                "UserData": spot_user_data,
                 "BlockDeviceMappings": bdm,
                 "IamInstanceProfile": {"Arn": self._leaderProfileArn},
                 "Placement": {"AvailabilityZone": zone},
                 "SubnetId": subnet_id,
             },
         }
+
         on_demand_kwargs = {
             "KeyName": self._keyName,
             "SecurityGroupIds": self._getSecurityGroupIDs(),
             "InstanceType": type_info.name,
-            "UserData": userDataBytes,
+            "UserData": userData,
             "BlockDeviceMappings": bdm,
             "IamInstanceProfile": {"Arn": self._leaderProfileArn},
             "Placement": {"AvailabilityZone": zone},
@@ -1055,6 +1057,10 @@ class AWSProvisioner(AbstractProvisioner):
                 # every request in this method
                 if not preemptible:
                     logger.debug("Launching %s non-preemptible nodes", numNodes)
+                    # TODO: Use create_instances() instead, which requires
+                    # refactoring both ondemand and spot sides here to use
+                    # mypy_boto3_ec2.service_resource.Instance objects instead
+                    # of mypy_boto3_ec2.type_defs.InstanceTypeDef
                     instancesLaunched = create_ondemand_instances(
                         boto3_ec2=boto3_ec2,
                         image_id=self._discoverAMI(),
@@ -1082,7 +1088,6 @@ class AWSProvisioner(AbstractProvisioner):
                         reservation
                         for subdict in generatedInstancesLaunched
                         for reservation in subdict["Reservations"]
-                        for key, value in subdict.items()
                     ]
                     # get a flattened list of all requested instances, as before instancesLaunched is a dict of reservations which is a dict of instance requests
                     instancesLaunched = [
@@ -1532,11 +1537,15 @@ class AWSProvisioner(AbstractProvisioner):
         tags: list[TagDescriptionTypeDef] = ec2.describe_tags(Filters=[tag_filter])[
             "Tags"
         ]
+        # TODO: Does this reference instance or spot request? Or can it be either?
         idsToCancel = [tag["ResourceId"] for tag in tags]
         return [
             request["SpotInstanceRequestId"]
             for request in requests
-            if request["InstanceId"] in idsToCancel
+            if (
+                request.get("InstanceId") in idsToCancel
+                or request["SpotInstanceRequestId"] in idsToCancel
+            )
         ]
 
     def _createSecurityGroups(self) -> list[str]:
