@@ -355,6 +355,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             :param batch_job_id_list: list of Job ID strings, where each string has the form
             "<job>[.<task>]".
             :return: list of job exit codes or exit code, exit reason pairs associated with the list of job IDs.
+            :raises CalledProcessErrorStderr: if communicating with Slurm went
+                wrong.
+            :raises OSError: if job details are not available becasue a Slurm
+                command could not start.
             """
             logger.log(
                 TRACE, "Getting exit codes for slurm jobs: %s", batch_job_id_list
@@ -389,11 +393,16 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             Helper function for `getJobExitCode` and `coalesce_job_exit_codes`.
             Fetch job details from Slurm's accounting system or job control system.
             :param job_id_list: list of integer Job IDs.
-            :return: dict of job statuses, where key is the integer job ID, and value is a tuple
-            containing the job's state and exit code.
+            :return: dict of job statuses, where key is the integer job ID, and
+                value is a tuple containing the job's state and exit code.
+            :raises CalledProcessErrorStderr: if communicating with Slurm went
+                wrong.
+            :raises OSError: if job details are not available becasue a Slurm
+                command could not start.
             """
 
             status_dict = {}
+            scontrol_problem: Optional[Exception] = None
 
             try:
                 # Get all the job details we can from scontrol, which we think
@@ -403,11 +412,17 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             except (CalledProcessErrorStderr, OSError) as e:
                 if isinstance(e, OSError):
                     logger.warning("Could not run scontrol: %s", e)
-                # Ignore and fall back
+                else:
+                    logger.warning("Error from scontrol: %s", e)
+                scontrol_problem = e
+
+            logger.debug("After scontrol, got statuses: %s", status_dict)
 
             # See what's not handy in scontrol (or everything if we couldn't
             # call it).
             sacct_job_id_list = self._remaining_jobs(job_id_list, status_dict)
+
+            logger.debug("Remaining jobs to find out about: %s", sacct_job_id_list)
 
             try:
                 # Ask sacct about those jobs
@@ -415,12 +430,16 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             except (CalledProcessErrorStderr, OSError) as e:
                 if isinstance(e, OSError):
                     logger.warning("Could not run sacct: %s", e)
+                else:
+                    logger.warning("Error from sacct: %s", e)
+                if scontrol_problem is not None:
+                    # Neither approach worked at all
+                    raise
 
-            if len(status_dict) != len(job_id_list):
-                # Neither method of talking to Slurm ran through; we know
-                # because we don't even have the (None, None) tuples for
-                # unmentioned jobs.
-                raise RuntimeError("Neither sacct nor scontrol could communicate with Slurm.")
+            # One of the methods worked, so we have at least (None, None)
+            # values filled in for all jobs.
+            assert len(status_dict) == len(job_id_list)
+
 
             return status_dict
 
@@ -634,14 +653,14 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                         # 1 is too big, we can't recurse further, bail out
                         raise
                     job_statuses.update(
-                        self._getJobDetailsFromSacct(
+                        self._get_job_details_from_sacct_for_range(
                             job_id_list[:len(job_id_list)//2],
                             begin_time,
                             end_time,
                         )
                     )
                     job_statuses.update(
-                        self._getJobDetailsFromSacct(
+                        self._get_job_details_from_sacct_for_range(
                             job_id_list[len(job_id_list)//2:],
                             begin_time,
                             end_time,
@@ -994,7 +1013,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         self.partitions = SlurmBatchSystem.PartitionSet()
         # Record when the workflow started, so we know when to stop looking for
         # jobs we ran.
-        self.start_time = datetime.datetime.now().astimezone(None)
+        self.start_time = datetime.now().astimezone(None)
 
     # Override issuing jobs so we can check if we need to use Slurm's magic
     # whole-node-memory feature.
