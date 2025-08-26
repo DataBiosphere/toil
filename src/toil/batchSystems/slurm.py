@@ -576,16 +576,19 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     )
                 )
                 job_id_list = self._remaining_jobs(job_id_list, results)
-                # If we have to search again, search the previous day
-                end_time = begin_time
-                begin_time = end_time - timedelta(days=1)
+                # If we have to search again, search the previous day. But
+                # overlap a tiny bit so the endpoints don't exactly match, in
+                # case Slurm is not working with inclusive intervals.
+                # TODO: is Slurm working with inclusive intervals?
+                end_time = begin_time + timedelta(seconds=1)
+                begin_time = end_time - timedelta(days=1, seconds=1)
 
 
             if end_time < self.boss.start_time and len(job_id_list) > 0:
                 # This is suspicious.
                 logger.warning(
-                    "Could not find any information from sacct after %s "
-                    "about jobs: %s",
+                    "Could not find any information from sacct after "
+                    "workflow start at %s about jobs: %s",
                     self.boss.start_time.isoformat(),
                     job_id_list
                 )
