@@ -22,6 +22,7 @@ import os
 import random
 import signal
 import stat
+import tempfile
 import time
 from abc import ABCMeta
 from struct import pack, unpack
@@ -83,14 +84,19 @@ class hidden:
         def setUp(self):
             super().setUp()
             self.work_dir = self._createTempDir()
-            self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
-            self.options.logLevel = "DEBUG"
-            self.options.realTimeLogging = True
-            self.options.workDir = self.work_dir
-            self.options.clean = "always"
-            self.options.logFile = os.path.join(self.work_dir, "logFile")
-
             self.tmp_dir = self._createTempDir()
+
+        def options(self):
+            """
+            Mint a fresh options object with default settings and a fresh jobstore.
+            """
+            options = Job.Runner.getDefaultOptions(self._getTestJobStore())
+            options.logLevel = "DEBUG"
+            options.realTimeLogging = True
+            options.workDir = self.work_dir
+            options.clean = "always"
+            options.logFile = tempfile.mkstemp(dir=self.work_dir, prefix="logFile")
+            return options
 
         def create_file(self, content, executable=False):
             file_path = f"{self.tmp_dir}/{uuid4()}"
@@ -124,7 +130,7 @@ class hidden:
             A.addChild(C)
             B.addChild(D)
             C.addChild(D)
-            Job.Runner.startToil(A, self.options)
+            Job.Runner.startToil(A, self.options())
 
         @slow
         def testFileStoreLogging(self):
@@ -154,7 +160,7 @@ class hidden:
 
             F = Job.wrapJobFn(self._accessAndFail, disk="100M")
             try:
-                Job.Runner.startToil(F, self.options)
+                Job.Runner.startToil(F, self.options())
             except FailedJobsException:
                 # We expect this.
                 pass
@@ -190,7 +196,7 @@ class hidden:
                 numIters=30,
                 disk="2G",
             )
-            Job.Runner.startToil(F, self.options)
+            Job.Runner.startToil(F, self.options())
 
         @staticmethod
         def _testFileStoreOperations(job, nonLocalDir, numIters=100):
@@ -300,24 +306,13 @@ class hidden:
                         f"[executable: {executable}]\n"
                         f"[caching: {caching}]\n"
                     ):
-                        # Since we don't get a setUp and tearDown between
-                        # subTests, we need to run each with its own jobstore
-                        # if we want them to be independent.
-                        #
-                        # TODO: We have clean=always set, so we *should* be
-                        # able to re-use a job store name, but it might be
-                        # possible for an AWS jobstore clean to appear to
-                        # finish before the bucket name is really available for
-                        # re-use. See
-                        # <https://ucsc-ci.com/databiosphere/toil/-/jobs/96220>
-                        self.options.jobStore = self._getTestJobStore()
-
-                        self.options.caching = caching
+                        options = self.options()
+                        options.caching = caching
                         read_write_job = Job.wrapJobFn(
                             self._testWriteReadGlobalFilePermissions,
                             executable=executable,
                         )
-                        Job.Runner.startToil(read_write_job, self.options)
+                        Job.Runner.startToil(read_write_job, options)
 
         @staticmethod
         def _testWriteReadGlobalFilePermissions(job, executable):
@@ -353,7 +348,7 @@ class hidden:
                 export_file_job = Job.wrapJobFn(
                     self._testWriteExportFileCompatibility, executable=executable
                 )
-                with Toil(self.options) as toil:
+                with Toil(self.options()) as toil:
                     initialPermissions, fileID = toil.start(export_file_job)
                     dstFile = os.path.join(self._createTempDir(), str(uuid4()))
                     toil.exportFile(fileID, "file://" + dstFile)
@@ -379,16 +374,17 @@ class hidden:
             Ensures that files imported to the leader preserve their executable permissions
             when they are read by the fileStore.
             """
-            with Toil(self.options) as toil:
-                for executable in True, False:
-                    file_path = self.create_file(content="Hello", executable=executable)
-                    initial_permissions = os.stat(file_path).st_mode & stat.S_IXUSR
-                    file_id = toil.importFile(f"file://{file_path}")
-                    for mutable in True, False:
-                        for symlink in True, False:
-                            with self.subTest(
-                                f"Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}"
-                            ):
+            
+            for executable in True, False:
+                file_path = self.create_file(content="Hello", executable=executable)
+                initial_permissions = os.stat(file_path).st_mode & stat.S_IXUSR
+                file_id = toil.importFile(f"file://{file_path}")
+                for mutable in True, False:
+                    for symlink in True, False:
+                        with self.subTest(
+                            f"Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}"
+                        ):
+                            with Toil(self.options()) as toil:
                                 A = Job.wrapJobFn(
                                     self._testImportReadFileCompatibility,
                                     fileID=file_id,
@@ -413,7 +409,7 @@ class hidden:
             """
             Checks if text mode is compatible with file streams.
             """
-            with Toil(self.options) as toil:
+            with Toil(self.options()) as toil:
                 A = Job.wrapJobFn(self._testReadWriteFileStreamTextMode)
                 toil.start(A)
 
@@ -458,9 +454,10 @@ class hidden:
         :class:toil.fileStores.CachingFileStore.
         """
 
-        def setUp(self):
-            super().setUp()
-            self.options.caching = False
+        def options(self):
+            options = super().options()
+            options.caching = False
+            return options
 
     class AbstractCachingFileStoreTest(AbstractFileStoreTest, metaclass=ABCMeta):
         """
@@ -468,9 +465,10 @@ class hidden:
         :class:toil.fileStores.cachingFileStore.CachingFileStore.
         """
 
-        def setUp(self):
-            super().setUp()
-            self.options.caching = True
+        def options(self):
+            options = super().options()
+            options.caching = True
+            return options
 
         @slow
         @pytest.mark.xfail(reason="Cannot succeed in time on small CI runners")
@@ -482,9 +480,6 @@ class hidden:
             """
             if testingIsAutomatic and self.jobStoreType != "file":
                 self.skipTest("To save time")
-            self.options.retryCount = 10
-            self.options.badWorker = 0.25
-            self.options.badWorkerFailInterval = 0.2
             for test in range(0, 20):
                 E = Job.wrapJobFn(self._uselessFunc)
                 F = Job.wrapJobFn(self._uselessFunc)
@@ -493,7 +488,11 @@ class hidden:
                     jobs[i] = Job.wrapJobFn(self._uselessFunc)
                     E.addChild(jobs[i])
                     jobs[i].addChild(F)
-                Job.Runner.startToil(E, self.options)
+                options = self.options()
+                options.retryCount = 10
+                options.badWorker = 0.25
+                options.badWorkerFailInterval = 0.2
+                Job.Runner.startToil(E, options)
 
         @slow
         def testCacheEvictionPartialEvict(self):
@@ -503,12 +502,6 @@ class hidden:
             A Third Job requests 10MB of disk requiring eviction of the 1st file.  Ensure that the
             behavior is as expected.
             """
-            self._testValidityOfCacheEvictTest()
-
-            # Explicitly set clean to always so even the failed cases get cleaned (This will
-            # overwrite the value set in setUp if it is ever changed in the future)
-            self.options.clean = "always"
-
             self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=10)
 
         @slow
@@ -519,12 +512,6 @@ class hidden:
             A Third Job requests 10MB of disk requiring eviction of the 1st file.  Ensure that the
             behavior is as expected.
             """
-            self._testValidityOfCacheEvictTest()
-
-            # Explicitly set clean to always so even the failed cases get cleaned (This will
-            # overwrite the value set in setUp if it is ever changed in the future)
-            self.options.clean = "always"
-
             self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=30)
 
         @slow
@@ -535,31 +522,25 @@ class hidden:
             A Third Job requests 10MB of disk requiring eviction of the 1st file.  Ensure that the
             behavior is as expected.
             """
-            self._testValidityOfCacheEvictTest()
-
-            # Explicitly set clean to always so even the failed cases get cleaned (This will
-            # overwrite the value set in setUp if it is ever changed in the future)
-            self.options.clean = "always"
-
             self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=60)
 
-        def _testValidityOfCacheEvictTest(self):
+        def _testValidityOfCacheEvictTest(self, options):
             # If the job store and cache are on the same file system, file
             # sizes are accounted for by the job store and are not reflected in
             # the cache hence this test is redundant (caching will be free).
-            if not self.options.jobStore.startswith(("aws", "google")):
-                workDirDev = os.stat(self.options.workDir).st_dev
-                if self.options.jobStore.startswith("file:"):
+            if not options.jobStore.startswith(("aws", "google")):
+                workDirDev = os.stat(options.workDir).st_dev
+                if options.jobStore.startswith("file:"):
                     # Before #4538, options.jobStore would have the raw path while the Config object would prepend the
                     # filesystem to the path (/path/to/file vs file:/path/to/file)
                     # The options namespace and the Config object now have the exact same behavior
                     # which means parse_jobstore will be called with argparse rather than with the config object
                     # so remove the prepended file: scheme
                     jobStoreDev = os.stat(
-                        os.path.dirname(self.options.jobStore[5:])
+                        os.path.dirname(options.jobStore[5:])
                     ).st_dev
                 else:
-                    jobStoreDev = os.stat(os.path.dirname(self.options.jobStore)).st_dev
+                    jobStoreDev = os.stat(os.path.dirname(options.jobStore)).st_dev
                 if workDirDev == jobStoreDev:
                     self.skipTest(
                         "Job store and working directory are on the same filesystem."
@@ -573,7 +554,9 @@ class hidden:
             or results in an error due to lack of space, respectively.  Ensure that the behavior is
             as expected.
             """
-            self.options.retryCount = 0
+            options = self.options()
+            options.retryCount = 0
+            self._testValidityOfCacheEvictTest(options)
             if diskRequestMB > 50:
                 # This can be non int as it will never reach _probeJobReqs
                 expectedResult = "Fail"
@@ -611,9 +594,9 @@ class hidden:
                 D.addChild(E)
                 E.addChild(F)
                 F.addChild(G)
-                Job.Runner.startToil(A, self.options)
+                Job.Runner.startToil(A, options)
             except FailedJobsException as err:
-                with open(self.options.logFile) as f:
+                with open(options.logFile) as f:
                     logContents = f.read()
                 if CacheUnbalancedError.message in logContents:
                     self.assertEqual(expectedResult, "Fail")
@@ -754,8 +737,9 @@ class hidden:
             """
             print("Testing")
             logger.debug("Testing testing 123")
-            self.options.retryCount = 0
-            self.options.logLevel = "DEBUG"
+            options = self.options()
+            options.retryCount = 0
+            options.logLevel = "DEBUG"
             A = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=1024, disk="1G")
             B = Job.wrapJobFn(self._doubleWriteFileToJobStore, fileMB=850, disk="900M")
             C = Job.wrapJobFn(
@@ -766,7 +750,7 @@ class hidden:
             A.addChild(B)
             B.addChild(C)
             C.addChild(D)
-            Job.Runner.startToil(A, self.options)
+            Job.Runner.startToil(A, options)
 
         @staticmethod
         def _doubleWriteFileToJobStore(job, fileMB):
@@ -821,7 +805,7 @@ class hidden:
                 isLocalFile=False,
                 nonLocalDir=workdir,
             )
-            Job.Runner.startToil(A, self.options)
+            Job.Runner.startToil(A, self.options())
 
         def testWriteLocalFileToJobStore(self):
             """
@@ -829,7 +813,7 @@ class hidden:
             default.  Ensure the file is cached.
             """
             A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True)
-            Job.Runner.startToil(A, self.options)
+            Job.Runner.startToil(A, self.options())
 
         # readGlobalFile tests
 
@@ -866,7 +850,7 @@ class hidden:
                 fsID=A.rv(),
             )
             A.addChild(B)
-            Job.Runner.startToil(A, self.options)
+            Job.Runner.startToil(A, self.options())
 
         @staticmethod
         def _readFromJobStore(job, isCachedFile, cacheReadFile, fsID, isTest=True):
@@ -939,7 +923,7 @@ class hidden:
                 fsID=A.rv(),
             )
             A.addChild(B)
-            Job.Runner.startToil(A, self.options)
+            Job.Runner.startToil(A, self.options())
 
         @slow
         def testMultipleJobsReadSameCacheHitGlobalFile(self):
@@ -992,7 +976,7 @@ class hidden:
                 )
                 A.addChild(jobs[i])
                 jobs[i].addChild(B)
-            Job.Runner.startToil(A, self.options)
+            Job.Runner.startToil(A, self.options())
             with open(file_name) as y:
                 # At least one job at a time should have been observed.
                 # We can't actually guarantee that any of our jobs will
@@ -1077,7 +1061,7 @@ class hidden:
             # Tests that files written to job store can be immediately exported
             # motivated by https://github.com/BD2KGenomics/toil/issues/1469
             root = Job.wrapJobFn(self._writeExportGlobalFile)
-            Job.Runner.startToil(root, self.options)
+            Job.Runner.startToil(root, self.options())
 
         # Testing for the return of file sizes to the sigma job pool.
         @slow
@@ -1095,7 +1079,7 @@ class hidden:
                 nonLocalDir=workdir,
                 disk="2Gi",
             )
-            Job.Runner.startToil(F, self.options)
+            Job.Runner.startToil(F, self.options())
 
         @slow
         def testReturnFileSizesWithBadWorker(self):
@@ -1104,9 +1088,10 @@ class hidden:
             Read back written and locally deleted files. Ensure that after
             every step that the cache is in a valid state.
             """
-            self.options.retryCount = 20
-            self.options.badWorker = 0.5
-            self.options.badWorkerFailInterval = 0.1
+            options = self.options()
+            options.retryCount = 20
+            options.badWorker = 0.5
+            options.badWorkerFailInterval = 0.1
             workdir = self._createTempDir(purpose="nonLocalDir")
             F = Job.wrapJobFn(
                 self._returnFileTestFn,
@@ -1116,7 +1101,7 @@ class hidden:
                 numIters=30,
                 disk="2Gi",
             )
-            Job.Runner.startToil(F, self.options)
+            Job.Runner.startToil(F, options)
 
         @staticmethod
         def _returnFileTestFn(
@@ -1362,7 +1347,8 @@ class hidden:
             tracking values in the cache state file appropriately.
             """
             workdir = self._createTempDir(purpose="nonLocalDir")
-            self.options.retryCount = 1
+            options = self.options()
+            options.retryCount = 1
             jobDiskBytes = 2 * 1024 * 1024 * 1024
             F = Job.wrapJobFn(
                 self._controlledFailTestFn,
@@ -1372,7 +1358,7 @@ class hidden:
             )
             G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk="100Mi")
             F.addChild(G)
-            Job.Runner.startToil(F, self.options)
+            Job.Runner.startToil(F, options)
 
         @staticmethod
         def _controlledFailTestFn(job, jobDisk, testDir):
@@ -1432,7 +1418,8 @@ class hidden:
             self._deleteLocallyReadFilesFn(readAsMutable=False)
 
         def _deleteLocallyReadFilesFn(self, readAsMutable):
-            self.options.retryCount = 0
+            options = self.options()
+            options.retryCount = 0
             A = Job.wrapJobFn(
                 self._writeFileToJobStoreWithAsserts, isLocalFile=True, memory="10M"
             )
@@ -1443,7 +1430,7 @@ class hidden:
                 memory="20M",
             )
             A.addChild(B)
-            Job.Runner.startToil(A, self.options)
+            Job.Runner.startToil(A, options)
 
         @staticmethod
         def _removeReadFileFn(job, fileToDelete, readAsMutable):
@@ -1462,20 +1449,20 @@ class hidden:
             outfile = job.fileStore.readGlobalFile(
                 fileToDelete, os.path.join(work_dir, "temp"), mutable=readAsMutable
             )
-            tempfile = os.path.join(work_dir, "tmp.tmp")
+            temp_file = os.path.join(work_dir, "tmp.tmp")
             # The first time we run this loop, processsingReadFile is True and fileToDelete is the
             # file read from the job store.  The second time, processsingReadFile is False and
             # fileToDelete is one that was just written in to the job store. Ensure the correct
             # behaviour is seen in both conditions.
             while True:
-                os.rename(outfile, tempfile)
+                os.rename(outfile, temp_file)
                 try:
                     job.fileStore.deleteLocalFile(fileToDelete)
                 except IllegalDeletionCacheError:
                     job.fileStore.log_to_leader(
                         "Detected a deleted file %s." % fileToDelete
                     )
-                    os.rename(tempfile, outfile)
+                    os.rename(temp_file, outfile)
                 else:
                     # If we are processing the write test, or if we are testing the immutably read
                     # file, we should not reach here.
@@ -1494,10 +1481,11 @@ class hidden:
             """
             Test the deletion capabilities of deleteLocalFile
             """
-            self.options.retryCount = 0
+            options = self.options
+            options.retryCount = 0
             workdir = self._createTempDir(purpose="nonLocalDir")
             A = Job.wrapJobFn(self._deleteLocalFileFn, nonLocalDir=workdir)
-            Job.Runner.startToil(A, self.options)
+            Job.Runner.startToil(A, options)
 
         @staticmethod
         def _deleteLocalFileFn(job, nonLocalDir):
@@ -1561,8 +1549,9 @@ class hidden:
             Test many simultaneous read attempts on a file created via a stream
             directly to the job store.
             """
-            self.options.retryCount = 0
-            self.options.disableChaining = True
+            options = self.options()
+            options.retryCount = 0
+            options.disableChaining = True
 
             # Make a file
             parent = Job.wrapJobFn(self._createUncachedFileStream)
@@ -1570,7 +1559,7 @@ class hidden:
             for i in range(30):
                 parent.addChildJobFn(self._readFileWithDelay, parent.rv())
 
-            Job.Runner.startToil(parent, self.options)
+            Job.Runner.startToil(parent, options)
 
         @staticmethod
         def _createUncachedFileStream(job):
