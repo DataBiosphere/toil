@@ -95,7 +95,8 @@ class hidden:
             options.realTimeLogging = True
             options.workDir = self.work_dir
             options.clean = "always"
-            options.logFile = tempfile.mkstemp(dir=self.work_dir, prefix="logFile")
+            log_fd, options.logFile = tempfile.mkstemp(dir=self.work_dir, prefix="logFile")
+            os.close(log_fd)
             return options
 
         def create_file(self, content, executable=False):
@@ -378,13 +379,13 @@ class hidden:
             for executable in True, False:
                 file_path = self.create_file(content="Hello", executable=executable)
                 initial_permissions = os.stat(file_path).st_mode & stat.S_IXUSR
-                file_id = toil.importFile(f"file://{file_path}")
                 for mutable in True, False:
                     for symlink in True, False:
                         with self.subTest(
                             f"Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}"
                         ):
                             with Toil(self.options()) as toil:
+                                file_id = toil.importFile(f"file://{file_path}")
                                 A = Job.wrapJobFn(
                                     self._testImportReadFileCompatibility,
                                     fileID=file_id,
@@ -1481,7 +1482,7 @@ class hidden:
             """
             Test the deletion capabilities of deleteLocalFile
             """
-            options = self.options
+            options = self.options()
             options.retryCount = 0
             workdir = self._createTempDir(purpose="nonLocalDir")
             A = Job.wrapJobFn(self._deleteLocalFileFn, nonLocalDir=workdir)
