@@ -352,11 +352,16 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         ) -> list[int | tuple[int, BatchJobExitReason | None] | None]:
             """
             Collect all job exit codes in a single call.
-            :param batch_job_id_list: list of Job ID strings, where each string has the form
-            "<job>[.<task>]".
-            :return: list of job exit codes or exit code, exit reason pairs associated with the list of job IDs.
+            
+            :param batch_job_id_list: list of Job ID strings, where each string
+                has the form ``<job>[.<task>]``.
+            
+            :return: list of job exit codes or exit code, exit reason pairs
+                associated with the list of job IDs.
+            
             :raises CalledProcessErrorStderr: if communicating with Slurm went
                 wrong.
+            
             :raises OSError: if job details are not available becasue a Slurm
                 command could not start.
             """
