@@ -115,6 +115,10 @@ def permission_error_reporter(url: ParseResult, notes: str) -> Iterator[None]:
     So we take the URL and any notes from client setup here, and if something
     goes wrong that looks like a permission problem we complain with the notes
     attached.
+
+    Also, if you don't have a project available, you can't use the Python API
+    for storage with authentication at all. `gsutil` can do it but you can't.
+    TODO: Fall back on command-line gsutil for authenticated reads???
     """
     try:
         yield
@@ -125,7 +129,9 @@ def permission_error_reporter(url: ParseResult, notes: str) -> Iterator[None]:
                 "Are you sure you have set up your Google Account login "
                 "for applications with permission to access "
                 f"{urlunparse(url)}? "
-                "Maybe try `gcloud auth application-default login`? "
+                "Maybe try `gcloud auth application-default login` and "
+                "providing the (mandatory for the Python API) Google Cloud "
+                "project? "
                 f"Client setup said: {notes}"
             ) from e
         else:

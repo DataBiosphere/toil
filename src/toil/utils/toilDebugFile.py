@@ -47,12 +47,12 @@ def fetchJobStoreFiles(jobStore: FileJobStore, options: argparse.Namespace) -> N
         jobStoreHits = glob(directoryname=options.jobStore, glob_pattern=jobStoreFile)
         for jobStoreFileID in jobStoreHits:
             logger.debug(
-                f"Copying job store file: {jobStoreFileID} to {options.localFilePath[0]}"
+                f"Copying job store file: {jobStoreFileID} to {options.localFilePath}"
             )
             jobStore.read_file(
                 jobStoreFileID,
                 os.path.join(
-                    options.localFilePath[0], os.path.basename(jobStoreFileID)
+                    options.localFilePath, os.path.basename(jobStoreFileID)
                 ),
                 symlink=options.useSymlinks,
             )
@@ -97,7 +97,10 @@ def printContentsOfJobStore(
 def main() -> None:
     parser = parser_with_common_options(jobstore_option=True, prog="toil debug-file")
     parser.add_argument(
-        "--localFilePath", nargs=1, help="Location to which to copy job store files."
+        "--localFilePath",
+        type=str,
+        default=".",
+        help="Location to which to copy job store files."
     )
     parser.add_argument(
         "--fetch",

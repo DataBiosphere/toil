@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from dataclasses import dataclass
 import enum
 import logging
 import os
@@ -72,10 +73,13 @@ class BatchJobExitReason(enum.IntEnum):
         except ValueError:
             return str(value)
 
-
-class UpdatedBatchJobInfo(NamedTuple):
+@dataclass
+class UpdatedBatchJobInfo:
     jobID: int
-    exitStatus: int
+    """
+    The Toil batch system ID of the job.
+    """
+    exitStatus: int = EXIT_STATUS_UNAVAILABLE_VALUE
     """
     The exit status (integer value) of the job. 0 implies successful.
 
@@ -83,8 +87,12 @@ class UpdatedBatchJobInfo(NamedTuple):
     (e.g. job is lost, or otherwise died but actual exit code was not reported).
     """
 
-    exitReason: Optional[BatchJobExitReason]
-    wallTime: Union[float, int, None]
+    exitReason: Optional[BatchJobExitReason] = None
+    wallTime: Union[float, int, None] = None
+    backing_id: Optional[str] = None
+    """
+    The identifier for the job in the backing scheduler, if available.
+    """
 
 
 # Information required for worker cleanup on shutdown of the batch system.

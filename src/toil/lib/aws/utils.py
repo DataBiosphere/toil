@@ -139,6 +139,11 @@ def delete_s3_bucket(
 ) -> None:
     """
     Delete the given S3 bucket.
+
+    Note that S3 bucket deletion is only eventually-consistent, and anyone can
+    register any S3 bucket name. For both of these reasons, a bucket name might
+    not be immediately (or ever) available for re-use after this function
+    returns.
     """
     printq(f"Deleting s3 bucket: {bucket}", quiet)
 
@@ -161,7 +166,9 @@ def delete_s3_bucket(
                     Bucket=bucket, Key=entry["Key"], VersionId=entry["VersionId"]
                 )
         s3_resource.Bucket(bucket).delete()
-        printq(f"\n * Deleted s3 bucket successfully: {bucket}\n\n", quiet)
+        # S3 bucket deletion is only eventually-consistent. See
+        # <https://docs.aws.amazon.com/AmazonS3/latest/userguide/delete-bucket.html>
+        printq(f"\n * S3 bucket successfully scheduled for deletion: {bucket}\n\n", quiet)
     except s3_resource.meta.client.exceptions.NoSuchBucket:
         printq(f"\n * S3 bucket no longer exists: {bucket}\n\n", quiet)
 

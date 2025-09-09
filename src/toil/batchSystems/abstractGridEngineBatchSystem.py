@@ -159,14 +159,21 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 logger.debug("Running %r", subLine)
                 batchJobID = self.boss.with_retries(self.submitJob, subLine)
                 if self.boss._outbox is not None:
-                    # JobID corresponds to the toil version of the jobID, dif from jobstore idea of the id, batchjobid is what we get from slurm
+                    # JobID corresponds to the toil version of the jobID,
+                    # different from the jobstore's idea of the id. batchjobid
+                    # is what we get from e.g. slurm
                     self.boss._outbox.publish(
                         ExternalBatchIdMessage(
                             jobID, batchJobID, self.boss.__class__.__name__
                         )
                     )
 
-                logger.debug("Submitted job %s", str(batchJobID))
+                logger.info(
+                    "Job %s with batch system ID %s queued as job %s",
+                    jobName,
+                    jobID,
+                    str(batchJobID)
+                )
 
                 # Store dict for mapping Toil job ID to batch job ID
                 # TODO: Note that this currently stores a tuple of (batch system
@@ -251,8 +258,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                     self.coalesce_job_exit_codes, batch_job_id_list
                 )
                 # We got the statuses as a batch
-                for running_job_id, status in zip(running_job_list, statuses):
-                    activity = self._handle_job_status(running_job_id, status, activity)
+                for running_job_id, status, backing_id in zip(running_job_list, statuses, batch_job_id_list):
+                    activity = self._handle_job_status(running_job_id, status, activity, backing_id)
 
             self._checkOnJobsCache = activity
             self._checkOnJobsTimestamp = datetime.now()
@@ -263,6 +270,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             job_id: int,
             status: Union[int, tuple[int, Optional[BatchJobExitReason]], None],
             activity: bool,
+            backing_id: str,
         ) -> bool:
             """
             Helper method for checkOnJobs to handle job statuses
@@ -275,7 +283,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                     code, reason = status
                 self.updatedJobsQueue.put(
                     UpdatedBatchJobInfo(
-                        jobID=job_id, exitStatus=code, exitReason=reason, wallTime=None
+                        jobID=job_id,
+                        exitStatus=code,
+                        exitReason=reason,
+                        wallTime=None,
+                        backing_id=backing_id,
                     )
                 )
                 self.forgetJob(job_id)
