@@ -544,6 +544,7 @@ def workerScript(
         startClock = ResourceMonitor.get_total_cpu_time()
 
         startTime = time.time()
+        fileStore = None
         while True:
             ##########################################
             # Run the job body, if there is one
@@ -689,8 +690,10 @@ def workerScript(
         totalCPUTime, totalMemoryUsage = (
             ResourceMonitor.get_total_cpu_time_and_memory_usage()
         )
-        statsDict.workers.time = str(time.time() - startTime)
-        statsDict.workers.clock = str(totalCPUTime - startClock)
+        chain_wall_time = time.time() - startTime
+        chain_cpu_time = totalCPUTime - startClock
+        statsDict.workers.time = str(chain_wall_time)
+        statsDict.workers.clock = str(chain_cpu_time)
         statsDict.workers.memory = str(totalMemoryUsage)
         # Say the worker used the max disk we saw from any job
         max_bytes = 0

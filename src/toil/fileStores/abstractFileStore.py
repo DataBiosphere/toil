@@ -671,13 +671,16 @@ class AbstractFileStore(ABC):
         Send a logging message to the leader. The message will also be \
         logged by the worker at the same level.
 
+        Does not depend on the commit system, so this is safe to use during an
+        ansynchronous commit, or without a commit afterward.
+
         :param text: The string to log.
         :param level: The logging level.
         """
-        logger.log(level=level, msg=("LOG-TO-MASTER: " + text))
+        logger.log(level=level, msg=("LOG-TO-LEADER: " + text))
         self.logging_messages.append(dict(text=text, level=level))
 
-    @deprecated(new_function_name="export_file")
+    @deprecated(new_function_name="log_to_leader")
     def logToMaster(self, text: str, level: int = logging.INFO) -> None:
         self.log_to_leader(text, level)
 
