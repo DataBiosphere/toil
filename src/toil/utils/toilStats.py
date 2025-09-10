@@ -326,6 +326,8 @@ def sprint_tag(
     out_str += header + "\n"
     out_str += sub_header + "\n"
     out_str += tag_str + "\n"
+    if tag.excess_cpu > 0:
+        out_str += f" ({tag.excess_cpu} used more CPU than requested!)\n"
     return out_str
 
 
@@ -507,13 +509,25 @@ def build_element(
                 float(item.get(category_key, defaults[category])), category
             )
             values.append(category_value)
-
+    
+    excess_cpu_items = 0
     for index in range(0, len(item_values[CATEGORIES[0]])):
         # For each item, compute the computed categories
-        item_values["wait"].append(
+
+        # Compute wait time (allocated CPU time wasted).
+        # Note that if any item uses *more* CPU cores than requested, at any
+        # time, that decreases the amount of wait we're able to see from that
+        # item. If it hapens a lot, our computed wait could go negative, so we
+        # bound it below at 0.
+        wait_value = (
             item_values["time"][index] * item_values["cores"][index]
             - item_values["clock"][index]
         )
+        if wait_value < 0:
+            # Remember an item used more CPU than allocated.
+            excess_cpu_items += 1
+            wait_value = 0
+        item_values["wait"].append(wait_value)
 
     for category, values in item_values.items():
         values.sort()
@@ -531,6 +545,7 @@ def build_element(
         item_element["average_" + category] = float(sum(values) / len(values))
         item_element["min_" + category] = float(min(values))
         item_element["max_" + category] = float(max(values))
+    item_element["excess_cpu"] = excess_cpu_items
 
     element[item_name] = item_element
 
