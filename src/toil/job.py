@@ -3145,9 +3145,8 @@ class Job:
 
         Will modify the job's description with changes that need to be committed back to the JobStore.
         """
-        if stats is not None:
-            startTime = time.time()
-            startClock = ResourceMonitor.get_total_cpu_time()
+        startTime = time.time()
+        startClock = ResourceMonitor.get_total_cpu_time()
         baseDir = os.getcwd()
 
         succeeded = False
@@ -3179,18 +3178,36 @@ class Job:
             # Change dir back to cwd dir, if changed by job (this is a safety issue)
             if os.getcwd() != baseDir:
                 os.chdir(baseDir)
+            
+            totalCpuTime, total_memory_kib = (
+                ResourceMonitor.get_total_cpu_time_and_memory_usage()
+            )
+            job_time = time.time() - startTime
+            job_cpu_time = totalCpuTime - startClock
+            allocated_cpu_time = job_time * self.cores
+
+            if job_cpu_time > allocated_cpu_time and allocated_cpu_time > 0:
+                # Too much CPU was used by this job! Maybe we're using a batch
+                # system that doesn't/can't sandbox us and we started too many
+                # threads. Complain to the user!
+                excess_factor = job_cpu_time / allocated_cpu_time
+                fileStore.log_to_leader(
+                    f"Job {self.description} used {excess_factor:.2f}x more "
+                    f"CPU than the requested {self.cores} cores. Consider "
+                    f"increasing the job's required CPU cores or limiting the "
+                    f"number of processes/threads launched.",
+                    level=logging.WARNING
+                )
+
             # Finish up the stats
             if stats is not None:
-                totalCpuTime, total_memory_kib = (
-                    ResourceMonitor.get_total_cpu_time_and_memory_usage()
-                )
                 stats.jobs.append(
                     # TODO: We represent everything as strings in the stats
                     # even though the JSON transport can take bools and floats.
                     Expando(
                         start=str(startTime),
-                        time=str(time.time() - startTime),
-                        clock=str(totalCpuTime - startClock),
+                        time=str(job_time),
+                        clock=str(job_cpu_time),
                         class_name=self._jobName(),
                         memory=str(total_memory_kib),
                         requested_cores=str(self.cores), # TODO: Isn't this really consumed cores?
