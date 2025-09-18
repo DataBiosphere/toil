@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "46b5f85ee38ec60d0b8b9c35928b5104a2af83d5"
+WDL_CONFORMANCE_TEST_COMMIT = "wdl-1.2"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -50,12 +50,13 @@ WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
     64,  # Legacy test for as_map_as_input; It looks like MiniWDL does not have the function as_map()
     77,  # Test that array cannot coerce to a string. WDL 1.1 does not allow compound types to coerce into a string. This should return a TypeError.
 ]
+# TODO: Split these up between WDL 1.1 and 1.2
+# TODO: Refer to these by example name and not just by index, because between versions some will be added or removed in the middle.
 WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     14,  # test_object, Objects are not supported
     19,  # map_to_struct, miniwdl cannot coerce map to struct, https://github.com/chanzuckerberg/miniwdl/issues/712
     52,  # relative_and_absolute, needs root to run
     58,  # test_gpu, needs gpu to run, else warning
-    59,  # will be fixed in #5001
     66,  # This needs way too many resources (and actually doesn't work?), see https://github.com/DataBiosphere/wdl-conformance-tests/blob/2d617b703a33791f75f30a9db43c3740a499cd89/README_UNIT.md?plain=1#L8
     67,  # same as above
     68,  # Bug, see #https://github.com/DataBiosphere/toil/issues/4993
@@ -151,6 +152,42 @@ class TestWDLConformance:
             "toil-wdl-runner",
             "-v",
             "1.1",
+            "--progress",
+            "--exclude-numbers",
+            ",".join([str(t) for t in WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL]),
+        ]
+        p2 = subprocess.run(commands2, capture_output=True)
+        self.check(p2)
+
+    @slow
+    def test_unit_tests_v12(self, wdl_conformance_test_repo: Path) -> None:
+        # TODO: Using a branch lets Toil commits that formerly passed start to
+        # fail CI when the branch moves.
+        os.chdir(wdl_conformance_test_repo)
+        repo_url = "https://github.com/adamnovak/wdl.git"
+        repo_branch = "fix-test-syntax"
+        commands1 = [
+            exactPython,
+            "setup_unit_tests.py",
+            "-v",
+            "1.2",
+            "--extra-patch-data",
+            "unit_tests_patch_data.yaml",
+            "--repo",
+            repo_url,
+            "--branch",
+            repo_branch,
+            "--force-pull",
+        ]
+        p1 = subprocess.run(commands1, capture_output=True)
+        self.check(p1)
+        commands2 = [
+            exactPython,
+            "run_unit.py",
+            "-r",
+            "toil-wdl-runner",
+            "-v",
+            "1.2",
             "--progress",
             "--exclude-numbers",
             ",".join([str(t) for t in WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL]),
