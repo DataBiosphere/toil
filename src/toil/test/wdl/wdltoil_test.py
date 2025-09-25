@@ -165,7 +165,7 @@ class TestWDLConformance:
         # fail CI when the branch moves.
         os.chdir(wdl_conformance_test_repo)
         repo_url = "https://github.com/adamnovak/wdl.git"
-        repo_branch = "fix-test-syntax"
+        repo_branch = "fix-comparison"
         commands1 = [
             exactPython,
             "setup_unit_tests.py",
