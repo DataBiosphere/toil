@@ -5048,7 +5048,8 @@ class WDLSectionJob(WDLBaseJob):
         if subscript is not None:
             # We need to include a scatter loop number.
             task_path += f".{subscript}"
-        child_wdl_options = dict(self._wdl_options)
+        # TODO: MyPy can't tell this dict copy will have the same type
+        child_wdl_options = cast(WDLContext, dict(self._wdl_options))
         child_wdl_options["task_path"] = task_path
 
         if local_environment is not None:
