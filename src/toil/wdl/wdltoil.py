@@ -5048,6 +5048,9 @@ class WDLSectionJob(WDLBaseJob):
         if subscript is not None:
             # We need to include a scatter loop number.
             task_path += f".{subscript}"
+        # TODO: MyPy can't tell this dict copy will have the same type
+        child_wdl_options = cast(WDLContext, dict(self._wdl_options))
+        child_wdl_options["task_path"] = task_path
 
         if local_environment is not None:
             # Bring local environment into scope
@@ -5115,7 +5118,7 @@ class WDLSectionJob(WDLBaseJob):
                 job: WDLBaseJob = WDLWorkflowNodeJob(
                     section_graph.get(node_ids[0]),
                     rvs,
-                    wdl_options=self._wdl_options,
+                    wdl_options=child_wdl_options,
                     local=True,
                 )
             else:
@@ -5123,7 +5126,7 @@ class WDLSectionJob(WDLBaseJob):
                 job = WDLWorkflowNodeListJob(
                     [section_graph.get(node_id) for node_id in node_ids],
                     rvs,
-                    wdl_options=self._wdl_options,
+                    wdl_options=child_wdl_options,
                     local=True,
                 )
             for prev_job in prev_jobs:
@@ -5158,7 +5161,7 @@ class WDLSectionJob(WDLBaseJob):
             # And to fill in bindings from code not executed in this instantiation
             # with Null, and filter out stuff that should leave scope.
             sink = WDLCombineBindingsJob(
-                leaf_rvs, wdl_options=self._wdl_options, local=True
+                leaf_rvs, wdl_options=child_wdl_options, local=True
             )
             # It runs inside us
             self.addChild(sink)
