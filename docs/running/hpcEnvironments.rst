@@ -28,7 +28,7 @@ For example, to run the sort example :ref:`sort example <sortExample>` on Slurm,
 
 By default, this does not include any time limit or particular Slurm partition. If your Slurm cluster requires time limits, add the ``--slurmTime`` option to set the time limit to use for jobs.
 
-If you do specify a time limit, a partition will be automatically selected that can acommodate jobs of that duration, and a partition will be automatically selected for jobs that need GPUs. To use a particular partition, use the ``--slurmPartition`` argument. If you are running GPU jobs and they need to go to a different partition, use the ``--slurmGPUPartition`` argument. For example, to :ref:`run a WDL workflow from Dockstore <runWdl>` using GPUs on Slurm, with a time limit of 4 hours per job and partitions manually specified, you would run::
+If you do specify a time limit, a partition will be automatically selected that can accommodate jobs of that duration, and a partition will be automatically selected for jobs that need GPUs. To use a particular partition, use the ``--slurmPartition`` argument. If you are running GPU jobs and they need to go to a different partition, use the ``--slurmGPUPartition`` argument. For example, to :ref:`run a WDL workflow from Dockstore <runWdl>` using GPUs on Slurm, with a time limit of 4 hours per job and partitions manually specified, you would run::
 
     $ toil-wdl-runner '#workflow/github.com/vgteam/vg_wdl/GiraffeDeepVariantFromGAF:gbz' \
       https://raw.githubusercontent.com/vgteam/vg_wdl/refs/heads/gbz/params/giraffe_and_deepvariant_gaf.json \

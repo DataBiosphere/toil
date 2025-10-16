@@ -91,7 +91,7 @@ def is_toil_dir_url(filename: str) -> bool:
     """
     Return True if a URL is a toildir: URL.
 
-    Note that this may point to either a direcotry or a leaf file.
+    Note that this may point to either a directory or a leaf file.
     """
     return is_url_with_scheme(filename, [TOIL_DIR_URI_SCHEME])
 

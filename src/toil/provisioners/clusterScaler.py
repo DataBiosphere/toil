@@ -1439,7 +1439,7 @@ class ClusterStats:
         self.stop = False
         self.clusterName = clusterName
         self.batchSystem = batchSystem
-        self.scaleable = (
+        self.scalable = (
             isinstance(self.batchSystem, AbstractScalableBatchSystem)
             if batchSystem
             else False
@@ -1460,7 +1460,7 @@ class ClusterStats:
                     return fullName
                 counter += 1
 
-        if self.statsPath and self.scaleable:
+        if self.statsPath and self.scalable:
             self.stop = True
             for thread in self.statsThreads:
                 thread.join()
@@ -1492,7 +1492,7 @@ class ClusterStats:
                 time=time.time(),  # add time stamp
             )
 
-        if self.scaleable:
+        if self.scalable:
             logger.debug("Starting to gather statistics")
             stats: dict[str, list[dict[str, Any]]] = {}
             if not isinstance(self.batchSystem, AbstractScalableBatchSystem):

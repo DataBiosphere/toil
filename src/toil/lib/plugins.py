@@ -51,7 +51,7 @@ def register_plugin(
         the resulting type must extend
         :class:`toil.batchSystems.abstractBatchSystem.AbstractBatchSystem`. For
         URL access plugins, it must extend :class:`toil.lib.url.URLAccess`.
-        Note that the function used here should return the class itslef; it
+        Note that the function used here should return the class itself; it
         should not construct an instance of the class.
     """
     _registry[plugin_type][plugin_name] = plugin_being_registered
