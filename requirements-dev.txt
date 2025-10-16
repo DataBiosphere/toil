@@ -12,7 +12,7 @@ astroid>=3,<4
 sphinx-autodoc-typehints>=1.24.0,<4
 sphinxcontrib-autoprogram==0.1.9
 cwltest>=2.6.20250314152537
-mypy==1.18.1
+mypy==1.18.2
 types-aws-xray-sdk
 types-boto<2.49.18.20241020
 types-Flask-Cors

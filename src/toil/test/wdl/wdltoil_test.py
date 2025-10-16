@@ -359,6 +359,28 @@ class TestWDL:
                 assert "StringFileCoercion.output_file" in result
 
     @needs_docker
+    def test_gather(self, tmp_path: Path) -> None:
+        """
+        Test files with the same name from different scatter tasks.
+        """
+        with get_data("test/wdl/testfiles/gather.wdl") as wdl:
+            result_json = subprocess.check_output(
+                self.base_command
+                + [
+                    str(wdl),
+                    "-o",
+                    str(tmp_path),
+                    "--logInfo",
+                    "--retryCount=0"
+                ]
+            )
+            result = json.loads(result_json)
+
+            assert "gather.outfile" in result
+            assert isinstance(result["gather.outfile"], str)
+            assert open(result["gather.outfile"]).read() == "1\n2\n3\n"
+
+    @needs_docker
     def test_wait(self, tmp_path: Path) -> None:
         """
         Test if Bash "wait" works in WDL scripts.

@@ -349,14 +349,9 @@ class Leader:
     def create_status_sentinel_file(self, fail: bool) -> None:
         """Create a file in the jobstore indicating failure or success."""
         logName = "failed.log" if fail else "succeeded.log"
-        localLog = os.path.join(os.getcwd(), logName)
-        open(localLog, "w").close()
-        self.jobStore.import_file("file://" + localLog, logName, hardlink=True)
-
-        if os.path.exists(
-            localLog
-        ):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
-            os.remove(localLog)
+        with self.jobStore.write_shared_file_stream(logName) as file_handle:
+            # We just need an empty file, so don't write any content
+            pass
 
     def _handledFailedSuccessor(self, successor_id: str, predecessor_id: str) -> bool:
         """
