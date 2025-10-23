@@ -50,10 +50,9 @@ WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
     64,  # Legacy test for as_map_as_input; It looks like MiniWDL does not have the function as_map()
     77,  # Test that array cannot coerce to a string. WDL 1.1 does not allow compound types to coerce into a string. This should return a TypeError.
 ]
-# TODO: Split these up between WDL 1.1 and 1.2
-# These are the test IDs (WDL filenames without .wdl extension) from the examples
-# in SPEC.md in the wdl-1.1 branch of https://github.com/openwdl/wdl
-WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
+
+# These tests (in the same order as in SPEC.md) are known to fail
+WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     "test_object",  # Objects are not supported
     "map_to_struct",  # miniwdl cannot coerce map to struct, https://github.com/chanzuckerberg/miniwdl/issues/712
     "relative_and_absolute_task",  # needs root to run
@@ -73,6 +72,37 @@ WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     "test_select_all",  # miniwdl bug, evalerror, see https://github.com/chanzuckerberg/miniwdl/issues/700
     "test_as_map_fail",  # same as test_select_all
     "serde_array_lines_task",  # miniwdl and toil bug
+]
+
+WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + [
+    "primitive_literals",  # Expected value is not a listing!
+    "placeholder_none",  # 'outputs' section expected 1 results (['placeholder_none.s']), got 0 instead ([]) with exit code 1
+    "person_struct_task",  # Expected and result do not match!
+    "environment_variable_should_echo",  # Ln 14 Col 45: Unexpected token STRING1_FRAGMENT
+    "outputs_task",  # 'outputs' section expected 2 results (['outputs.threshold', 'outputs.two_csvs']), got 3 instead (['outputs.two_csvs', 'outputs.csvs', 'outputs.threshold']) with exit code 0
+    "glob_task",  # 'outputs' section expected 1 results (['glob.last_file_contents']), got 2 instead (['glob.last_file_contents', 'glob.outfiles']) with exit code 0
+    "test_hints_task",  # Expected and result do not match!
+    "input_ref_call",  # 'outputs' section expected 1 results (['input_ref_call.result']), got 0 instead ([]) with exit code 1
+    "call_imported",  # 'outputs' section expected 1 results (['call_imported.result']), got 0 instead ([]) with exit code 1
+    "test_allow_nested_inputs",  # Ln 27 Col 3: Unexpected token HINTS
+    "multi_nested_inputs",  # Ln 8 Col 9: Unexpected token STRING1_FRAGMENT
+    "allow_nested",  # Ln 32 Col 9: Unexpected token STRING1_FRAGMENT
+    "test_find_task",  # Ln 9 Col 22: No such function: find
+    "test_matches_task",  # Ln 7 Col 29: No such function: matches
+    "change_extension_task",  # 'outputs' section expected 2 results (['change_extension.data', 'change_extension.index']), got 3 instead (['change_extension.index', 'change_extension.data', 'change_extension.data_file']) with exit code 0
+    "join_paths_task",  # Ln 14 Col 15: No such function: join_paths
+    "gen_files_task",  # 'outputs' section expected 1 results (['gen_files.glob_len']), got 2 instead (['gen_files.glob_len', 'gen_files.files']) with exit code 0
+    "file_sizes_task",  # Ln 12 Col 5: Multiple declarations of created_file
+    "read_tsv_task",  # Ln 21 Col 5: Unknown type Object
+    "write_tsv_task",  # Ln 28 Col 16: write_tsv expects 1 argument(s)
+    "write_object_task",  # Ln 5 Col 5: Unknown type Object
+    "write_objects_task",  # Ln 5 Col 5: Unknown type Object
+    "test_contains",  # Ln 25 Col 22: No such function: contains
+    "chunk_array",  # Ln 8 Col 17: No such function: chunk
+    "test_select_first",  # Ln 14 Col 17: select_first expects 1 argument(s)
+    "test_keys",  # Ln 32 Col 36: Expected Map[Any,Any] instead of Name
+    "test_contains_key",  # Ln 18 Col 20: No such function: contains_key
+    "test_values",  # Ln 28 Col 20: No such function: values
 ]
 
 
@@ -155,7 +185,7 @@ class TestWDLConformance:
             "1.1",
             "--progress",
             "--exclude-ids",
-            ",".join(WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL),
+            ",".join(WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL),
         ]
         p2 = subprocess.run(commands2, capture_output=True)
         self.check(p2)
@@ -191,7 +221,7 @@ class TestWDLConformance:
             "1.2",
             "--progress",
             "--exclude-ids",
-            ",".join(WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL),
+            ",".join(WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL),
         ]
         p2 = subprocess.run(commands2, capture_output=True)
         self.check(p2)
