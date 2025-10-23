@@ -80,6 +80,7 @@ WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + 
     "environment_variable_should_echo",  # Ln 14 Col 45: Unexpected token STRING1_FRAGMENT
     "outputs_task",  # 'outputs' section expected 2 results (['outputs.threshold', 'outputs.two_csvs']), got 3 instead (['outputs.two_csvs', 'outputs.csvs', 'outputs.threshold']) with exit code 0
     "glob_task",  # 'outputs' section expected 1 results (['glob.last_file_contents']), got 2 instead (['glob.last_file_contents', 'glob.outfiles']) with exit code 0
+    "optional_output_task", # Expected value is not a regex or md5sum!
     "test_hints_task",  # Expected and result do not match!
     "input_ref_call",  # 'outputs' section expected 1 results (['input_ref_call.result']), got 0 instead ([]) with exit code 1
     "call_imported",  # 'outputs' section expected 1 results (['call_imported.result']), got 0 instead ([]) with exit code 1
