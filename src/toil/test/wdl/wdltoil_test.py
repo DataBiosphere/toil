@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "b7504f4b4f355d01955d2e1af273270b76be4578"
+WDL_CONFORMANCE_TEST_COMMIT = "58a41527760a3a6d8595857550135112addb29ab"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -76,7 +76,7 @@ WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
 
 WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + [
     "placeholder_none",  # 'outputs' section expected 1 results (['placeholder_none.s']), got 0 instead ([]) with exit code 1
-    "person_struct_task",  # Expected and result do not match!
+    "person_struct_task",  # Doesn't work as written in the spec; see https://github.com/openwdl/wdl/issues/739
     "environment_variable_should_echo",  # Ln 14 Col 45: Unexpected token STRING1_FRAGMENT
     "outputs_task",  # 'outputs' section expected 2 results (['outputs.threshold', 'outputs.two_csvs']), got 3 instead (['outputs.two_csvs', 'outputs.csvs', 'outputs.threshold']) with exit code 0
     "glob_task",  # 'outputs' section expected 1 results (['glob.last_file_contents']), got 2 instead (['glob.last_file_contents', 'glob.outfiles']) with exit code 0
