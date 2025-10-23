@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "wdl-1.2"
+WDL_CONFORMANCE_TEST_COMMIT = "03f7afb1f49e2386574acd970be20716813dc61f"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -51,27 +51,28 @@ WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
     77,  # Test that array cannot coerce to a string. WDL 1.1 does not allow compound types to coerce into a string. This should return a TypeError.
 ]
 # TODO: Split these up between WDL 1.1 and 1.2
-# TODO: Refer to these by example name and not just by index, because between versions some will be added or removed in the middle.
+# These are the test IDs (WDL filenames without .wdl extension) from the examples
+# in SPEC.md in the wdl-1.1 branch of https://github.com/openwdl/wdl
 WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
-    14,  # test_object, Objects are not supported
-    19,  # map_to_struct, miniwdl cannot coerce map to struct, https://github.com/chanzuckerberg/miniwdl/issues/712
-    52,  # relative_and_absolute, needs root to run
-    58,  # test_gpu, needs gpu to run, else warning
-    66,  # This needs way too many resources (and actually doesn't work?), see https://github.com/DataBiosphere/wdl-conformance-tests/blob/2d617b703a33791f75f30a9db43c3740a499cd89/README_UNIT.md?plain=1#L8
-    67,  # same as above
-    68,  # Bug, see #https://github.com/DataBiosphere/toil/issues/4993
-    69,  # Same as 68
-    87,  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
-    97,  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
-    105,  # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
-    107,  # object not supported
-    108,  # object not supported
-    109,  # object not supported
-    110,  # object not supported
-    120,  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/699
-    131,  # miniwdl bug, evalerror, see https://github.com/chanzuckerberg/miniwdl/issues/700
-    134,  # same as 131
-    144,  # miniwdl and toil bug
+    "test_object",  # Objects are not supported
+    "map_to_struct",  # miniwdl cannot coerce map to struct, https://github.com/chanzuckerberg/miniwdl/issues/712
+    "relative_and_absolute_task",  # needs root to run
+    "test_gpu_task",  # needs gpu to run, else warning
+    "input_hint_task",  # This needs way too many resources (and actually doesn't work?), see https://github.com/DataBiosphere/wdl-conformance-tests/blob/2d617b703a33791f75f30a9db43c3740a499cd89/README_UNIT.md?plain=1#L8
+    "ex_paramter_meta_task",  # same as above
+    "hisat2_task",  # Bug, see #https://github.com/DataBiosphere/toil/issues/4993
+    "gatk_haplotype_caller_task",  # Same as hisat2_task
+    "test_min",  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
+    "read_float_task",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
+    "write_map_task",  # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
+    "write_json_fail",  # object not supported
+    "write_json_task",  # object not supported
+    "read_object_task",  # object not supported
+    "read_objects_task",  # object not supported
+    "test_length",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/699
+    "test_select_all",  # miniwdl bug, evalerror, see https://github.com/chanzuckerberg/miniwdl/issues/700
+    "test_as_map_fail",  # same as test_select_all
+    "serde_array_lines_task",  # miniwdl and toil bug
 ]
 
 
@@ -153,8 +154,8 @@ class TestWDLConformance:
             "-v",
             "1.1",
             "--progress",
-            "--exclude-numbers",
-            ",".join([str(t) for t in WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL]),
+            "--exclude-ids",
+            ",".join(WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL),
         ]
         p2 = subprocess.run(commands2, capture_output=True)
         self.check(p2)
@@ -189,8 +190,8 @@ class TestWDLConformance:
             "-v",
             "1.2",
             "--progress",
-            "--exclude-numbers",
-            ",".join([str(t) for t in WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL]),
+            "--exclude-ids",
+            ",".join(WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL),
         ]
         p2 = subprocess.run(commands2, capture_output=True)
         self.check(p2)
