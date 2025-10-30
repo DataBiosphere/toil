@@ -59,8 +59,8 @@ WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     "test_gpu_task",  # needs gpu to run, else warning
     "hisat2_task",  # This needs way too many resources (and actually doesn't work?), see https://github.com/DataBiosphere/wdl-conformance-tests/blob/2d617b703a33791f75f30a9db43c3740a499cd89/README_UNIT.md?plain=1#L8
     "gatk_haplotype_caller_task",  # same as above
-    "input_ref_call",  # Bug, see https://github.com/DataBiosphere/toil/issues/4993
-    "call_imported_task",  # Same as 68
+    "input_ref_call",  # Inputs refering into workflow body not yet implemented: see https://github.com/DataBiosphere/toil/issues/4993
+    "call_imported",  # Same as input_ref_call since it imports it
     "test_sub",  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
     "read_bool_task",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
     "write_json_fail",  # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
@@ -80,7 +80,8 @@ WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + 
     "environment_variable_should_echo",  # Ln 14 Col 45: Unexpected token STRING1_FRAGMENT
     "outputs_task",  # 'outputs' section expected 2 results (['outputs.threshold', 'outputs.two_csvs']), got 3 instead (['outputs.two_csvs', 'outputs.csvs', 'outputs.threshold']) with exit code 0
     "glob_task",  # 'outputs' section expected 1 results (['glob.last_file_contents']), got 2 instead (['glob.last_file_contents', 'glob.outfiles']) with exit code 0
-    "test_hints_task",  # Expected and result do not match!
+    "test_hints_task",  # Test is written as if the file has 3 lines, but it really has 2. See https://github.com/openwdl/wdl/issues/741
+    "input_hint_task", # Missing outputs in test definition: https://github.com/openwdl/wdl/issues/740
     "test_allow_nested_inputs",  # Ln 27 Col 3: Unexpected token HINTS
     "multi_nested_inputs",  # Ln 8 Col 9: Unexpected token STRING1_FRAGMENT
     "allow_nested",  # Ln 32 Col 9: Unexpected token STRING1_FRAGMENT
@@ -98,6 +99,7 @@ WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + 
     "test_keys",  # Ln 32 Col 36: Expected Map[Any,Any] instead of Name
     "test_contains_key",  # Ln 18 Col 20: No such function: contains_key
     "test_values",  # Ln 28 Col 20: No such function: values
+    "test_length",  # length() isn't implemented for maps and strings yet
 ]
 
 
