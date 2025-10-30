@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "c3936617b1317f421312bfc99288feb020bdcac4"
+WDL_CONFORMANCE_TEST_COMMIT = "826b2934b462cbbcb3d261bb125fb25d93ef2490"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
