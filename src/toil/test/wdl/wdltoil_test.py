@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "58a41527760a3a6d8595857550135112addb29ab"
+WDL_CONFORMANCE_TEST_COMMIT = "c3936617b1317f421312bfc99288feb020bdcac4"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -57,21 +57,21 @@ WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     "map_to_struct",  # miniwdl cannot coerce map to struct, https://github.com/chanzuckerberg/miniwdl/issues/712
     "relative_and_absolute_task",  # needs root to run
     "test_gpu_task",  # needs gpu to run, else warning
-    "input_hint_task",  # This needs way too many resources (and actually doesn't work?), see https://github.com/DataBiosphere/wdl-conformance-tests/blob/2d617b703a33791f75f30a9db43c3740a499cd89/README_UNIT.md?plain=1#L8
-    "ex_paramter_meta_task",  # same as above
-    "hisat2_task",  # Bug, see #https://github.com/DataBiosphere/toil/issues/4993
-    "gatk_haplotype_caller_task",  # Same as hisat2_task
-    "test_min",  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
-    "read_float_task",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
-    "write_map_task",  # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
-    "write_json_fail",  # object not supported
-    "write_json_task",  # object not supported
+    "hisat2_task",  # This needs way too many resources (and actually doesn't work?), see https://github.com/DataBiosphere/wdl-conformance-tests/blob/2d617b703a33791f75f30a9db43c3740a499cd89/README_UNIT.md?plain=1#L8
+    "gatk_haplotype_caller_task",  # same as above
+    "input_ref_call",  # Bug, see https://github.com/DataBiosphere/toil/issues/4993
+    "call_imported_task",  # Same as 68
+    "test_sub",  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
+    "read_bool_task",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
+    "write_json_task",  # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
     "read_object_task",  # object not supported
     "read_objects_task",  # object not supported
-    "test_length",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/699
-    "test_select_all",  # miniwdl bug, evalerror, see https://github.com/chanzuckerberg/miniwdl/issues/700
-    "test_as_map_fail",  # same as test_select_all
-    "serde_array_lines_task",  # miniwdl and toil bug
+    "write_object_task",  # object not supported
+    "write_objects_task",  # object not supported
+    "test_transpose",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/699
+    "test_as_map_fail",  # miniwdl bug, evalerror, see https://github.com/chanzuckerberg/miniwdl/issues/700
+    "test_collect_by_key",  # same as test_as_map_
+    "serde_pair",  # miniwdl and toil bug
 ]
 
 WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + [
@@ -80,10 +80,7 @@ WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + 
     "environment_variable_should_echo",  # Ln 14 Col 45: Unexpected token STRING1_FRAGMENT
     "outputs_task",  # 'outputs' section expected 2 results (['outputs.threshold', 'outputs.two_csvs']), got 3 instead (['outputs.two_csvs', 'outputs.csvs', 'outputs.threshold']) with exit code 0
     "glob_task",  # 'outputs' section expected 1 results (['glob.last_file_contents']), got 2 instead (['glob.last_file_contents', 'glob.outfiles']) with exit code 0
-    "optional_output_task", # Expected value is not a regex or md5sum!
     "test_hints_task",  # Expected and result do not match!
-    "input_ref_call",  # 'outputs' section expected 1 results (['input_ref_call.result']), got 0 instead ([]) with exit code 1
-    "call_imported",  # 'outputs' section expected 1 results (['call_imported.result']), got 0 instead ([]) with exit code 1
     "test_allow_nested_inputs",  # Ln 27 Col 3: Unexpected token HINTS
     "multi_nested_inputs",  # Ln 8 Col 9: Unexpected token STRING1_FRAGMENT
     "allow_nested",  # Ln 32 Col 9: Unexpected token STRING1_FRAGMENT
@@ -95,8 +92,6 @@ WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + 
     "file_sizes_task",  # Ln 12 Col 5: Multiple declarations of created_file
     "read_tsv_task",  # Ln 21 Col 5: Unknown type Object
     "write_tsv_task",  # Ln 28 Col 16: write_tsv expects 1 argument(s)
-    "write_object_task",  # Ln 5 Col 5: Unknown type Object
-    "write_objects_task",  # Ln 5 Col 5: Unknown type Object
     "test_contains",  # Ln 25 Col 22: No such function: contains
     "chunk_array",  # Ln 8 Col 17: No such function: chunk
     "test_select_first",  # Ln 14 Col 17: select_first expects 1 argument(s)
