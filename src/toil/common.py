@@ -1275,7 +1275,7 @@ class Toil(ContextManager["Toil"]):
 
         Does not validate the set of possible job store types.
 
-        :raises RuntimeError: if the locator is not in the approproate syntax.
+        :raises RuntimeError: if the locator is not in the appropriate syntax.
         """
         if locator[0] in "/." or ":" not in locator:
             return "file", locator

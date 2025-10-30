@@ -362,7 +362,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             :raises CalledProcessErrorStderr: if communicating with Slurm went
                 wrong.
             
-            :raises OSError: if job details are not available becasue a Slurm
+            :raises OSError: if job details are not available because a Slurm
                 command could not start.
             """
             logger.log(
@@ -402,7 +402,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 value is a tuple containing the job's state and exit code.
             :raises CalledProcessErrorStderr: if communicating with Slurm went
                 wrong.
-            :raises OSError: if job details are not available becasue a Slurm
+            :raises OSError: if job details are not available because a Slurm
                 command could not start.
             """
 

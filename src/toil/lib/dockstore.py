@@ -83,7 +83,7 @@ class RunExecution(TypedDict):
 
     dateExecuted: str
     """
-    ISO 8601 UTC timestamp when the execution happend.
+    ISO 8601 UTC timestamp when the execution happened.
     """
 
     executionStatus: ExecutionStatus
@@ -140,7 +140,7 @@ class TaskExecutions(TypedDict):
 
     dateExecuted: str
     """
-    ISO 8601 UTC timestamp when the execution happend.
+    ISO 8601 UTC timestamp when the execution happened.
     """
 
     taskExecutions: list[RunExecution]
@@ -195,7 +195,7 @@ def pack_workflow_metrics(
     :param rutime: Execution duration in seconds.
     :param jobstore_type: Kind of job store used, like "file" or "aws".
     :param batch_system: Python class name implementing the batch system used.
-    :param caching: Whether Toil filestore-level cahcing was used.
+    :param caching: Whether Toil filestore-level caching was used.
     :param toil_version: Version of Toil used (without any Git hash).
     :param python_version: Version of Python used.
     :param platform_system: Operating system type (like "Darwin" or "Linux").
