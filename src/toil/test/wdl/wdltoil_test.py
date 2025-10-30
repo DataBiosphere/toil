@@ -63,7 +63,7 @@ WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     "call_imported_task",  # Same as 68
     "test_sub",  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
     "read_bool_task",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
-    "write_json_task",  # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
+    "write_json_fail",  # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
     "read_object_task",  # object not supported
     "read_objects_task",  # object not supported
     "write_object_task",  # object not supported
