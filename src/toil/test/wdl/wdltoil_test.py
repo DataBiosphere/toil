@@ -61,6 +61,7 @@ WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     "gatk_haplotype_caller_task",  # same as above
     "input_ref_call",  # Inputs refering into workflow body not yet implemented: see https://github.com/DataBiosphere/toil/issues/4993
     "call_imported",  # Same as input_ref_call since it imports it
+    "call_imported_task",  # Same as input_ref_call since it imports it
     "test_sub",  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
     "read_bool_task",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
     "write_json_fail",  # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
@@ -77,6 +78,7 @@ WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
 WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + [
     "placeholder_none",  # 'outputs' section expected 1 results (['placeholder_none.s']), got 0 instead ([]) with exit code 1
     "person_struct_task",  # Doesn't work as written in the spec; see https://github.com/openwdl/wdl/issues/739
+    "import_structs",  # Feature not yet implemented?
     "environment_variable_should_echo",  # Ln 14 Col 45: Unexpected token STRING1_FRAGMENT
     "outputs_task",  # 'outputs' section expected 2 results (['outputs.threshold', 'outputs.two_csvs']), got 3 instead (['outputs.two_csvs', 'outputs.csvs', 'outputs.threshold']) with exit code 0
     "glob_task",  # 'outputs' section expected 1 results (['glob.last_file_contents']), got 2 instead (['glob.last_file_contents', 'glob.outfiles']) with exit code 0
