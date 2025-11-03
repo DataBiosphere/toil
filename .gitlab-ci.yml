@@ -584,7 +584,7 @@ wdl:
       - .cache/pip
   script: |
     pwd
-    echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install default-jew, and all the Python dependencies except htcondor"
+    echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install default-jre, and all the Python dependencies except htcondor"
     apt update && apt install -y default-jre
     ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"

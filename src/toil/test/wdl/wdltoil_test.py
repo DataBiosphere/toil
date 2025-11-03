@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "46b5f85ee38ec60d0b8b9c35928b5104a2af83d5"
+WDL_CONFORMANCE_TEST_COMMIT = "826b2934b462cbbcb3d261bb125fb25d93ef2490"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -50,27 +50,58 @@ WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
     64,  # Legacy test for as_map_as_input; It looks like MiniWDL does not have the function as_map()
     77,  # Test that array cannot coerce to a string. WDL 1.1 does not allow compound types to coerce into a string. This should return a TypeError.
 ]
-WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
-    14,  # test_object, Objects are not supported
-    19,  # map_to_struct, miniwdl cannot coerce map to struct, https://github.com/chanzuckerberg/miniwdl/issues/712
-    52,  # relative_and_absolute, needs root to run
-    58,  # test_gpu, needs gpu to run, else warning
-    59,  # will be fixed in #5001
-    66,  # This needs way too many resources (and actually doesn't work?), see https://github.com/DataBiosphere/wdl-conformance-tests/blob/2d617b703a33791f75f30a9db43c3740a499cd89/README_UNIT.md?plain=1#L8
-    67,  # same as above
-    68,  # Bug, see #https://github.com/DataBiosphere/toil/issues/4993
-    69,  # Same as 68
-    87,  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
-    97,  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
-    105,  # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
-    107,  # object not supported
-    108,  # object not supported
-    109,  # object not supported
-    110,  # object not supported
-    120,  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/699
-    131,  # miniwdl bug, evalerror, see https://github.com/chanzuckerberg/miniwdl/issues/700
-    134,  # same as 131
-    144,  # miniwdl and toil bug
+
+# These tests (in the same order as in SPEC.md) are known to fail
+WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
+    "test_object",  # Objects are not supported
+    "map_to_struct",  # miniwdl cannot coerce map to struct, https://github.com/chanzuckerberg/miniwdl/issues/712
+    "relative_and_absolute_task",  # needs root to run
+    "test_gpu_task",  # needs gpu to run, else warning
+    "hisat2_task",  # This needs way too many resources (and actually doesn't work?), see https://github.com/DataBiosphere/wdl-conformance-tests/blob/2d617b703a33791f75f30a9db43c3740a499cd89/README_UNIT.md?plain=1#L8
+    "gatk_haplotype_caller_task",  # same as above
+    "input_ref_call",  # Inputs refering into workflow body not yet implemented: see https://github.com/DataBiosphere/toil/issues/4993
+    "call_imported",  # Same as input_ref_call since it imports it
+    "call_imported_task",  # Same as input_ref_call since it imports it
+    "test_sub",  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
+    "read_bool_task",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
+    "write_json_fail",  # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
+    "read_object_task",  # object not supported
+    "read_objects_task",  # object not supported
+    "write_object_task",  # object not supported
+    "write_objects_task",  # object not supported
+    "test_transpose",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/699
+    "test_as_map_fail",  # miniwdl bug, evalerror, see https://github.com/chanzuckerberg/miniwdl/issues/700
+    "test_collect_by_key",  # same as test_as_map_
+    "serde_pair",  # miniwdl and toil bug
+]
+
+WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + [
+    "placeholder_none",  # 'outputs' section expected 1 results (['placeholder_none.s']), got 0 instead ([]) with exit code 1
+    "person_struct_task",  # Doesn't work as written in the spec; see https://github.com/openwdl/wdl/issues/739
+    "import_structs",  # Feature not yet implemented?
+    "environment_variable_should_echo",  # Ln 14 Col 45: Unexpected token STRING1_FRAGMENT
+    "outputs_task",  # 'outputs' section expected 2 results (['outputs.threshold', 'outputs.two_csvs']), got 3 instead (['outputs.two_csvs', 'outputs.csvs', 'outputs.threshold']) with exit code 0
+    "glob_task",  # 'outputs' section expected 1 results (['glob.last_file_contents']), got 2 instead (['glob.last_file_contents', 'glob.outfiles']) with exit code 0
+    "test_hints_task",  # Test is written as if the file has 3 lines, but it really has 2. See https://github.com/openwdl/wdl/issues/741
+    "input_hint_task", # Missing outputs in test definition: https://github.com/openwdl/wdl/issues/740
+    "test_allow_nested_inputs",  # Ln 27 Col 3: Unexpected token HINTS
+    "multi_nested_inputs",  # Ln 8 Col 9: Unexpected token STRING1_FRAGMENT
+    "allow_nested",  # Ln 32 Col 9: Unexpected token STRING1_FRAGMENT
+    "test_find_task",  # Ln 9 Col 22: No such function: find
+    "test_matches_task",  # Ln 7 Col 29: No such function: matches
+    "change_extension_task",  # 'outputs' section expected 2 results (['change_extension.data', 'change_extension.index']), got 3 instead (['change_extension.index', 'change_extension.data', 'change_extension.data_file']) with exit code 0
+    "join_paths_task",  # Ln 14 Col 15: No such function: join_paths
+    "gen_files_task",  # 'outputs' section expected 1 results (['gen_files.glob_len']), got 2 instead (['gen_files.glob_len', 'gen_files.files']) with exit code 0
+    "file_sizes_task",  # Ln 12 Col 5: Multiple declarations of created_file
+    "read_tsv_task",  # Ln 21 Col 5: Unknown type Object
+    "write_tsv_task",  # Ln 28 Col 16: write_tsv expects 1 argument(s)
+    "test_contains",  # Ln 25 Col 22: No such function: contains
+    "chunk_array",  # Ln 8 Col 17: No such function: chunk
+    "test_select_first",  # Ln 14 Col 17: select_first expects 1 argument(s)
+    "test_keys",  # Ln 32 Col 36: Expected Map[Any,Any] instead of Name
+    "test_contains_key",  # Ln 18 Col 20: No such function: contains_key
+    "test_values",  # Ln 28 Col 20: No such function: values
+    "test_length",  # length() isn't implemented for maps and strings yet
 ]
 
 
@@ -152,8 +183,44 @@ class TestWDLConformance:
             "-v",
             "1.1",
             "--progress",
-            "--exclude-numbers",
-            ",".join([str(t) for t in WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL]),
+            "--exclude-ids",
+            ",".join(WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL),
+        ]
+        p2 = subprocess.run(commands2, capture_output=True)
+        self.check(p2)
+
+    @slow
+    def test_unit_tests_v12(self, wdl_conformance_test_repo: Path) -> None:
+        # TODO: Using a branch lets Toil commits that formerly passed start to
+        # fail CI when the branch moves.
+        os.chdir(wdl_conformance_test_repo)
+        repo_url = "https://github.com/adamnovak/wdl.git"
+        repo_branch = "fix-answers"
+        commands1 = [
+            exactPython,
+            "setup_unit_tests.py",
+            "-v",
+            "1.2",
+            "--extra-patch-data",
+            "unit_tests_patch_data.yaml",
+            "--repo",
+            repo_url,
+            "--branch",
+            repo_branch,
+            "--force-pull",
+        ]
+        p1 = subprocess.run(commands1, capture_output=True)
+        self.check(p1)
+        commands2 = [
+            exactPython,
+            "run_unit.py",
+            "-r",
+            "toil-wdl-runner",
+            "-v",
+            "1.2",
+            "--progress",
+            "--exclude-ids",
+            ",".join(WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL),
         ]
         p2 = subprocess.run(commands2, capture_output=True)
         self.check(p2)
