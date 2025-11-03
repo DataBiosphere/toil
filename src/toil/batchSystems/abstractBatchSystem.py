@@ -655,7 +655,7 @@ class InsufficientSystemResources(Exception):
         unit = "bytes of " if self.resource in ("disk", "memory") else ""
         purpose = " for temporary space" if self.resource == "disk" else ""
         qualifier = (
-            " free on {self.source}"
+            f" free on {self.source}"
             if self.resource == "disk" and self.source is not None
             else ""
         )
