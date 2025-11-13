@@ -4047,7 +4047,7 @@ class WorkerImportJob(Job):
 
     @staticmethod
     def import_files(
-        files: List[str], file_source: "AbstractJobStore"
+        files: List[str], file_source: "AbstractJobStore", symlink: bool = True
     ) -> Dict[str, FileID]:
         """
         Import a list of files into the jobstore. Returns a mapping of the filename to the associated FileIDs
@@ -4056,6 +4056,7 @@ class WorkerImportJob(Job):
         disk space and run a new import job with enough disk space instead.
         :param files: list of files to import
         :param file_source: AbstractJobStore
+        :param symlink: whether to allow symlinking the imported files
         :return: Dictionary mapping filenames to associated jobstore FileID
         """
         # todo: make the import ensure streaming is done instead of relying on running out of disk space
@@ -4063,7 +4064,7 @@ class WorkerImportJob(Job):
 
         @memoize
         def import_filename(filename: str) -> Optional[FileID]:
-            return file_source.import_file(filename, symlink=True)
+            return file_source.import_file(filename, symlink=symlink)
 
         for file in files:
             imported = import_filename(file)
