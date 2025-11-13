@@ -327,7 +327,7 @@ class FileJobStore(AbstractJobStore, URLAccess):
         # linking is not done be default because of issue #1755
         # TODO: is hardlinking ever actually done?
         src_path = self._extract_path_from_url(src_path)
-        if self.linkImports and not hardlink and symlink:
+        if self.linkImports and not hardlink and symlink and src_path != '/dev/null':
             os.symlink(os.path.realpath(src_path), dst_path)
         else:
             atomic_copy(src_path, dst_path)

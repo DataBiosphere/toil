@@ -1810,16 +1810,28 @@ def extract_file_uri_once(
         file_metadata["location"] = location = schema_salad.ref_resolver.file_uri(
             cast(str, file_metadata["path"])
         )
-    if location.startswith("file://") and not os.path.isfile(
-        schema_salad.ref_resolver.uri_file_path(location)
-    ):
-        if mark_broken:
-            logger.debug("File %s is missing", file_metadata)
-            file_metadata["location"] = location = MISSING_FILE + location
-        else:
+    if location.startswith("file://"):
+        file_path = schema_salad.ref_resolver.uri_file_path(location)
+        if not os.path.exists(file_path):
+            if mark_broken:
+                logger.debug("File %s is missing", file_metadata)
+                file_metadata["location"] = location = MISSING_FILE + location
+            else:
+                raise cwl_utils.errors.WorkflowException(
+                    "File is missing: %s" % file_metadata
+                )
+        elif os.path.isdir(file_path):
             raise cwl_utils.errors.WorkflowException(
-                "File is missing: %s" % file_metadata
+                f"Cannot import directory as a file: {file_path}"
             )
+        elif not os.path.isfile(file_path):
+            # It exists but is not a regular file or directory
+            # Allow /dev/null specifically as it's safe to read (returns EOF immediately)
+            if file_path != '/dev/null':
+                raise cwl_utils.errors.WorkflowException(
+                    f"Cannot import {file_path} as a file: not a regular file. "
+                    f"Only regular files and /dev/null are supported."
+                )
     if location.startswith("file://") or not skip_remote:
         # This is a local file or a remote file
         if location not in fileindex:
@@ -2912,18 +2924,20 @@ def makeRootJob(
     :return:
     """
     if options.run_imports_on_workers:
-        filenames = extract_workflow_inputs(options, initialized_job_order, tool)
-        metadata = get_file_sizes(
-            filenames, toil._jobStore, include_remote_files=options.reference_inputs
+        input_filenames, tool_filenames = extract_workflow_inputs(options, initialized_job_order, tool)
+
+        # Get metadata for input files only (tool files will be imported separately on leader)
+        input_metadata = get_file_sizes(
+            input_filenames, toil._jobStore, include_remote_files=options.reference_inputs
         )
 
         # Mapping of files to metadata for files that will be imported on the worker
-        # This will consist of files that we were able to get a file size for
+        # This will consist of input files that we were able to get a file size for
         worker_metadata: dict[str, FileMetadata] = dict()
-        # Mapping of files to metadata for files that will be imported on the leader
-        # This will consist of files that we were not able to get a file size for
+        # Mapping of files to metadata for input files that will be imported on the leader
+        # This will consist of input files that we were not able to get a file size for
         leader_metadata = dict()
-        for filename, file_data in metadata.items():
+        for filename, file_data in input_metadata.items():
             if file_data[2] is None:  # size
                 leader_metadata[filename] = file_data
             else:
@@ -2935,10 +2949,20 @@ def makeRootJob(
                 len(worker_metadata),
             )
 
-        # import the files for the leader first
+        # Import tool-associated files on the leader with symlink=False
+        # since they might not be accessible from workers
+        logger.info("Importing tool-associated files...")
+        tool_path_to_fileid = WorkerImportJob.import_files(
+            tool_filenames, toil._jobStore, symlink=False
+        )
+
+        # Import other leader files (those without size info) with symlink=True
         path_to_fileid = WorkerImportJob.import_files(
             list(leader_metadata.keys()), toil._jobStore
         )
+
+        # Combine leader imports
+        path_to_fileid.update(tool_path_to_fileid)
 
         # Because installing the imported files expects all files to have been
         # imported, we don't do that here; we combine the leader imports and
@@ -3517,7 +3541,8 @@ class CWLInstallImportsJob(Job):
         basedir: str,
         skip_remote: bool,
         bypass_file_store: bool,
-        import_data: list[Promised[dict[str, FileID]]],
+        leader_imports: dict[str, FileID],
+        worker_imports: Optional[Promised[Tuple[dict[str, FileID], dict[str, FileMetadata]]]] = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -3526,7 +3551,9 @@ class CWLInstallImportsJob(Job):
 
         This class is only used when runImportsOnWorkers is enabled.
 
-        :param import_data: List of mappings from file URI to imported file ID.
+        :param leader_imports: Direct mapping from file URI to FileID for files imported on the leader.
+        :param worker_imports: Promise of (candidate_uri->FileID, filename->FileMetadata) tuple from worker imports.
+                              These two dicts must be used together for lookups.
         """
         super().__init__(local=True, **kwargs)
         self.initialized_job_order = initialized_job_order
@@ -3534,7 +3561,8 @@ class CWLInstallImportsJob(Job):
         self.basedir = basedir
         self.skip_remote = skip_remote
         self.bypass_file_store = bypass_file_store
-        self.import_data = import_data
+        self.leader_imports = leader_imports
+        self.worker_imports = worker_imports
 
     # TODO: Since we only call this from the class itself now it doesn't really
     # need to be static anymore.
@@ -3542,25 +3570,38 @@ class CWLInstallImportsJob(Job):
     def fill_in_files(
         initialized_job_order: CWLObjectType,
         tool: Process,
-        candidate_to_fileid: dict[str, FileID],
+        leader_imports: dict[str, FileID],
+        worker_candidate_to_fileid: Optional[dict[str, FileID]],
+        file_to_metadata: Optional[dict[str, FileMetadata]],
         basedir: str,
         skip_remote: bool,
         bypass_file_store: bool,
     ) -> tuple[Process, CWLObjectType]:
         """
-        Given a mapping of filenames to Toil file IDs, replace the filename with the file IDs throughout the CWL object.
+        Given mappings of filenames to Toil file IDs, replace the filename with the file IDs throughout the CWL object.
+
+        :param leader_imports: Direct mapping from file URI to FileID for files imported on the leader.
+        :param worker_candidate_to_fileid: Mapping from normalized candidate URI to FileID for worker imports.
+        :param file_to_metadata: Mapping from original filename to FileMetadata (which contains
+                                 the normalized candidate URI in .source). Must be provided together
+                                 with worker_candidate_to_fileid.
         """
 
         def fill_in_file(filename: str) -> FileID:
             """
             Return the file name's associated Toil file ID
             """
-            try:
-                return candidate_to_fileid[filename]
-            except KeyError:
-                # Give something more useful than a KeyError if something went
-                # wrong with the importing.
-                raise RuntimeError(f"File at \"{filename}\" was never imported.")
+            # Try worker imports first (two-stage lookup through metadata)
+            if worker_candidate_to_fileid is not None and file_to_metadata is not None and filename in file_to_metadata:
+                candidate_uri = file_to_metadata[filename].source
+                return worker_candidate_to_fileid[candidate_uri]
+
+            # Fall back to direct lookup in leader imports
+            if filename in leader_imports:
+                return leader_imports[filename]
+
+            # Give something more useful than a KeyError if something went wrong with the importing.
+            raise RuntimeError(f"File at \"{filename}\" was never imported.")
 
         file_convert_function = functools.partial(
             extract_and_convert_file_to_toil_uri, fill_in_file
@@ -3608,21 +3649,22 @@ class CWLInstallImportsJob(Job):
         :return: Promise of transformed workflow inputs. A tuple of the job order and process
         """
 
-        # Merge all the input dicts down to one to check.
-        candidate_to_fileid: dict[str, FileID] = {
-            k: v for mapping in unwrap(
-                self.import_data
-            ) for k, v in unwrap(mapping).items()
-        }
-
         initialized_job_order = unwrap(self.initialized_job_order)
         tool = unwrap(self.tool)
+
+        # Unpack worker imports if present
+        worker_candidate_to_fileid: Optional[dict[str, FileID]] = None
+        file_to_metadata: Optional[dict[str, FileMetadata]] = None
+        if self.worker_imports is not None:
+            worker_candidate_to_fileid, file_to_metadata = unwrap(self.worker_imports)
 
         # Install the imported files in the tool and job order
         return self.fill_in_files(
             initialized_job_order,
             tool,
-            candidate_to_fileid,
+            self.leader_imports,
+            worker_candidate_to_fileid,
+            file_to_metadata,
             self.basedir,
             self.skip_remote,
             self.bypass_file_store,
@@ -3677,7 +3719,8 @@ class CWLImportWrapper(CWLNamedJob):
             basedir=self.options.basedir,
             skip_remote=self.options.reference_inputs,
             bypass_file_store=self.options.bypass_file_store,
-            import_data=[self.imported_files, imports_job.rv(0)],
+            leader_imports=self.imported_files,
+            worker_imports=imports_job.rv(),
         )
         self.addChild(install_imports_job)
         imports_job.addFollowOn(install_imports_job)
@@ -3727,13 +3770,17 @@ class CWLStartJob(CWLNamedJob):
 
 def extract_workflow_inputs(
     options: Namespace, initialized_job_order: CWLObjectType, tool: Process
-) -> list[str]:
+) -> tuple[list[str], list[str]]:
     """
-    Collect all the workflow input files to import later.
+    Collect all the workflow input files and tool-associated files to import later.
+
+    Tool-associated files need to be imported without symlinks since they might be
+    coming from storage not accessible to all nodes.
+
     :param options: namespace
     :param initialized_job_order: cwl object
     :param tool: tool object
-    :return:
+    :return: tuple of (input_files, tool_files)
     """
     fileindex: dict[str, str] = {}
     existing: dict[str, str] = {}
@@ -3741,7 +3788,7 @@ def extract_workflow_inputs(
     # Extract out all the input files' filenames
     logger.info("Collecting input files...")
     fs_access = ToilFsAccess(options.basedir)
-    filenames = visit_files(
+    input_filenames = visit_files(
         extract_file_uri_once,
         fs_access,
         fileindex,
@@ -3766,8 +3813,10 @@ def extract_workflow_inputs(
             bypass_file_store=options.bypass_file_store,
         ),
     )
-    filenames.extend(tool_filenames)
-    return [file for file in filenames if file is not None]
+    return (
+        [file for file in input_filenames if file is not None],
+        [file for file in tool_filenames if file is not None]
+    )
 
 
 def import_workflow_inputs(
