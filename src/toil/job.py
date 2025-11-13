@@ -4024,43 +4024,6 @@ class CombineImportsJob(Job):
         return {k: v for item in d for k, v in item.items()}
 
 
-class TranslateImportKeysJob(Job):
-    """
-    Translate the keys in a candidate_uri -> FileID mapping back to original_filename -> FileID
-    using the FileMetadata mapping.
-    """
-
-    def __init__(
-        self,
-        candidate_to_fileid: Promised[Dict[str, FileID]],
-        file_to_metadata: Dict[str, FileMetadata],
-        **kwargs
-    ):
-        """
-        :param candidate_to_fileid: Dictionary mapping candidate URIs to FileIDs
-        :param file_to_metadata: Dictionary mapping original filenames to FileMetadata
-        """
-        self._candidate_to_fileid = candidate_to_fileid
-        self._file_to_metadata = file_to_metadata
-        super().__init__(**kwargs)
-
-    def run(self, file_store: "AbstractFileStore") -> Dict[str, FileID]:
-        """
-        Translate the keys from candidate URIs to original filenames
-        """
-        candidate_to_fileid = unwrap(self._candidate_to_fileid)
-
-        # Map each original filename to its FileID by looking up the candidate_uri
-        result = {}
-        for filename, metadata in self._file_to_metadata.items():
-            candidate_uri = metadata.source
-            if candidate_uri in candidate_to_fileid:
-                result[filename] = candidate_to_fileid[candidate_uri]
-            # If candidate_uri not found, the file wasn't imported (size was None, etc.)
-
-        return result
-
-
 class WorkerImportJob(Job):
     """
     Job to do file imports on a worker instead of a leader. Assumes all local and cloud files are accessible.
@@ -4148,7 +4111,14 @@ class ImportsJob(Job):
     ) -> Tuple[Promised[Dict[str, FileID]], Dict[str, FileMetadata]]:
         """
         Import the workflow inputs and then create and run the workflow.
-        :return: Tuple of a mapping from the original filename to the file id and a mapping of the original filenames to its metadata.
+
+        IMPORTANT: The two parts of the return value must be used together and cannot be
+        safely split apart. To look up a FileID from an original filename, you must first
+        look up the FileMetadata in the second dict, extract its .source (the normalized
+        candidate URI), and then look that up in the first dict.
+
+        :return: Tuple of (candidate_uri -> FileID mapping, original_filename -> FileMetadata mapping).
+                 The candidate URI is stored in FileMetadata.source.
         """
         max_batch_size = self._max_batch_size
         file_to_data = self._file_to_data
@@ -4197,12 +4167,7 @@ class ImportsJob(Job):
             job.addFollowOn(combine_imports_job)
         self.addChild(combine_imports_job)
 
-        # Translate candidate URIs back to original filenames
-        translate_job = TranslateImportKeysJob(combine_imports_job.rv(), file_to_data)
-        self.addChild(translate_job)
-        combine_imports_job.addFollowOn(translate_job)
-
-        return translate_job.rv(), file_to_data
+        return combine_imports_job.rv(), file_to_data
 
 
 class Promise:

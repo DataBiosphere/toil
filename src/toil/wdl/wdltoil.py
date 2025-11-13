@@ -1206,7 +1206,7 @@ def virtualize_inodes_in_bindings(
             raise NotImplementedError
 
         candidate_uri = file_to_metadata[inode.value].source
-        file_id = file_to_id[inode.value]
+        file_id = file_to_id[candidate_uri]
 
         # Work out what the basename for the inode was
         file_basename = os.path.basename(urlsplit(candidate_uri).path)

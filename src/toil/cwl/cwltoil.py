@@ -3529,7 +3529,8 @@ class CWLInstallImportsJob(Job):
         basedir: str,
         skip_remote: bool,
         bypass_file_store: bool,
-        import_data: list[Promised[dict[str, FileID]]],
+        leader_imports: dict[str, FileID],
+        worker_imports: Optional[Promised[Tuple[dict[str, FileID], dict[str, FileMetadata]]]] = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -3538,7 +3539,9 @@ class CWLInstallImportsJob(Job):
 
         This class is only used when runImportsOnWorkers is enabled.
 
-        :param import_data: List of mappings from file URI to imported file ID.
+        :param leader_imports: Direct mapping from file URI to FileID for files imported on the leader.
+        :param worker_imports: Promise of (candidate_uri->FileID, filename->FileMetadata) tuple from worker imports.
+                              These two dicts must be used together for lookups.
         """
         super().__init__(local=True, **kwargs)
         self.initialized_job_order = initialized_job_order
@@ -3546,7 +3549,8 @@ class CWLInstallImportsJob(Job):
         self.basedir = basedir
         self.skip_remote = skip_remote
         self.bypass_file_store = bypass_file_store
-        self.import_data = import_data
+        self.leader_imports = leader_imports
+        self.worker_imports = worker_imports
 
     # TODO: Since we only call this from the class itself now it doesn't really
     # need to be static anymore.
@@ -3554,25 +3558,38 @@ class CWLInstallImportsJob(Job):
     def fill_in_files(
         initialized_job_order: CWLObjectType,
         tool: Process,
-        candidate_to_fileid: dict[str, FileID],
+        leader_imports: dict[str, FileID],
+        worker_candidate_to_fileid: Optional[dict[str, FileID]],
+        file_to_metadata: Optional[dict[str, FileMetadata]],
         basedir: str,
         skip_remote: bool,
         bypass_file_store: bool,
     ) -> tuple[Process, CWLObjectType]:
         """
-        Given a mapping of filenames to Toil file IDs, replace the filename with the file IDs throughout the CWL object.
+        Given mappings of filenames to Toil file IDs, replace the filename with the file IDs throughout the CWL object.
+
+        :param leader_imports: Direct mapping from file URI to FileID for files imported on the leader.
+        :param worker_candidate_to_fileid: Mapping from normalized candidate URI to FileID for worker imports.
+        :param file_to_metadata: Mapping from original filename to FileMetadata (which contains
+                                 the normalized candidate URI in .source). Must be provided together
+                                 with worker_candidate_to_fileid.
         """
 
         def fill_in_file(filename: str) -> FileID:
             """
             Return the file name's associated Toil file ID
             """
-            try:
-                return candidate_to_fileid[filename]
-            except KeyError:
-                # Give something more useful than a KeyError if something went
-                # wrong with the importing.
-                raise RuntimeError(f"File at \"{filename}\" was never imported.")
+            # Try worker imports first (two-stage lookup through metadata)
+            if worker_candidate_to_fileid is not None and file_to_metadata is not None and filename in file_to_metadata:
+                candidate_uri = file_to_metadata[filename].source
+                return worker_candidate_to_fileid[candidate_uri]
+
+            # Fall back to direct lookup in leader imports
+            if filename in leader_imports:
+                return leader_imports[filename]
+
+            # Give something more useful than a KeyError if something went wrong with the importing.
+            raise RuntimeError(f"File at \"{filename}\" was never imported.")
 
         file_convert_function = functools.partial(
             extract_and_convert_file_to_toil_uri, fill_in_file
@@ -3620,21 +3637,22 @@ class CWLInstallImportsJob(Job):
         :return: Promise of transformed workflow inputs. A tuple of the job order and process
         """
 
-        # Merge all the input dicts down to one to check.
-        candidate_to_fileid: dict[str, FileID] = {
-            k: v for mapping in unwrap(
-                self.import_data
-            ) for k, v in unwrap(mapping).items()
-        }
-
         initialized_job_order = unwrap(self.initialized_job_order)
         tool = unwrap(self.tool)
+
+        # Unpack worker imports if present
+        worker_candidate_to_fileid: Optional[dict[str, FileID]] = None
+        file_to_metadata: Optional[dict[str, FileMetadata]] = None
+        if self.worker_imports is not None:
+            worker_candidate_to_fileid, file_to_metadata = unwrap(self.worker_imports)
 
         # Install the imported files in the tool and job order
         return self.fill_in_files(
             initialized_job_order,
             tool,
-            candidate_to_fileid,
+            self.leader_imports,
+            worker_candidate_to_fileid,
+            file_to_metadata,
             self.basedir,
             self.skip_remote,
             self.bypass_file_store,
@@ -3689,7 +3707,8 @@ class CWLImportWrapper(CWLNamedJob):
             basedir=self.options.basedir,
             skip_remote=self.options.reference_inputs,
             bypass_file_store=self.options.bypass_file_store,
-            import_data=[self.imported_files, imports_job.rv(0)],
+            leader_imports=self.imported_files,
+            worker_imports=imports_job.rv(),
         )
         self.addChild(install_imports_job)
         imports_job.addFollowOn(install_imports_job)
