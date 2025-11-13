@@ -1810,16 +1810,28 @@ def extract_file_uri_once(
         file_metadata["location"] = location = schema_salad.ref_resolver.file_uri(
             cast(str, file_metadata["path"])
         )
-    if location.startswith("file://") and not os.path.isfile(
-        schema_salad.ref_resolver.uri_file_path(location)
-    ):
-        if mark_broken:
-            logger.debug("File %s is missing", file_metadata)
-            file_metadata["location"] = location = MISSING_FILE + location
-        else:
+    if location.startswith("file://"):
+        file_path = schema_salad.ref_resolver.uri_file_path(location)
+        if not os.path.exists(file_path):
+            if mark_broken:
+                logger.debug("File %s is missing", file_metadata)
+                file_metadata["location"] = location = MISSING_FILE + location
+            else:
+                raise cwl_utils.errors.WorkflowException(
+                    "File is missing: %s" % file_metadata
+                )
+        elif os.path.isdir(file_path):
             raise cwl_utils.errors.WorkflowException(
-                "File is missing: %s" % file_metadata
+                f"Cannot import directory as a file: {file_path}"
             )
+        elif not os.path.isfile(file_path):
+            # It exists but is not a regular file or directory
+            # Allow /dev/null specifically as it's safe to read (returns EOF immediately)
+            if file_path != '/dev/null':
+                raise cwl_utils.errors.WorkflowException(
+                    f"Cannot import {file_path} as a file: not a regular file. "
+                    f"Only regular files and /dev/null are supported."
+                )
     if location.startswith("file://") or not skip_remote:
         # This is a local file or a remote file
         if location not in fileindex:

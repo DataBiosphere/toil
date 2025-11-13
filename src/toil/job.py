@@ -3985,7 +3985,7 @@ def get_file_sizes(
                 # We need to make sure file URIs and local paths that point to
                 # the same place are treated the same.
                 parsed = urlsplit(candidate_uri)
-                if parsed.scheme == "file:":
+                if parsed.scheme == "file":
                     # This is a local file URI. Convert to a path for source directory tracking.
                     parent_dir = os.path.dirname(unquote(parsed.path))
                 else:
@@ -3995,7 +3995,7 @@ def get_file_sizes(
                 # Must be a local path
                 parent_dir = os.path.dirname(candidate_uri)
 
-            return cast(FileMetadata, (candidate_uri, parent_dir, filesize))
+            return FileMetadata(candidate_uri, parent_dir, filesize)
         # Not found
         raise RuntimeError(
             f"Could not find {filename} at any of: {list(potential_absolute_uris(filename, search_paths if search_paths is not None else []))}"
@@ -4006,7 +4006,7 @@ def get_file_sizes(
 
 class CombineImportsJob(Job):
     """
-    Combine the outputs of multiple WorkerImportsJob into one promise
+    Combine the outputs of multiple WorkerImportJobs into one promise
     """
 
     def __init__(self, d: Sequence[Promised[Dict[str, FileID]]], **kwargs):
@@ -4022,6 +4022,43 @@ class CombineImportsJob(Job):
         """
         d = unwrap_all(self._d)
         return {k: v for item in d for k, v in item.items()}
+
+
+class TranslateImportKeysJob(Job):
+    """
+    Translate the keys in a candidate_uri -> FileID mapping back to original_filename -> FileID
+    using the FileMetadata mapping.
+    """
+
+    def __init__(
+        self,
+        candidate_to_fileid: Promised[Dict[str, FileID]],
+        file_to_metadata: Dict[str, FileMetadata],
+        **kwargs
+    ):
+        """
+        :param candidate_to_fileid: Dictionary mapping candidate URIs to FileIDs
+        :param file_to_metadata: Dictionary mapping original filenames to FileMetadata
+        """
+        self._candidate_to_fileid = candidate_to_fileid
+        self._file_to_metadata = file_to_metadata
+        super().__init__(**kwargs)
+
+    def run(self, file_store: "AbstractFileStore") -> Dict[str, FileID]:
+        """
+        Translate the keys from candidate URIs to original filenames
+        """
+        candidate_to_fileid = unwrap(self._candidate_to_fileid)
+
+        # Map each original filename to its FileID by looking up the candidate_uri
+        result = {}
+        for filename, metadata in self._file_to_metadata.items():
+            candidate_uri = metadata.source
+            if candidate_uri in candidate_to_fileid:
+                result[filename] = candidate_to_fileid[candidate_uri]
+            # If candidate_uri not found, the file wasn't imported (size was None, etc.)
+
+        return result
 
 
 class WorkerImportJob(Job):
@@ -4111,7 +4148,7 @@ class ImportsJob(Job):
     ) -> Tuple[Promised[Dict[str, FileID]], Dict[str, FileMetadata]]:
         """
         Import the workflow inputs and then create and run the workflow.
-        :return: Tuple of a mapping from the candidate uri to the file id and a mapping of the source filenames to its metadata. The candidate uri is a field in the file metadata
+        :return: Tuple of a mapping from the original filename to the file id and a mapping of the original filenames to its metadata.
         """
         max_batch_size = self._max_batch_size
         file_to_data = self._file_to_data
@@ -4160,7 +4197,12 @@ class ImportsJob(Job):
             job.addFollowOn(combine_imports_job)
         self.addChild(combine_imports_job)
 
-        return combine_imports_job.rv(), file_to_data
+        # Translate candidate URIs back to original filenames
+        translate_job = TranslateImportKeysJob(combine_imports_job.rv(), file_to_data)
+        self.addChild(translate_job)
+        combine_imports_job.addFollowOn(translate_job)
+
+        return translate_job.rv(), file_to_data
 
 
 class Promise:
