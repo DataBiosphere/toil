@@ -10,10 +10,12 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import Any, Optional, Union, cast
 from unittest.mock import patch
+from urllib.parse import quote
 from uuid import uuid4
 
 import pytest
 from pytest_httpserver import HTTPServer
+from pytest_subtests import SubTests
 
 import WDL.Error
 import WDL.Expr
@@ -350,6 +352,47 @@ class TestWDL:
                 assert isinstance(result["ga4ghMd5.value"], str)
                 assert os.path.exists(result["ga4ghMd5.value"])
                 assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
+
+    @needs_singularity_or_docker
+    def test_file_uri_no_hostname(self, tmp_path: Path, subtests: SubTests) -> None:
+        """Test if Toil handles file URIs without even empty hostnames"""
+
+        # We need to test file:/absolute/path/to/the/file in conjunction with
+        # worker imports, which didn't work in
+        # https://github.com/DataBiosphere/toil/issues/5392
+        with get_data("test/wdl/md5sum/md5sum.1.0.wdl") as wdl:
+            with get_data("test/wdl/md5sum/md5sum.input") as input_file:
+                # We need to wrap the absolute path to the input file in a JSON as a URI.
+                file_uri = f"file:{quote(os.path.abspath(input_file))}"
+
+                 # Then put that in inline input JSON
+                input_json = json.dumps({"ga4ghMd5.inputFile": file_uri})
+
+                for worker_import in (False, True):
+                    with subtests.test(msg=f"Worker import: {worker_import}"):
+                       
+                        result_json = subprocess.check_output(
+                            self.base_command
+                            + [
+                                str(wdl),
+                                input_json,
+                                "-o",
+                                str(tmp_path),
+                                "--logDebug",
+                                "--retryCount=0",
+                            ]
+                            + (
+                                [
+                                    "--runImportsOnWorkers",
+                                ] if worker_import else []
+                            )
+                        )
+                        result = json.loads(result_json)
+
+                        assert "ga4ghMd5.value" in result
+                        assert isinstance(result["ga4ghMd5.value"], str)
+                        assert os.path.exists(result["ga4ghMd5.value"])
+                        assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
 
     @needs_online
     def test_url_to_file(self, tmp_path: Path) -> None:
@@ -828,6 +871,7 @@ class TestWDL:
                 with pytest.raises(subprocess.CalledProcessError):
                     run_for_code(code)
 
+    @needs_singularity_or_docker
     def test_missing_output_directory(self, tmp_path: Path) -> None:
         """
         Test if Toil can run a WDL workflow into a new directory.
