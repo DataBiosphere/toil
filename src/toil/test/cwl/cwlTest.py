@@ -379,7 +379,7 @@ class TestCWLWorkflow:
 
         Ther test is the download.cwl workflow.
 
-        The result has to match :ref:`_expected_download_output` on the output
+        The result has to match _expected_download_output on the output
         directory, so it must contain an empty "output.txt" file.
 
         :param inputs: Relative path to the inputs file within the Toil source
