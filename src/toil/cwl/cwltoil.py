@@ -2956,9 +2956,17 @@ def makeRootJob(
             tool_filenames, toil._jobStore, symlink=False
         )
 
+        # Make sure we don't import the same files twice if a tool file and an
+        # input file are the same file.
+        leader_files_needed = [
+            f for f in leader_metadata.keys() if f not in tool_path_to_fileid
+        ]
+
+
         # Import other leader files (those without size info) with symlink=True
+        logger.info("Importing unknown-size files...")
         path_to_fileid = WorkerImportJob.import_files(
-            list(leader_metadata.keys()), toil._jobStore
+            leader_files_needed, toil._jobStore
         )
 
         # Combine leader imports

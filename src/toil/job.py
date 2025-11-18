@@ -4057,7 +4057,8 @@ class WorkerImportJob(Job):
         :param files: list of files to import
         :param file_source: AbstractJobStore
         :param symlink: whether to allow symlinking the imported files
-        :return: Dictionary mapping filenames to associated jobstore FileID
+        :return: Dictionary mapping filenames from files to associated jobstore
+            FileID
         """
         # todo: make the import ensure streaming is done instead of relying on running out of disk space
         path_to_fileid = {}
