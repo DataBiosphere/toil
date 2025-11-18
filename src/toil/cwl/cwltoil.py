@@ -1813,7 +1813,7 @@ def extract_file_uri_once(
         don't exist, set their locations to MISSING_FILE rather than failing
         with an error.
 
-    :param skp_remote: If True, return None for remote URIs. 
+    :param skp_remote: If True, return None for remote URIs.
 
     :return: The URI or local file path that needs to be dowlnoaded for this
         file, given the ones already scheduled to be downloaded in existing and
@@ -2047,7 +2047,7 @@ def visit_files(
             # We want to track it and any of its associated secondary files in
             # this pseudo-Directory.
             result: DirectoryContents = {}
-            
+
             # Run the vsitor function on the file and store the return
             func_return.append(file_func(rec))
 
@@ -2584,7 +2584,7 @@ class CWLJob(CWLNamedJob):
             else:
                 # We use a None requirement and the Toil default applies.
                 memory = None
-        
+
         # Imposing a minimum memory limit
         min_ram = getattr(runtime_context, "cwl_min_ram")
         if min_ram is not None and memory is not None:
@@ -2897,7 +2897,7 @@ class CWLJob(CWLNamedJob):
             ensure_file_imported,
             file_import_function,
             fileindex=index,
-            existing=existing 
+            existing=existing
         )
 
         # Upload all the Files and set their and the Directories' locations, if
@@ -2968,14 +2968,26 @@ def makeRootJob(
             input_filenames, toil._jobStore, include_remote_files=options.reference_inputs
         )
 
+        # Import all the tool files right away, because a file that's both a
+        # tool file and an input needs to be imported without symlinking (since
+        # they might not be accessible from workers), and this builds the dict
+        # we can use to see if a resolved URI was a tool file.
+        logger.info("Importing tool-associated files...")
+        tool_path_to_fileid = WorkerImportJob.import_files(
+            tool_filenames, toil._jobStore, symlink=False
+        )
+
         # Mapping of files to metadata for files that will be imported on the worker
         # This will consist of input files that we were able to get a file size for
         worker_metadata: dict[str, FileMetadata] = dict()
         # Mapping of files to metadata for input files that will be imported on the leader
         # This will consist of input files that we were not able to get a file size for
-        leader_metadata = dict()
+        leader_metadata: dict[str, FileMetadata] = dict()
         for filename, file_data in input_metadata.items():
-            if file_data[2] is None:  # size
+            if file_data.source in tool_path_to_fileid:
+                # This input is also a tool file and is already imported.
+                continue
+            if file_data.size is None:
                 leader_metadata[filename] = file_data
             else:
                 worker_metadata[filename] = file_data
@@ -2986,24 +2998,10 @@ def makeRootJob(
                 len(worker_metadata),
             )
 
-        # Import tool-associated files on the leader with symlink=False
-        # since they might not be accessible from workers
-        logger.info("Importing tool-associated files...")
-        tool_path_to_fileid = WorkerImportJob.import_files(
-            tool_filenames, toil._jobStore, symlink=False
-        )
-
-        # Make sure we don't import the same files twice if a tool file and an
-        # input file are the same file.
-        leader_files_needed = [
-            f for f in leader_metadata.keys() if f not in tool_path_to_fileid
-        ]
-
-
         # Import other leader files (those without size info) with symlink=True
         logger.info("Importing unknown-size files...")
         path_to_fileid = WorkerImportJob.import_files(
-            leader_files_needed, toil._jobStore
+            list(leader_metadata.keys()), toil._jobStore
         )
 
         # Combine leader imports
@@ -3018,6 +3016,9 @@ def makeRootJob(
         )
         return import_job
     else:
+        # Use a separate codepath to doa ll the imports on the leader.
+        # TODO: Can we combine the two codepaths and just do 0 worker imports
+        # in all-leader mode?
         import_workflow_inputs(
             toil._jobStore,
             options,
@@ -3896,6 +3897,11 @@ def import_workflow_inputs(
     :param log_level: log level
     :return:
     """
+
+    # Work out how to access files
+    fs_access = ToilFsAccess(options.basedir)
+
+    # Create a cache for importing files
     fileindex: dict[str, str] = {}
     existing: dict[str, str] = {}
 
@@ -3905,6 +3911,8 @@ def import_workflow_inputs(
         logger.log(log_level, "Loading %s...", url)
         return jobstore.import_file(url, symlink=True)
 
+    # Make a visiting function for importing workflow input files, which may
+    # allow symlinking
     file_visitor = functools.partial(
         ensure_file_imported,
         file_import_function,
@@ -3913,18 +3921,9 @@ def import_workflow_inputs(
         mark_broken=True,
         skip_remote=options.reference_inputs,
     )
+    # And a function for packign up directories of imported files.
     directory_visitor = functools.partial(upload_directory, mark_broken=True)
-    # Import all the input files, some of which may be missing optional
-    # files.
-    logger.info("Importing input files...")
-    fs_access = ToilFsAccess(options.basedir)
-    visit_files(
-        file_visitor,
-        directory_visitor, 
-        fs_access,
-        initialized_job_order,
-        bypass_file_store=options.bypass_file_store,
-    )
+
 
     # Make another function for importing tool files. This one doesn't allow
     # symlinking, since the tools might be coming from storage not accessible
@@ -3941,9 +3940,10 @@ def import_workflow_inputs(
         skip_remote=options.reference_inputs,
     )
 
-    # Import all the files associated with tools (binaries, etc.).
-    # Not sure why you would have an optional secondary file here, but
-    # the spec probably needs us to support them.
+
+    # Import all the files associated with tools (binaries, etc.) FIRST, so
+    # that they can be imported without symlinking even if they are also
+    # workflow inputs.
     logger.info("Importing tool-associated files...")
     visitSteps(
         tool,
@@ -3956,22 +3956,37 @@ def import_workflow_inputs(
         ),
     )
 
-    # We always expect to have processed all files that exist
-    for param_name, param_value in initialized_job_order.items():
-        # Loop through all the parameters for the workflow overall.
-        # Drop any files that aren't either imported (for when we use
-        # the file store) or available on disk (for when we don't).
-        # This will properly make them cause an error later if they
-        # were required.
-        rm_unprocessed_secondary_files(param_value)
+    # Not sure why you would have an optional secondary file here, but
+    # the spec probably needs us to support them.
+    visitSteps(
+        tool,
+        rm_unprocessed_secondary_files
+    )
 
+    # Import all the input files, some of which may be missing optional
+    # files.
+    logger.info("Importing input files...")
+    visit_files(
+        file_visitor,
+        directory_visitor,
+        fs_access,
+        initialized_job_order,
+        bypass_file_store=options.bypass_file_store,
+    )
+
+    # We always expect to have processed all files that exist.
+    # Drop any files that aren't either imported (for when we use
+    # the file store) or available on disk (for when we don't).
+    # This will properly make them cause an error later if they
+    # were required.
+    rm_unprocessed_secondary_files(initialized_job_order)
 
 T = TypeVar("T")
 
 
 def visitSteps(
     cmdline_tool: Process,
-    op: Callable[[CommentedMap], list[T]],
+    op: Callable[[CommentedMap], Optional[list[T]]],
 ) -> list[T]:
     """
     Iterate over a CWL Process object, running the op on each tool description
@@ -3979,10 +3994,10 @@ def visitSteps(
     """
     if isinstance(cmdline_tool, cwltool.workflow.Workflow):
         # For workflows we need to dispatch on steps
-        ret = []
+        ret: list[T] = []
         for step in cmdline_tool.steps:
             # Handle the step's tool
-            ret.extend(op(step.tool))
+            ret.extend(op(step.tool) or [])
             # Recures on the embedded tool; maybe it's a workflow.
             recurse_ret = visitSteps(step.embedded_tool, op)
             ret.extend(recurse_ret)
@@ -3990,17 +4005,33 @@ def visitSteps(
     elif isinstance(cmdline_tool, cwltool.process.Process):
         # All CWL Process objects (including CommandLineTool) will have tools
         # if they bothered to run the Process __init__.
-        return op(cmdline_tool.tool)
+        return op(cmdline_tool.tool) or []
     raise RuntimeError(
         f"Unsupported type encountered in workflow " f"traversal: {type(cmdline_tool)}"
     )
 
 
 def rm_unprocessed_secondary_files(job_params: Any) -> None:
+    """
+    Scan a CWL object or collection and drop missing secondary files.
+    """
     if isinstance(job_params, list):
         for j in job_params:
+            # Recurse on list entries
             rm_unprocessed_secondary_files(j)
-    if isinstance(job_params, dict) and "secondaryFiles" in job_params:
+    if isinstance(job_params, dict):
+        for v in job_params.values():
+            # Recurse on dict values (maybe a secondary file has its own
+            # secondary files? Is that allowed?)
+            rm_unprocessed_secondary_files(v)
+
+    if (
+        isinstance(job_params, dict) and
+        job_params.get("class", None) in ("File", "Directory")
+        and "secondaryFiles" in job_params
+    ):
+        # When we actually find a File or Directory (can directories have
+        # these?) with secondary files, filter them.
         job_params["secondaryFiles"] = filtered_secondary_files(job_params)
 
 
