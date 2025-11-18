@@ -4114,13 +4114,15 @@ class ImportsJob(Job):
         """
         Import the workflow inputs and then create and run the workflow.
 
-        IMPORTANT: The two parts of the return value must be used together and cannot be
-        safely split apart. To look up a FileID from an original filename, you must first
-        look up the FileMetadata in the second dict, extract its .source (the normalized
-        candidate URI), and then look that up in the first dict.
+        The two parts of the return value must be used together and cannot be
+        safely split apart. To look up a FileID from an original filename, you
+        must first look up the FileMetadata in the second dict, extract its
+        .source (the normalized candidate URI), and then look that up in the
+        first dict.
 
-        :return: Tuple of (candidate_uri -> FileID mapping, original_filename -> FileMetadata mapping).
-                 The candidate URI is stored in FileMetadata.source.
+        :return: Tuple of (candidate URI to FileID mapping, original filename
+            to FileMetadata mapping). The candidate URI is stored in
+            FileMetadata.source.
         """
         max_batch_size = self._max_batch_size
         file_to_data = self._file_to_data

@@ -3586,29 +3586,38 @@ class CWLInstallImportsJob(Job):
         bypass_file_store: bool,
     ) -> tuple[Process, CWLObjectType]:
         """
-        Given mappings of filenames to Toil file IDs, replace the filename with the file IDs throughout the CWL object.
+        Given mappings of filenames to Toil file IDs, replace the filename with
+            the file IDs throughout the CWL object.
 
-        :param leader_imports: Direct mapping from file URI to FileID for files imported on the leader.
-        :param worker_candidate_to_fileid: Mapping from normalized candidate URI to FileID for worker imports.
+        :param leader_imports: Direct mapping from file URI to FileID for files
+            imported on the leader.
+        :param worker_candidate_to_fileid: Mapping from normalized candidate
+            URI to FileID for worker imports.
         :param file_to_metadata: Mapping from original filename to FileMetadata (which contains
-                                 the normalized candidate URI in .source). Must be provided together
-                                 with worker_candidate_to_fileid.
+             the normalized candidate URI in .source). Must be provided
+             together with worker_candidate_to_fileid.
         """
 
         def fill_in_file(filename: str) -> FileID:
             """
             Return the file name's associated Toil file ID
             """
-            # Try worker imports first (two-stage lookup through metadata)
-            if worker_candidate_to_fileid is not None and file_to_metadata is not None and filename in file_to_metadata:
+            # Try worker imports first
+            if (
+                worker_candidate_to_fileid is not None and
+                file_to_metadata is not None and
+                filename in file_to_metadata
+            ):
+                # Get the full candidate URI we used for this file
                 candidate_uri = file_to_metadata[filename].source
+                # Get the FIleID we got from that URI
                 return worker_candidate_to_fileid[candidate_uri]
 
             # Fall back to direct lookup in leader imports
             if filename in leader_imports:
                 return leader_imports[filename]
 
-            # Give something more useful than a KeyError if something went wrong with the importing.
+            # If it wasn't imported on a worker or on the leader, it is missing.
             raise RuntimeError(f"File at \"{filename}\" was never imported.")
 
         file_convert_function = functools.partial(
