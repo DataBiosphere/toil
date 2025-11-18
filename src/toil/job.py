@@ -3178,7 +3178,7 @@ class Job:
             # Change dir back to cwd dir, if changed by job (this is a safety issue)
             if os.getcwd() != baseDir:
                 os.chdir(baseDir)
-            
+
             totalCpuTime, total_memory_kib = (
                 ResourceMonitor.get_total_cpu_time_and_memory_usage()
             )
@@ -4054,11 +4054,15 @@ class WorkerImportJob(Job):
 
         When stream is true but the import is not streamable, the worker will run out of
         disk space and run a new import job with enough disk space instead.
+
         :param files: list of files to import
+
         :param file_source: AbstractJobStore
+
         :param symlink: whether to allow symlinking the imported files
+
         :return: Dictionary mapping filenames from files to associated jobstore
-            FileID
+            FileID.
         """
         # todo: make the import ensure streaming is done instead of relying on running out of disk space
         path_to_fileid = {}
