@@ -1725,21 +1725,31 @@ def toil_get_file(
         return schema_salad.ref_resolver.file_uri(src_path)
 
 
-def convert_file_uri_to_toil_uri(
-    applyFunc: Callable[[str], FileID],
+def import_file_through_cache(
+    import_func: Callable[[str], FileID],
     index: dict[str, str],
     existing: dict[str, str],
     file_uri: str,
 ) -> str:
     """
-    Given a file URI, convert it to a toil file URI. Uses applyFunc to handle the conversion.
+    Given a file URI, convert it to a toil file URI using the given caches.
 
-    Runs once on every unique file URI.
+    Uses import_func to do any required new imports. Runs import_func once on
+    every unique URI for a given set of caches.
 
-    'existing' is a set of files retrieved as inputs from toil_get_file. This
-    ensures they are mapped back as the same name if passed through.
+    :param index: Mapping from file URI to imported Toil URI.
 
-    Returns a toil uri path to the object.
+    :param existing: Reverse mapping from imported Toil URI or other remote URI
+        to file URI or local path. Allows integration with toil_get_file so
+        that a URI downloaded to a local file by get_toil_file will re-import
+        back to the same original URI.
+
+    :param file_uri: URI to the file to import. Not necessarily a file:// URI.
+
+    :raises FileNotFoundError: if the input RUI is a MISSING_FILE URI.
+
+    :returns: A toilfile: URI (or passed-through _: or toildir: URI) to the
+        imported file.
     """
     # Toil fileStore reference
     if file_uri.startswith("toilfile:") or file_uri.startswith("toildir:"):
@@ -1755,7 +1765,8 @@ def convert_file_uri_to_toil_uri(
         file_uri = existing.get(file_uri, file_uri)
         if file_uri not in index:
             try:
-                index[file_uri] = "toilfile:" + applyFunc(file_uri).pack()
+                index[file_uri] = "toilfile:" + import_func(file_uri).pack()
+                # TODO: Won't this put URIs in existing that toil_get_file() will expect to be local paths?
                 existing[index[file_uri]] = file_uri
             except Exception as e:
                 logger.error("Got exception '%s' while copying '%s'", e, file_uri)
@@ -1775,26 +1786,38 @@ def path_to_loc(obj: CWLObjectType) -> None:
 
 
 def extract_file_uri_once(
-    fileindex: dict[str, str],
-    existing: dict[str, str],
     file_metadata: CWLObjectType,
+    fileindex: dict[str, str],
     mark_broken: bool = False,
     skip_remote: bool = False,
 ) -> Optional[str]:
     """
-    Extract the filename from a CWL file record.
+    Extract the filename that needs to be downloaded from a CWL file record.
 
-    This function matches the predefined function signature in visit_files, which ensures
-    that this function is called on all files inside a CWL object.
+    Updates the FileMetadata.
 
-    Ensures no duplicate files are returned according to fileindex. If a file has not been resolved already (and had file:// prepended)
-    then resolve symlinks.
-    :param fileindex: Forward mapping of filename
-    :param existing: Reverse mapping of filename. This function does not use this
-    :param file_metadata: CWL file record
-    :param mark_broken: Whether files should be marked as missing
-    :param skip_remote: Whether to skip remote files
-    :return:
+    This function matches the predefined function signature in visit_files,
+    which should be used to run it for all files inside a CWL object.
+
+    Ensures no duplicate files are returned according to fileindex. If a file
+    has not been resolved already (and had file:// prepended) then resolve
+    symlinks.
+
+    :param file_metadata: CWL file record to operate on.
+
+    :param fileindex: Forward mapping of filename to downloaded file path. If
+        the file's location already appears here, uses the cached value and
+        returns None.
+
+    :param mark_broken: If True, when files can't be imported because they e.g.
+        don't exist, set their locations to MISSING_FILE rather than failing
+        with an error.
+
+    :param skp_remote: If True, return None for remote URIs. 
+
+    :return: The URI or local file path that needs to be dowlnoaded for this
+        file, given the ones already scheduled to be downloaded in existing and
+        the settings passed about what files need to be downloaded.
     """
     location = cast(str, file_metadata["location"])
     if (
@@ -1852,25 +1875,27 @@ def extract_file_uri_once(
 V = TypeVar("V", covariant=True)
 
 
-class VisitFunc(Protocol[V]):
+class FileVisitFunc(Protocol[V]):
     def __call__(
         self,
-        fileindex: dict[str, str],
-        existing: dict[str, str],
         file_metadata: CWLObjectType,
-        mark_broken: bool,
-        skip_remote: bool,
+    ) -> V: ...
+
+class DirectoryVisitFunc(Protocol[V]):
+    def __call__(
+        self,
+        directory_metadata: CWLObjectType,
+        directory_contents: DirectoryContents,
     ) -> V: ...
 
 
+V2 = TypeVar("V2", covariant=True)
+
 def visit_files(
-    func: VisitFunc[V],
+    file_func: FileVisitFunc[V],
+    directory_func: DirectoryVisitFunc[V2],
     fs_access: StdFsAccess,
-    fileindex: dict[str, str],
-    existing: dict[str, str],
     cwl_object: Optional[CWLObjectType],
-    mark_broken: bool = False,
-    skip_remote: bool = False,
     bypass_file_store: bool = False,
 ) -> list[V]:
     """
@@ -1892,37 +1917,38 @@ def visit_files(
 
     Also does some miscellaneous normalization.
 
-    :param import_function: The function used to upload a URI and get a
-        Toil FileID for it.
+    :param file_func: Function to run on each file's URI. This might
+        do something like uploading a URI and filling in the file's location
+        and/or returning an uploaded FileID. Any return values are aggregated
+        and returned.
+
+    :param directory_func: Function to run on each directory's contents. This
+        might fill in the directory's location based on its already-processed
+        contents. Any return values are ignored.
 
     :param fs_access: the CWL FS access object we use to access the filesystem
         to find files to import. Needs to support the URI schemes used.
 
-    :param fileindex: Forward map to fill in from file URI to Toil storage
-        location, used by write_file to deduplicate writes.
-
-    :param existing: Reverse map to fill in from Toil storage location to file
-        URI. Not read from.
-
     :param cwl_object: CWL tool (or workflow order) we are importing files for
 
-    :param mark_broken: If True, when files can't be imported because they e.g.
-        don't exist, set their locations to MISSING_FILE rather than failing
-        with an error.
-
-    :param skp_remote: If True, leave remote URIs in place instead of importing
-        files.
-
-    :param bypass_file_store: If True, leave file:// URIs in place instead of
+    :param bypass_file_store: If True, only do the normalization, and don't
+        actually visit. This will leave file:// URIs in place instead of
         importing files and directories.
 
     :param log_level: Log imported files at the given level.
+
+    :returns: A list of all return values from file_func calls.
     """
+    # TODO: This function used to be very specific to coordinating the actual
+    # upload of all the files, and has only been half-converted to a more
+    # generic scan. Some of the comments and structure only make sense in its
+    # original application.
+
     func_return: list[Any] = list()
     tool_id = cwl_object.get("id", str(cwl_object)) if cwl_object else ""
 
-    logger.debug("Importing files for %s", tool_id)
-    logger.debug("Importing files in %s", cwl_object)
+    logger.debug("Visiting files for %s", tool_id)
+    logger.debug("Visiting files in %s", cwl_object)
 
     # We need to upload all files to the Toil filestore, and encode structure
     # recursively into all Directories' locations. But we cannot safely alter
@@ -2018,17 +2044,12 @@ def visit_files(
         if rec.get("class", None) == "File":
             # This is a CWL File
 
+            # We want to track it and any of its associated secondary files in
+            # this pseudo-Directory.
             result: DirectoryContents = {}
-            # Run a function on the file and store the return
-            func_return.append(
-                func(
-                    fileindex,
-                    existing,
-                    rec,
-                    mark_broken=mark_broken,
-                    skip_remote=skip_remote,
-                )
-            )
+            
+            # Run the vsitor function on the file and store the return
+            func_return.append(file_func(rec))
 
             # Make a record for this file under its name
             result[cast(str, rec["basename"])] = cast(str, rec["location"])
@@ -2055,8 +2076,8 @@ def visit_files(
                 # file under its name
                 contents.update(child_result)
 
-            # Upload the directory itself, which will adjust its location.
-            upload_directory(rec, contents, mark_broken=mark_broken)
+            # Visit the directory itself (which will probably adjust its location).
+            directory_func(rec, contents)
 
             # Show those contents as being under our name in our parent.
             return {cast(str, rec["basename"]): contents}
@@ -2130,18 +2151,20 @@ def upload_directory(
     directory_metadata["location"] = encode_directory(directory_contents)
 
 
-def extract_and_convert_file_to_toil_uri(
-    convertfunc: Callable[[str], FileID],
+def ensure_file_imported(
+    import_func: Callable[[str], FileID],
+    file_metadata: CWLObjectType,
     fileindex: dict[str, str],
     existing: dict[str, str],
-    file_metadata: CWLObjectType,
     mark_broken: bool = False,
     skip_remote: bool = False,
 ) -> None:
     """
     Extract the file URI out of a file object and convert it to a Toil URI.
 
-    Runs convertfunc on the file URI to handle conversion.
+    Stores the Toil URI in file_metadata.
+
+    Runs import_func to actually import new URIs.
 
     Is used to handle importing files into the jobstore.
 
@@ -2152,11 +2175,11 @@ def extract_and_convert_file_to_toil_uri(
     to toil URIs as well.
     """
     location = extract_file_uri_once(
-        fileindex, existing, file_metadata, mark_broken, skip_remote
+        file_metadata, fileindex, mark_broken, skip_remote
     )
     if location is not None:
-        file_metadata["location"] = convert_file_uri_to_toil_uri(
-            convertfunc, fileindex, existing, location
+        file_metadata["location"] = import_file_through_cache(
+            import_func, fileindex, existing, location
         )
 
     logger.debug("Sending file at: %s", file_metadata["location"])
@@ -2870,17 +2893,19 @@ class CWLJob(CWLNamedJob):
             logger.log(log_level, "Loading %s...", url)
             return writeGlobalFileWrapper(file_store, url)
 
-        file_upload_function = functools.partial(
-            extract_and_convert_file_to_toil_uri, file_import_function
+        file_visitor = functools.partial(
+            ensure_file_imported,
+            file_import_function,
+            fileindex=index,
+            existing=existing 
         )
 
         # Upload all the Files and set their and the Directories' locations, if
         # needed.
         visit_files(
-            file_upload_function,
+            file_visitor,
+            upload_directory,
             fs_access,
-            index,
-            existing,
             output,
             bypass_file_store=getattr(runtime_context, "bypass_file_store", False),
         )
@@ -2926,8 +2951,20 @@ def makeRootJob(
     if options.run_imports_on_workers:
         input_filenames, tool_filenames = extract_workflow_inputs(options, initialized_job_order, tool)
 
-        # Get metadata for input files only (tool files will be imported separately on leader)
+        # We need to import the tool files on the leader without symlinking,
+        # because they might not be available on shared storage.
+
+        # We need to make sure that if a workflow input and a tool input
+        # resolve to the same real file, it only gets imported once, without
+        # symlinking.
+
+        # Get metadata for non-tool input files
         input_metadata = get_file_sizes(
+            input_filenames, toil._jobStore, include_remote_files=options.reference_inputs
+        )
+
+        # Also get metadata for tool input files, so we can resilve them to candidate URIs
+        tool_metadata = get_file_sizes(
             input_filenames, toil._jobStore, include_remote_files=options.reference_inputs
         )
 
@@ -3620,32 +3657,32 @@ class CWLInstallImportsJob(Job):
             # If it wasn't imported on a worker or on the leader, it is missing.
             raise RuntimeError(f"File at \"{filename}\" was never imported.")
 
-        file_convert_function = functools.partial(
-            extract_and_convert_file_to_toil_uri, fill_in_file
-        )
-        fs_access = ToilFsAccess(basedir)
         fileindex: dict[str, str] = {}
         existing: dict[str, str] = {}
-        visit_files(
-            file_convert_function,
-            fs_access,
-            fileindex,
-            existing,
-            initialized_job_order,
+        file_visitor = functools.partial(
+            ensure_file_imported,
+            fill_in_file,
+            fileindex=fileindex,
+            existing=existing,
             mark_broken=True,
-            skip_remote=skip_remote,
+            skip_remote=skip_remote
+        )
+        directory_visitor = functools.partial(upload_directory, mark_broken=True)
+        fs_access = ToilFsAccess(basedir)
+        visit_files(
+            file_visitor,
+            directory_visitor,
+            fs_access,
+            initialized_job_order,
             bypass_file_store=bypass_file_store,
         )
         visitSteps(
             tool,
             functools.partial(
                 visit_files,
-                file_convert_function,
+                file_visitor,
+                directory_visitor,
                 fs_access,
-                fileindex,
-                existing,
-                mark_broken=True,
-                skip_remote=skip_remote,
                 bypass_file_store=bypass_file_store,
             ),
         )
@@ -3802,17 +3839,25 @@ def extract_workflow_inputs(
     fileindex: dict[str, str] = {}
     existing: dict[str, str] = {}
 
+    # TODO: These visit passes do normalization, and when we install the
+    # imports we'll do the normakization again. We should refactor to just do
+    # the normalization once!
+
     # Extract out all the input files' filenames
     logger.info("Collecting input files...")
     fs_access = ToilFsAccess(options.basedir)
-    input_filenames = visit_files(
+    file_visitor = functools.partial(
         extract_file_uri_once,
-        fs_access,
-        fileindex,
-        existing,
-        initialized_job_order,
+        fileindex=fileindex,
         mark_broken=True,
-        skip_remote=options.reference_inputs,
+        skip_remote=options.reference_inputs
+    )
+    directory_visitor = functools.partial(upload_directory, mark_broken=True)
+    input_filenames = visit_files(
+        file_visitor,
+        directory_visitor,
+        fs_access,
+        initialized_job_order,
         bypass_file_store=options.bypass_file_store,
     )
     # Extract filenames of all the files associated with tools (binaries, etc.).
@@ -3821,12 +3866,9 @@ def extract_workflow_inputs(
         tool,
         functools.partial(
             visit_files,
-            extract_file_uri_once,
+            file_visitor,
+            directory_visitor,
             fs_access,
-            fileindex,
-            existing,
-            mark_broken=True,
-            skip_remote=options.reference_inputs,
             bypass_file_store=options.bypass_file_store,
         ),
     )
@@ -3863,33 +3905,40 @@ def import_workflow_inputs(
         logger.log(log_level, "Loading %s...", url)
         return jobstore.import_file(url, symlink=True)
 
-    import_function = functools.partial(
-        extract_and_convert_file_to_toil_uri, file_import_function
+    file_visitor = functools.partial(
+        ensure_file_imported,
+        file_import_function,
+        fileindex=fileindex,
+        existing=existing,
+        mark_broken=True,
+        skip_remote=options.reference_inputs,
     )
+    directory_visitor = functools.partial(upload_directory, mark_broken=True)
     # Import all the input files, some of which may be missing optional
     # files.
     logger.info("Importing input files...")
     fs_access = ToilFsAccess(options.basedir)
     visit_files(
-        import_function,
+        file_visitor,
+        directory_visitor, 
         fs_access,
-        fileindex,
-        existing,
         initialized_job_order,
-        mark_broken=True,
-        skip_remote=options.reference_inputs,
         bypass_file_store=options.bypass_file_store,
     )
 
     # Make another function for importing tool files. This one doesn't allow
     # symlinking, since the tools might be coming from storage not accessible
     # to all nodes.
-    tool_import_function = functools.partial(
-        extract_and_convert_file_to_toil_uri,
+    tool_file_visitor = functools.partial(
+        ensure_file_imported,
         cast(
             Callable[[str], FileID],
             functools.partial(jobstore.import_file, symlink=False),
         ),
+        fileindex=fileindex,
+        existing=existing,
+        mark_broken=True,
+        skip_remote=options.reference_inputs,
     )
 
     # Import all the files associated with tools (binaries, etc.).
@@ -3900,12 +3949,9 @@ def import_workflow_inputs(
         tool,
         functools.partial(
             visit_files,
-            tool_import_function,
+            tool_file_visitor,
+            directory_visitor,
             fs_access,
-            fileindex,
-            existing,
-            mark_broken=True,
-            skip_remote=options.reference_inputs,
             bypass_file_store=options.bypass_file_store,
         ),
     )
