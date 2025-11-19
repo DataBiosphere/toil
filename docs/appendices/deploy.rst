@@ -41,7 +41,7 @@ From here, you can install a project and its dependencies::
 
    3 directories, 5 files
    $ pip install matplotlib
-   $ cp -R workflow util venv/lib/python3.9/site-packages
+   $ cp -R workflow util venv/lib/python3.14/site-packages
 
 Ideally, your project would have a ``setup.py`` file (see `setuptools`_) which streamlines the installation process::
 

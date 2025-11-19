@@ -25,11 +25,12 @@ python = f'python{sys.version_info[0]}.{sys.version_info[1]}'
 pip = f'{python} -m pip'
 
 # Debian and Ubuntu don't package ensurepip by default so the python-venv package must be installed
-python_packages = {'python3.9': ['python3.9-distutils', 'python3.9-venv'],
-                   'python3.10': ['python3.10-distutils', 'python3.10-venv'],
+python_packages = {'python3.10': ['python3.10-distutils', 'python3.10-venv'],
                    'python3.11': ['python3.11-distutils', 'python3.11-venv'],
                    'python3.12': ['python3.12-venv'],
-                   'python3.13': ['python3.13-venv']}  # python3.13 removed distutils
+                   'python3.13': ['python3.13-venv'],
+                   'python3.14': ['python3.14-venv'],
+                   }  # python3.13 removed distutils
 
 dependencies = ' '.join(python_packages[python] +
                         ['libffi-dev',  # For client side encryption for extras with PyNACL
@@ -78,11 +79,11 @@ dependencies = ' '.join(python_packages[python] +
 # available in PyPI. So we need to manually inject a working http-parser, and
 # pymesos, into the Docker images.
 extra_mesos_python_modules = {
-    'python3.9': [],
     'python3.10': [],
     'python3.11': ['http-parser@git+https://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15'],
     'python3.12': ['http-parser@git+https://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15'],
-    'python3.13': ['http-parser@git+https://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15']
+    'python3.13': ['http-parser@git+https://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15'],
+    'python3.14': ['http-parser@git+https://github.com/adamnovak/http-parser.git@5a63516597bb4c93a7ba178b1e4bab939da5afb3', 'pymesos==0.3.15']
 }
 
 extra_python_modules = " ".join(extra_mesos_python_modules[python])
