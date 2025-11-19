@@ -3,7 +3,7 @@ import json
 import logging
 from collections import defaultdict
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Union
 
 import boto3
 from botocore.exceptions import ClientError
@@ -64,7 +64,7 @@ AllowedActionCollection = dict[str, dict[str, list[str]]]
 
 @retry(errors=[AWSServerErrors])
 def delete_iam_instance_profile(
-    instance_profile_name: str, region: Optional[str] = None, quiet: bool = True
+    instance_profile_name: str, region: str | None = None, quiet: bool = True
 ) -> None:
     iam_resource = session.resource("iam", region_name=region)
     instance_profile = iam_resource.InstanceProfile(instance_profile_name)
@@ -81,7 +81,7 @@ def delete_iam_instance_profile(
 
 @retry(errors=[AWSServerErrors])
 def delete_iam_role(
-    role_name: str, region: Optional[str] = None, quiet: bool = True
+    role_name: str, region: str | None = None, quiet: bool = True
 ) -> None:
     """
     Deletes an AWS IAM role. Any separate policies are detached from the role, and any inline policies are deleted.
@@ -119,7 +119,7 @@ def create_iam_role(
     role_name: str,
     assume_role_policy_document: str,
     policies: dict[str, Any],
-    region: Optional[str] = None,
+    region: str | None = None,
 ) -> str:
     """
     Creates an AWS IAM role. Any separate policies are detached from the role, and any inline policies are deleted.
@@ -336,7 +336,7 @@ def allowed_actions_roles(
 
 
 def collect_policy_actions(
-    policy_documents: list[Union[str, "PolicyDocumentDictTypeDef"]]
+    policy_documents: list[Union[str, "PolicyDocumentDictTypeDef"]],
 ) -> AllowedActionCollection:
     """
     Collect all of the actions allowed by the given policy documents into one AllowedActionCollection.
@@ -478,7 +478,7 @@ def get_policy_permissions(region: str) -> AllowedActionCollection:
 
 
 @lru_cache
-def get_aws_account_num() -> Optional[str]:
+def get_aws_account_num() -> str | None:
     """
     Returns AWS account num
     """

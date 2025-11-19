@@ -21,7 +21,7 @@ import os
 import pickle
 import sys
 import time
-from typing import Any, Optional, Union
+from typing import Any
 
 import enlighten
 
@@ -89,10 +89,10 @@ class Leader:
         self,
         config: Config,
         batchSystem: AbstractBatchSystem,
-        provisioner: Optional[AbstractProvisioner],
+        provisioner: AbstractProvisioner | None,
         jobStore: AbstractJobStore,
         rootJob: JobDescription,
-        jobCache: Optional[dict[Union[str, TemporaryID], JobDescription]] = None,
+        jobCache: dict[str | TemporaryID, JobDescription] | None = None,
     ) -> None:
         """
         Create a Toil Leader object.
@@ -201,7 +201,7 @@ class Leader:
 
         # A dashboard that runs on the leader node in AWS clusters to track the state
         # of the cluster
-        self.toilMetrics: Optional[ToilMetrics] = None
+        self.toilMetrics: ToilMetrics | None = None
 
         # internal jobs we should not expose at top level debugging
         self.debugJobNames = (
@@ -847,15 +847,15 @@ class Leader:
                 )
                 message = [
                     f"Job failed with exit value {status_string}: {updatedJob}",
-                    f"Exit reason: {BatchJobExitReason.to_string(update.exitReason)}"
+                    f"Exit reason: {BatchJobExitReason.to_string(update.exitReason)}",
                 ]
                 if update.backing_id is not None:
                     # Report the job in the backing scheduler in case the user
                     # needs to follow it down a level.
-                    message.append(f"Failed job in backing scheduler: {update.backing_id}")
-                logger.warning(
-                    "\n".join(message)
-                )
+                    message.append(
+                        f"Failed job in backing scheduler: {update.backing_id}"
+                    )
+                logger.warning("\n".join(message))
                 # This logic is undefined for which of the failing jobs will send its exit code
                 # when there are multiple failing jobs with different exit statuses
                 self.recommended_fail_exit_code = update.exitStatus
@@ -1183,7 +1183,7 @@ class Leader:
             )
             self.preemptibleServiceJobsIssued += 1
 
-    def getNumberOfJobsIssued(self, preemptible: Optional[bool] = None) -> int:
+    def getNumberOfJobsIssued(self, preemptible: bool | None = None) -> int:
         """
         Get number of jobs that have been added by issueJob(s) and not removed by removeJob.
 
@@ -1262,7 +1262,7 @@ class Leader:
 
         return issuedDesc
 
-    def getJobs(self, preemptible: Optional[bool] = None) -> list[JobDescription]:
+    def getJobs(self, preemptible: bool | None = None) -> list[JobDescription]:
         """
         Get all issued jobs.
 
@@ -1422,9 +1422,9 @@ class Leader:
         self,
         finished_job: JobDescription,
         result_status: int,
-        wall_time: Optional[float] = None,
-        exit_reason: Optional[BatchJobExitReason] = None,
-        batch_system_id: Optional[int] = None,
+        wall_time: float | None = None,
+        exit_reason: BatchJobExitReason | None = None,
+        batch_system_id: int | None = None,
     ) -> bool:
         """
         Process a finished JobDescription based upon its success or failure.

@@ -18,7 +18,7 @@ import os
 import re
 import shutil
 import textwrap
-from typing import Any, Union
+from typing import Any
 
 import enlighten  # type: ignore
 
@@ -130,7 +130,7 @@ def is_number(s: str) -> bool:
 
 def parse_storage(
     storage_info: str,
-) -> Union[list[int], tuple[Union[int, float], float]]:
+) -> list[int] | tuple[int | float, float]:
     """
     Parses EC2 JSON storage param string into a number.
 
@@ -158,8 +158,15 @@ def parse_storage(
             and specs[3] == "SSD"
         ):
             return 1, float(specs[0].replace(",", ""))
-        elif is_number(specs[0]) and specs[1].lower() == "x" and is_number(specs[2][:-2]) and specs[2][-2:] == "GB":
-            return float(specs[0].replace(",", "")), float(specs[2][:-2].replace(",", ""))
+        elif (
+            is_number(specs[0])
+            and specs[1].lower() == "x"
+            and is_number(specs[2][:-2])
+            and specs[2][-2:] == "GB"
+        ):
+            return float(specs[0].replace(",", "")), float(
+                specs[2][:-2].replace(",", "")
+            )
         else:
             raise RuntimeError(
                 f"EC2 JSON format has likely changed.  Error parsing disk specs : {storage_info.strip()}"

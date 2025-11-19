@@ -131,9 +131,9 @@ import sqlite3
 import time
 import traceback
 import urllib.error
-from collections.abc import Generator, Iterable, Sequence
+from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import contextmanager
-from typing import Any, Callable, ContextManager, Optional, TypeVar, Union
+from typing import ContextManager, TypeVar
 
 import requests.exceptions
 import urllib3.exceptions
@@ -172,7 +172,7 @@ class ErrorCondition:
 
     def __init__(
         self,
-        error: Optional[type[BaseException]] = None,
+        error: type[BaseException] | None = None,
         error_codes: list[int] = None,
         boto_error_codes: list[str] = None,
         error_message_must_include: str = None,
@@ -227,11 +227,11 @@ RT = TypeVar("RT")
 
 
 def retry(
-    intervals: Optional[list] = None,
+    intervals: list | None = None,
     infinite_retries: bool = False,
-    errors: Optional[Sequence[Union[ErrorCondition, type[Exception]]]] = None,
-    log_message: Optional[tuple[Callable, str]] = None,
-    prepare: Optional[list[Callable]] = None,
+    errors: Sequence[ErrorCondition | type[Exception]] | None = None,
+    log_message: tuple[Callable, str] | None = None,
+    prepare: list[Callable] | None = None,
 ) -> Callable[[Callable[..., RT]], Callable[..., RT]]:
     """
     Retry a function if it fails with any Exception defined in "errors".
@@ -441,7 +441,7 @@ def get_error_body(e: Exception) -> str:
     return f"{get_error_code(e)}: {get_error_message(e)}"
 
 
-def meets_error_message_condition(e: Exception, error_message: Optional[str]):
+def meets_error_message_condition(e: Exception, error_message: str | None):
     if error_message:
         if kubernetes:
             if isinstance(e, kubernetes.client.rest.ApiException):
@@ -469,7 +469,7 @@ def meets_error_message_condition(e: Exception, error_message: Optional[str]):
         return True
 
 
-def meets_error_code_condition(e: Exception, error_codes: Optional[list[int]]):
+def meets_error_code_condition(e: Exception, error_codes: list[int] | None):
     """These are expected to be normal HTTP error codes, like 404 or 500."""
     if error_codes:
         status_code = get_error_status(e)
@@ -478,9 +478,7 @@ def meets_error_code_condition(e: Exception, error_codes: Optional[list[int]]):
         return True
 
 
-def meets_boto_error_code_condition(
-    e: Exception, boto_error_codes: Optional[list[str]]
-):
+def meets_boto_error_code_condition(e: Exception, boto_error_codes: list[str] | None):
     """These are expected to be AWS's custom error aliases, like 'BucketNotFound' or 'AccessDenied'."""
     if boto_error_codes:
         status_code = get_error_code(e)

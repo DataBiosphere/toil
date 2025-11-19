@@ -33,28 +33,20 @@ import sys
 import tempfile
 import textwrap
 import uuid
-from collections.abc import Generator, Iterable, Iterator, Sequence
+from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
 from tempfile import mkstemp
 from typing import (
+    IO,
     Any,
-    Callable,
-    Dict,
-    Generator,
-    Iterable,
-    Iterator,
-    List,
     Optional,
-    Sequence,
-    Tuple,
+    Protocol,
+    TypedDict,
+    TypeGuard,
     TypeVar,
     Union,
     cast,
-    TypedDict,
-    TypeGuard,
-    IO,
-    Protocol,
     overload,
 )
 
@@ -69,11 +61,11 @@ from urllib.error import HTTPError
 from urllib.parse import quote, unquote, urljoin, urlsplit
 
 import WDL.Error
+import WDL.Lint
 import WDL.runtime.config
 from configargparse import ArgParser, Namespace
 from WDL._util import byte_size_units, chmod_R_plus
-from WDL.CLI import print_error, outline
-import WDL.Lint
+from WDL.CLI import outline, print_error
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.error import DownloadFailed
@@ -87,45 +79,56 @@ from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import (
     AcceleratorRequirement,
+    FileMetadata,
+    ImportsJob,
     Job,
+    ParseableIndivisibleResource,
     Promise,
     Promised,
     TemporaryID,
+    get_file_sizes,
     parse_accelerator,
+    potential_absolute_uris,
     unwrap,
     unwrap_all,
-    ParseableIndivisibleResource,
-    ImportsJob,
-    FileMetadata,
-    potential_absolute_uris,
-    get_file_sizes
 )
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
     InvalidImportExportUrlException,
     LocatorException,
 )
-from toil.lib.exceptions import UnimplementedURLException
 from toil.lib.accelerators import get_individual_local_accelerators
 from toil.lib.conversions import VALID_PREFIXES, convert_units, human2bytes
 from toil.lib.directory import (
     DirectoryContents,
     decode_directory,
-    encode_directory,
+    directory_contents_items,
     directory_item_exists,
+    directory_items,
+    encode_directory,
     get_directory_contents_item,
     get_directory_item,
-    directory_items,
-    directory_contents_items,
 )
-from toil.lib.trs import resolve_workflow
-from toil.lib.io import mkdtemp, is_any_url, is_file_url, TOIL_URI_SCHEME, is_standard_url, is_toil_url, is_toil_file_url, is_toil_dir_url, is_remote_url, is_directory_url
+from toil.lib.exceptions import UnimplementedURLException
+from toil.lib.io import (
+    TOIL_URI_SCHEME,
+    is_any_url,
+    is_directory_url,
+    is_file_url,
+    is_remote_url,
+    is_standard_url,
+    is_toil_dir_url,
+    is_toil_file_url,
+    is_toil_url,
+    mkdtemp,
+)
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
 from toil.lib.resources import ResourceMonitor
 from toil.lib.threading import global_mutex
-from toil.provisioners.clusterScaler import JobTooBigError
+from toil.lib.trs import resolve_workflow
 from toil.lib.url import URLAccess
+from toil.provisioners.clusterScaler import JobTooBigError
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +139,7 @@ WDLINode = Union[WDL.Value.File, WDL.Value.Directory]
 
 # Some functions take either a File or Directory and return the same type.
 AnyINode = TypeVar("AnyINode", bound=WDLINode)
+
 
 # TODO: Is there a way to get out of needing this? Or make this support N types?
 class INodeTransform(Protocol):
@@ -148,12 +152,14 @@ class INodeTransform(Protocol):
     complicated type for functions that transform inodes to the same type of
     inodes.
     """
+
     @overload
-    def __call__(self, __file: WDL.Value.File) -> WDL.Value.File | None:
-        ...
+    def __call__(self, __file: WDL.Value.File) -> WDL.Value.File | None: ...
     @overload
-    def __call__(self, __directory: WDL.Value.Directory) -> WDL.Value.Directory | None:
-        ...
+    def __call__(
+        self, __directory: WDL.Value.Directory
+    ) -> WDL.Value.Directory | None: ...
+
 
 def is_inode(value: WDL.Value.Base) -> TypeGuard[WDLINode]:
     """
@@ -165,11 +171,13 @@ def is_inode(value: WDL.Value.Base) -> TypeGuard[WDLINode]:
     """
     return isinstance(value, WDL.Value.File) or isinstance(value, WDL.Value.Directory)
 
+
 # In regards to "toilfile:" URIs:
 # We define a URI scheme kind of like but not actually compatible with the one
 # we use for CWL. CWL brings along the file basename in its file and directory
 # types, but WDL inode types don't. So we need to make sure we stash that
 # somewhere in the URI.
+
 
 # We want to use hashlib.file_digest to avoid a 3-line hashing loop like
 # MiniWDL has. But it is only in 3.11+
@@ -220,7 +228,9 @@ try:
     #
     # TODO: Change to checking sys.version_info because MyPy understands that
     # better?
-    from hashlib import file_digest as file_digest_impl  # type: ignore[attr-defined,unused-ignore]
+    from hashlib import (
+        file_digest as file_digest_impl,
+    )  # type: ignore[attr-defined,unused-ignore]
 
     file_digest: FileDigester = file_digest_impl
 except ImportError:
@@ -236,22 +246,19 @@ except ImportError:
 
     file_digest = file_digest_fallback_impl
 
+
 # WDL options to pass into the WDL jobs and standard libraries
 #   task_path: Dotted WDL name of the part of the workflow this library is working for.
 #   namespace: namespace of the WDL that the current job is in
 #   execution_dir: Directory to use as the working directory for workflow code.
 #   container: The type of container to use when executing a WDL task. Carries through the value of the commandline --container option
 #   all_call_outputs: whether a job should include all calls outputs
-WDLContext = TypedDict(
-    "WDLContext",
-    {
-        "execution_dir": NotRequired[str],
-        "container": NotRequired[str],
-        "task_path": str,
-        "namespace": str,
-        "all_call_outputs": bool,
-    },
-)
+class WDLContext(TypedDict):
+    execution_dir: NotRequired[str]
+    container: NotRequired[str]
+    task_path: str
+    namespace: str
+    all_call_outputs: bool
 
 
 class InsufficientMountDiskSpace(Exception):
@@ -353,7 +360,9 @@ async def toil_read_source(
     # We track our own failures for debugging
     tried = []
 
-    for candidate_uri in potential_absolute_uris(uri, path, importer=importer.pos.abspath if importer else None):
+    for candidate_uri in potential_absolute_uris(
+        uri, path, importer=importer.pos.abspath if importer else None
+    ):
         # For each place to try in order
         destination_buffer = io.BytesIO()
         logger.debug("Fetching %s", candidate_uri)
@@ -369,7 +378,13 @@ async def toil_read_source(
             # TODO: we need to assume in general that an error is just a
             # not-found, because the exceptions thrown by read_from_url()
             # implementations are not specified.
-            logger.debug("Tried to fetch %s from %s but got %s: %s", uri, candidate_uri, type(e), e)
+            logger.debug(
+                "Tried to fetch %s from %s but got %s: %s",
+                uri,
+                candidate_uri,
+                type(e),
+                e,
+            )
             continue
         # If we get here, we got it probably.
         try:
@@ -695,7 +710,9 @@ def clone_metadata(old_inode: AnyINode, new_inode: AnyINode) -> None:
             setattr(new_inode, attribute, getattr(old_inode, attribute))
 
 
-def make_inode(example_inode: AnyINode, value: str, expr: Optional[WDL.Expr.Base]) -> AnyINode:
+def make_inode(
+    example_inode: AnyINode, value: str, expr: WDL.Expr.Base | None
+) -> AnyINode:
     """
     Make a new File or Directory of the same type as the example with the given arguments.
 
@@ -704,6 +721,7 @@ def make_inode(example_inode: AnyINode, value: str, expr: Optional[WDL.Expr.Base
     """
 
     return cast(AnyINode, type(example_inode)(value, expr))
+
 
 def set_inode_value(inode: AnyINode, new_value: str) -> AnyINode:
     """
@@ -736,9 +754,7 @@ def get_inode_nonexistent(inode: WDLINode) -> bool:
     return cast(bool, getattr(inode, "nonexistent", False))
 
 
-def set_inode_virtualized_value(
-    inode: AnyINode, virtualized_value: str
-) -> AnyINode:
+def set_inode_virtualized_value(inode: AnyINode, virtualized_value: str) -> AnyINode:
     """
     Return a copy of a WDL File/Directory with the virtualized_value attribute set.
 
@@ -750,14 +766,14 @@ def set_inode_virtualized_value(
     return new_inode
 
 
-def get_inode_virtualized_value(inode: WDLINode) -> Optional[str]:
+def get_inode_virtualized_value(inode: WDLINode) -> str | None:
     """
     Get the virtualized storage location for a File/Directory.
     """
     return cast(Optional[str], getattr(inode, "virtualized_value", None))
 
 
-def get_shared_fs_path(inode: WDLINode) -> Optional[str]:
+def get_shared_fs_path(inode: WDLINode) -> str | None:
     """
     If a File/Directory has a shared filesystem path, get that path.
 
@@ -810,7 +826,7 @@ def view_shared_fs_paths(
 
 
 def poll_execution_cache(
-    node: Union[WDL.Tree.Workflow, WDL.Tree.Task], bindings: WDLBindings
+    node: WDL.Tree.Workflow | WDL.Tree.Task, bindings: WDLBindings
 ) -> tuple[WDLBindings | None, str]:
     """
     Return the cached result of calling this workflow or task, and its key.
@@ -828,7 +844,7 @@ def poll_execution_cache(
     # TODO: Ship config from leader? It might not see the right environment.
     miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
     miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
-    cached_result: Optional[WDLBindings] = miniwdl_cache.get(
+    cached_result: WDLBindings | None = miniwdl_cache.get(
         cache_key, transformed_bindings, node.effective_outputs
     )
     if cached_result is not None:
@@ -844,8 +860,8 @@ def fill_execution_cache(
     output_bindings: WDLBindings,
     file_store: AbstractFileStore,
     wdl_options: WDLContext,
-    miniwdl_logger: Optional[logging.Logger] = None,
-    miniwdl_config: Optional[WDL.runtime.config.Loader] = None,
+    miniwdl_logger: logging.Logger | None = None,
+    miniwdl_config: WDL.runtime.config.Loader | None = None,
 ) -> WDLBindings:
     """
     Cache the result of calling a workflow or task.
@@ -904,9 +920,7 @@ def fill_execution_cache(
             if virtualized is None:
                 # TODO: If we're passing things around by URL reference and
                 # some of them are file: is this actually allowed?
-                raise RuntimeError(
-                    f"{inode} caught escaping from task unvirtualized"
-                )
+                raise RuntimeError(f"{inode} caught escaping from task unvirtualized")
 
             # We need to save this somewhere.
             # This needs to exist before we can export to it. And now we know
@@ -929,7 +943,9 @@ def fill_execution_cache(
 
         return inode
 
-    output_bindings = map_over_inodes_in_bindings(output_bindings, assign_shared_fs_path)
+    output_bindings = map_over_inodes_in_bindings(
+        output_bindings, assign_shared_fs_path
+    )
 
     # Save the bindings to the cache, representing all files with their shared filesystem paths.
     miniwdl_cache.put(cache_key, view_shared_fs_paths(output_bindings))
@@ -938,6 +954,7 @@ def fill_execution_cache(
     # Keep using the transformed bindings so that later tasks use
     # the cached files in their input digests.
     return output_bindings
+
 
 def choose_human_readable_directory(
     root_dir: str,
@@ -1038,9 +1055,7 @@ def evaluate_decls_to_bindings(
                 each_decl, all_bindings, standard_library
             )
         else:
-            output_value = evaluate_decl(
-                each_decl, all_bindings, standard_library
-            )
+            output_value = evaluate_decl(each_decl, all_bindings, standard_library)
         if drop_missing_files:
             dropped_output_value = map_over_typed_inodes_in_value(
                 output_value, missing_inode_dropper(standard_library)
@@ -1138,6 +1153,7 @@ def extract_inode_values(environment: WDLBindings) -> list[str]:
     map_over_inodes_in_bindings(environment, add_value)
     return values
 
+
 def extract_inode_virtualized_values(environment: WDLBindings) -> list[str]:
     """
     Get a list of all File/Directory object virtualized values in the bindings.
@@ -1154,6 +1170,7 @@ def extract_inode_virtualized_values(environment: WDLBindings) -> list[str]:
 
     map_over_inodes_in_bindings(environment, add_value)
     return values
+
 
 def extract_toil_file_uris(environment: WDLBindings) -> Iterable[str]:
     """
@@ -1177,8 +1194,8 @@ def extract_toil_file_uris(environment: WDLBindings) -> Iterable[str]:
 
 def virtualize_inodes_in_bindings(
     environment: WDLBindings,
-    file_to_id: Dict[str, FileID],
-    file_to_metadata: Dict[str, FileMetadata],
+    file_to_id: dict[str, FileID],
+    file_to_metadata: dict[str, FileMetadata],
     task_path: str,
 ) -> WDLBindings:
     """
@@ -1231,9 +1248,9 @@ def convert_remote_files(
     environment: WDLBindings,
     file_source: AbstractJobStore,
     task_path: str,
-    search_paths: Optional[list[str]] = None,
+    search_paths: list[str] | None = None,
     import_remote_files: bool = True,
-    execution_dir: Optional[str] = None,
+    execution_dir: str | None = None,
 ) -> WDLBindings:
     """
     Resolve relative-URI files in the given environment and import all files.
@@ -1525,7 +1542,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     file, self._virtualize_filename(file.value)
                 )
             with open(
-                self._devirtualize_filename(get_inode_virtualized_value(file)), "r"
+                self._devirtualize_filename(get_inode_virtualized_value(file))
             ) as infile:
                 return parse(infile.read())
 
@@ -1603,9 +1620,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # Mark the inode nonexistent.
                 return set_inode_nonexistent(inode, True)
 
-        logger.debug(
-            "For %s got virtualized value %s", inode, virtualized_filename
-        )
+        logger.debug("For %s got virtualized value %s", inode, virtualized_filename)
         marked_inode = set_inode_virtualized_value(inode, virtualized_filename)
         return marked_inode
 
@@ -1631,8 +1646,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         filename: str,
         dest_path: str,
         file_source: AbstractFileStore | Toil,
-        export: Optional[bool] = None,
-        symlink: Optional[bool] = None
+        export: bool | None = None,
+        symlink: bool | None = None,
     ) -> None:
         """
         Given a filename/URI, write it to the given dest_path.
@@ -1670,7 +1685,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 )
                 if result != dest_path:
                     # We definitely want this to be put where we asked.
-                    raise RuntimeError(f"Tried to read file to {dest_path} but it went to {result} instead")
+                    raise RuntimeError(
+                        f"Tried to read file to {dest_path} but it went to {result} instead"
+                    )
             else:
                 raise RuntimeError(f"Unsupported file source: {file_source}")
         else:
@@ -1737,7 +1754,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 )
                 return result
             else:
-                logger.debug("Virtualized filename %s is not any of the %s cached items", filename, len(virtualized_to_devirtualized))
+                logger.debug(
+                    "Virtualized filename %s is not any of the %s cached items",
+                    filename,
+                    len(virtualized_to_devirtualized),
+                )
 
             if is_directory_url(filename):
                 # This points to a directory, so handle it as a tree.
@@ -1750,12 +1771,20 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
                 if is_toil_dir_url(filename):
                     # This is a Toil directory URL directory.
-                    base_dir_decoded, remaining_path, _, base_dir_source_uri, source_task = decode_directory(filename)
+                    (
+                        base_dir_decoded,
+                        remaining_path,
+                        _,
+                        base_dir_source_uri,
+                        source_task,
+                    ) = decode_directory(filename)
                     # We always set the directory URI and source task.
                     assert base_dir_source_uri is not None
                     assert source_task is not None
 
-                    contents = get_directory_contents_item(base_dir_decoded, remaining_path)
+                    contents = get_directory_contents_item(
+                        base_dir_decoded, remaining_path
+                    )
 
                     # This is a directory and we have its decoded structure.
                     assert not isinstance(contents, str)
@@ -1763,12 +1792,19 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     # Work out where the root uploaded directory would go
                     dir_basename = os.path.basename(urlsplit(base_dir_source_uri).path)
                     parent_url = urljoin(base_dir_source_uri, ".")
-                    parent_path = os.path.join(choose_human_readable_directory(
-                        dest_dir, source_task, parent_url
-                    ), dir_basename)
+                    parent_path = os.path.join(
+                        choose_human_readable_directory(
+                            dest_dir, source_task, parent_url
+                        ),
+                        dir_basename,
+                    )
 
                     # And where this particular subdirectory we're fetching goes
-                    dest_path = os.path.join(parent_path, remaining_path) if remaining_path is not None else parent_path
+                    dest_path = (
+                        os.path.join(parent_path, remaining_path)
+                        if remaining_path is not None
+                        else parent_path
+                    )
 
                     # contents is already a dict from basename to sub-dict or full URL.
                 else:
@@ -1789,7 +1825,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     # Synthesize a contents dict
                     contents = {}
 
-                    def list_recursively(url: str, contents_to_fill: DirectoryContents) -> None:
+                    def list_recursively(
+                        url: str, contents_to_fill: DirectoryContents
+                    ) -> None:
                         """
                         Recursively list the given URL into the given dict.
 
@@ -1814,7 +1852,10 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # Now we know we have filename (the directory), dest_path (the
                 # desired local path), and contents (all the files and
                 # subdirectories we need to materialize).
-                logger.debug("Devirtualizing %s directly contained items, and their children", len(contents))
+                logger.debug(
+                    "Devirtualizing %s directly contained items, and their children",
+                    len(contents),
+                )
 
                 for relative_path, item_value in directory_contents_items(contents):
                     # Recursively visit the directory itself and its contents.
@@ -1830,22 +1871,39 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                         item_devirtualized_path = os.path.join(dest_path, relative_path)
                     if item_virtualized_path in virtualized_to_devirtualized:
                         # This has been downloaded already
-                        assert virtualized_to_devirtualized[item_virtualized_path] == item_devirtualized_path, f"Devirtualized version of {item_virtualized_path} expected at {item_devirtualized_path} but is actually already at {virtualized_to_devirtualized[item_virtualized_path]}"
+                        assert (
+                            virtualized_to_devirtualized[item_virtualized_path]
+                            == item_devirtualized_path
+                        ), f"Devirtualized version of {item_virtualized_path} expected at {item_devirtualized_path} but is actually already at {virtualized_to_devirtualized[item_virtualized_path]}"
                         # We don't do the back-check because we will have
                         # entries with the directory URL *and* the base file ID
                         # URL for files.
                         assert os.path.exists(item_devirtualized_path)
-                    elif item_value is not None and item_value in virtualized_to_devirtualized:
+                    elif (
+                        item_value is not None
+                        and item_value in virtualized_to_devirtualized
+                    ):
                         # The target file is already downloaded.
                         # TODO: Are there circumstances where we're going to
                         # need multiple copies, such as distinct base
                         # directories that can't be nested?
-                        logger.debug("%s points to %s which is already cached", item_virtualized_path, item_value)
-                        assert virtualized_to_devirtualized[item_value] == item_devirtualized_path, f"Directory item {item_virtualized_path} points to file {item_value}, which was already devirtualized to {virtualized_to_devirtualized[item_value]}, but for the directory we need it to be at {item_devirtualized_path} instead!"
+                        logger.debug(
+                            "%s points to %s which is already cached",
+                            item_virtualized_path,
+                            item_value,
+                        )
+                        assert (
+                            virtualized_to_devirtualized[item_value]
+                            == item_devirtualized_path
+                        ), f"Directory item {item_virtualized_path} points to file {item_value}, which was already devirtualized to {virtualized_to_devirtualized[item_value]}, but for the directory we need it to be at {item_devirtualized_path} instead!"
                         assert os.path.exists(item_devirtualized_path)
                         # Cache the file's devirtualized version also under the directory-based path.
-                        virtualized_to_devirtualized[item_virtualized_path] = virtualized_to_devirtualized[item_value]
-                        logger.debug("Cache now has %s items", len(virtualized_to_devirtualized))
+                        virtualized_to_devirtualized[item_virtualized_path] = (
+                            virtualized_to_devirtualized[item_value]
+                        )
+                        logger.debug(
+                            "Cache now has %s items", len(virtualized_to_devirtualized)
+                        )
                     else:
                         # We need to download this now and cache it.
                         if item_value is None:
@@ -1856,12 +1914,22 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                             os.makedirs(item_devirtualized_path, exist_ok=True)
 
                             # Cache the directory
-                            logger.debug("Add %s to cache at %s", item_virtualized_path, item_devirtualized_path)
-                            virtualized_to_devirtualized[item_virtualized_path] = item_devirtualized_path
-                            devirtualized_to_virtualized[item_devirtualized_path] = item_virtualized_path
+                            logger.debug(
+                                "Add %s to cache at %s",
+                                item_virtualized_path,
+                                item_devirtualized_path,
+                            )
+                            virtualized_to_devirtualized[item_virtualized_path] = (
+                                item_devirtualized_path
+                            )
+                            devirtualized_to_virtualized[item_devirtualized_path] = (
+                                item_virtualized_path
+                            )
                         else:
                             # Download files from their stored locations.
-                            assert not os.path.exists(item_devirtualized_path), f"Virtualized file {item_virtualized_path} pointing to {item_value} already exists at {item_devirtualized_path}, but is not in cache. Back-cache says: {devirtualized_to_virtualized.get(item_devirtualized_path)}"
+                            assert not os.path.exists(
+                                item_devirtualized_path
+                            ), f"Virtualized file {item_virtualized_path} pointing to {item_value} already exists at {item_devirtualized_path}, but is not in cache. Back-cache says: {devirtualized_to_virtualized.get(item_devirtualized_path)}"
 
                             # Download, not allowing a symlink.
                             #
@@ -1879,21 +1947,38 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                                 item_devirtualized_path,
                                 file_source,
                                 export,
-                                symlink=False
+                                symlink=False,
                             )
 
-                            logger.debug("Add %s pointing to %s to cache at %s", item_virtualized_path, item_value, item_devirtualized_path)
+                            logger.debug(
+                                "Add %s pointing to %s to cache at %s",
+                                item_virtualized_path,
+                                item_value,
+                                item_devirtualized_path,
+                            )
                             # Cache the file in its own right
-                            virtualized_to_devirtualized[item_value] = item_devirtualized_path
-                            devirtualized_to_virtualized[item_devirtualized_path] = item_value
+                            virtualized_to_devirtualized[item_value] = (
+                                item_devirtualized_path
+                            )
+                            devirtualized_to_virtualized[item_devirtualized_path] = (
+                                item_value
+                            )
                             # And the directory entry as pointing to the file.
-                            virtualized_to_devirtualized[item_virtualized_path] = virtualized_to_devirtualized[item_value]
+                            virtualized_to_devirtualized[item_virtualized_path] = (
+                                virtualized_to_devirtualized[item_value]
+                            )
 
-                        logger.debug("Cache now has %s items", len(virtualized_to_devirtualized))
+                        logger.debug(
+                            "Cache now has %s items", len(virtualized_to_devirtualized)
+                        )
 
                 # We should now have it in the cache.
-                assert virtualized_to_devirtualized[filename] == dest_path, f"Cached devirtualized path for {filename} should be {dest_path} but is {virtualized_to_devirtualized[filename]} instead!"
-                logger.debug("Devirtualized %s as local directory %s", filename, dest_path)
+                assert (
+                    virtualized_to_devirtualized[filename] == dest_path
+                ), f"Cached devirtualized path for {filename} should be {dest_path} but is {virtualized_to_devirtualized[filename]} instead!"
+                logger.debug(
+                    "Devirtualized %s as local directory %s", filename, dest_path
+                )
                 # Return where we put it.
                 return dest_path
 
@@ -1915,7 +2000,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                         wdl_options,
                         devirtualized_to_virtualized,
                         virtualized_to_devirtualized,
-                        export
+                        export,
                     )
                 # Otherwise, we have a direct URL to a file to get. Base case.
 
@@ -1948,12 +2033,16 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # Download the file into it.
                 cls._write_uri_to(filename, dest_path, file_source, export)
 
-                logger.debug("Devirtualized %s as openable file %s", filename, dest_path)
+                logger.debug(
+                    "Devirtualized %s as openable file %s", filename, dest_path
+                )
 
                 # Store it in the cache
                 virtualized_to_devirtualized[filename] = dest_path
                 devirtualized_to_virtualized[dest_path] = filename
-                logger.debug("Cache now has %s items", len(virtualized_to_devirtualized))
+                logger.debug(
+                    "Cache now has %s items", len(virtualized_to_devirtualized)
+                )
                 return dest_path
         else:
             # This is a local file or file URL
@@ -2009,7 +2098,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         if real_path.startswith(execution_prefix):
             # This is a task working firectory relative file
-            return real_path[len(execution_prefix):]
+            return real_path[len(execution_prefix) :]
 
         if real_path.startswith(ltd_prefix):
             # This file is relative to the Toil working directory.
@@ -2019,10 +2108,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             #
             # We already inject _miniwdl_inputs in there, so just inject
             # another underscore-prefixed thing.
-            return "_toil_job/" + real_path[len(ltd_prefix):]
+            return "_toil_job/" + real_path[len(ltd_prefix) :]
 
         return path
-
 
     @memoize
     def _virtualize_filename(self, filename: str) -> str:
@@ -2113,7 +2201,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # Satisfy mypy. This should never happen though as we don't
                 # pass a shared file name (which is the only way import_file
                 # returns None)
-                raise RuntimeError("Failed to import URL %s into jobstore." % normalized_uri)
+                raise RuntimeError(
+                    "Failed to import URL %s into jobstore." % normalized_uri
+                )
             file_basename = os.path.basename(urlsplit(normalized_uri).path)
             # Get the URL to the parent directory and use that.
             parent_dir = urljoin(normalized_uri, ".")
@@ -2140,9 +2230,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # This is a previously devirtualized thing so we can just use the
                 # virtual version we remembered instead of reuploading it.
                 result = self._devirtualized_to_virtualized[abs_filename]
-                logger.debug(
-                    "Re-using virtualized WDL %s for %s", result, filename
-                )
+                logger.debug("Re-using virtualized WDL %s for %s", result, filename)
                 return result
 
             if not os.path.exists(abs_filename):
@@ -2177,7 +2265,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
-        self._miniwdl_cache: Optional[WDL.runtime.cache.CallCache] = None
+        self._miniwdl_cache: WDL.runtime.cache.CallCache | None = None
 
     def _virtualize_inode(
         self, inode: AnyINode, enforce_existence: bool = True
@@ -2188,10 +2276,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
         if (
             get_inode_virtualized_value(inode) is None
             and get_shared_fs_path(inode) is None
-            and (
-                not is_any_url(inode.value)
-                or is_file_url(inode.value)
-            )
+            and (not is_any_url(inode.value) or is_file_url(inode.value))
         ):
             # This is a never-virtualized inode that is a path or URI and
             # has no shared FS path associated with it. We just made it at
@@ -2215,7 +2300,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
                 "Applied shared filesystem path %s to %s that appears to "
                 "have been coerced from String at workflow scope.",
                 cache_path,
-                inode
+                inode,
             )
 
         # Do the virtualization
@@ -2686,7 +2771,9 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
                 raise FileNotFoundError(filename)
             filename = here
 
-        logger.debug("WDL task outputs stdlib thinks we really need to virtualize %s", filename)
+        logger.debug(
+            "WDL task outputs stdlib thinks we really need to virtualize %s", filename
+        )
         return super()._virtualize_filename(filename)
 
 
@@ -2751,6 +2838,7 @@ def evaluate_decl(
         log_bindings(logger.error, "Statement was evaluated in:", [environment])
         raise
 
+
 def evaluate_call_inputs(
     context: WDL.Error.SourceNode | WDL.Error.SourcePosition,
     expressions: dict[str, WDL.Expr.Base],
@@ -2796,8 +2884,7 @@ def evaluate_defaultable_decl(
         node.name in environment
         and not isinstance(environment[node.name], WDL.Value.Null)
     ) or (
-        isinstance(environment.get(node.name), WDL.Value.Null)
-        and node.type.optional
+        isinstance(environment.get(node.name), WDL.Value.Null) and node.type.optional
     ):
         logger.debug("Name %s is already defined, not using default", node.name)
         if not isinstance(environment[node.name].type, type(node.type)):
@@ -2813,7 +2900,6 @@ def evaluate_defaultable_decl(
             )
         logger.info("Defaulting %s to %s", node.name, node.expr)
         return evaluate_decl(node, environment, stdlib)
-
 
 
 # TODO: make these stdlib methods???
@@ -2839,14 +2925,16 @@ def virtualize_inodes(
     logger.debug("Virtualizing files and directories")
     virtualize_func = cast(
         INodeTransform,
-        partial(
-            stdlib._virtualize_inode,
-            enforce_existence=enforce_existence
-        )
+        partial(stdlib._virtualize_inode, enforce_existence=enforce_existence),
     )
     return map_over_inodes_in_bindings(environment, virtualize_func)
 
-def delete_dead_files(internal_bindings: WDLBindings, live_bindings_list: list[WDLBindings], file_store: AbstractFileStore) -> None:
+
+def delete_dead_files(
+    internal_bindings: WDLBindings,
+    live_bindings_list: list[WDLBindings],
+    file_store: AbstractFileStore,
+) -> None:
     """
     Delete any files that are in the given bindings but not in the live list.
 
@@ -2855,21 +2943,19 @@ def delete_dead_files(internal_bindings: WDLBindings, live_bindings_list: list[W
     """
 
     # Get all the files in the first bindings and not any of the others.
-    unused_files = set(
-        extract_toil_file_uris(internal_bindings)
-    ).difference(
-        *(
-            extract_toil_file_uris(bindings)
-            for bindings in live_bindings_list
-        )
+    unused_files = set(extract_toil_file_uris(internal_bindings)).difference(
+        *(extract_toil_file_uris(bindings) for bindings in live_bindings_list)
     )
 
     for file_uri in unused_files:
         # Delete them
-        assert is_toil_url(file_uri), f"Trying to clean up file {file_uri} not managed by Toil"
+        assert is_toil_url(
+            file_uri
+        ), f"Trying to clean up file {file_uri} not managed by Toil"
         logger.debug("Delete file %s that is not needed", file_uri)
         file_id, _, _, _ = unpack_toil_uri(file_uri)
         file_store.deleteGlobalFile(file_id)
+
 
 def all_parents(path: str) -> Iterable[str]:
     """
@@ -2895,6 +2981,7 @@ def all_parents(path: str) -> Iterable[str]:
             # Yield up to and including the root
             here = os.path.dirname(here).rstrip("/")
             yield here + "/"
+
 
 def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     """
@@ -2925,7 +3012,14 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     #
     # TODO: I wish I had a BWT here but that seems fiddly.
 
-    paths_with_slashes = (host_path + "/" if not host_path.endswith("/") and os.path.isdir(host_path) else host_path for host_path in host_paths)
+    paths_with_slashes = (
+        (
+            host_path + "/"
+            if not host_path.endswith("/") and os.path.isdir(host_path)
+            else host_path
+        )
+        for host_path in host_paths
+    )
     paths_by_length = list(sorted(paths_with_slashes, key=len))
 
     # This stores all the paths that need to be mounted, organized by top
@@ -2950,7 +3044,9 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     # We need to preserve sibling relationships among top items. So organize them by parents.
     top_items_by_parent = collections.defaultdict(list)
     for top_item in paths_by_top_item.keys():
-        top_items_by_parent[os.path.dirname(top_item.rstrip("/")) + "/"].append(top_item)
+        top_items_by_parent[os.path.dirname(top_item.rstrip("/")) + "/"].append(
+            top_item
+        )
 
     logger.debug("Top items by parent: %s", top_items_by_parent)
 
@@ -2978,13 +3074,16 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
             for host_path in paths_by_top_item[top_item]:
                 # Figure out where relative to the parent's assigned path
                 # in the container we should put this file/directory.
-                container_path = os.path.join(parent_container_base, host_path[len(parent):])
+                container_path = os.path.join(
+                    parent_container_base, host_path[len(parent) :]
+                )
 
                 # Put it there.
                 task_container.input_path_map[host_path] = container_path
                 task_container.input_path_map_rev[container_path] = host_path
 
                 logger.debug("Mount %s at %s", host_path, container_path)
+
 
 def drop_if_missing(
     inode: WDLINode, standard_library: ToilWDLStdLibBase
@@ -3002,12 +3101,9 @@ def drop_if_missing(
     if reference is not None and is_any_url(reference):
         try:
             if (
-                is_toil_file_url(reference) or
-                (
-                    is_toil_dir_url(reference) and
-                    directory_item_exists(reference)
-                ) or
-                URLAccess.url_exists(reference)
+                is_toil_file_url(reference)
+                or (is_toil_dir_url(reference) and directory_item_exists(reference))
+                or URLAccess.url_exists(reference)
             ):
                 # We assume anything in the filestore actually exists.
                 devirtualized_filename = standard_library._devirtualize_filename(
@@ -3033,9 +3129,7 @@ def drop_if_missing(
             raise
     else:
         # Get the absolute path, not resolving symlinks
-        effective_path = os.path.abspath(
-            os.path.join(work_dir, reference)
-        )
+        effective_path = os.path.abspath(os.path.join(work_dir, reference))
         if os.path.islink(effective_path) or os.path.exists(effective_path):
             # This is a broken symlink or a working symlink or a file/directory.
             return inode
@@ -3048,6 +3142,7 @@ def drop_if_missing(
             )
             return None
 
+
 def missing_inode_dropper(standard_library: ToilWDLStdLibBase) -> INodeTransform:
     """
     Get a function to null out missing File/Directory values.
@@ -3059,12 +3154,9 @@ def missing_inode_dropper(standard_library: ToilWDLStdLibBase) -> INodeTransform
     # We need this to wrap partial() because MyPy can't really understand the
     # effects of partial() on making a function match a protocol.
     return cast(
-        INodeTransform,
-        partial(
-            drop_if_missing,
-            standard_library=standard_library
-        )
+        INodeTransform, partial(drop_if_missing, standard_library=standard_library)
     )
+
 
 def drop_missing_files(
     environment: WDLBindings, standard_library: ToilWDLStdLibBase
@@ -3076,7 +3168,9 @@ def drop_missing_files(
     Files must not be virtualized.
     """
 
-    return map_over_inodes_in_bindings(environment, missing_inode_dropper(standard_library))
+    return map_over_inodes_in_bindings(
+        environment, missing_inode_dropper(standard_library)
+    )
 
 
 def get_paths_in_bindings(environment: WDLBindings) -> list[str]:
@@ -3135,12 +3229,14 @@ def map_over_inodes_in_binding(
         binding.info,
     )
 
+
 def remove_expr_from_value(value: WDL.Value.Base) -> WDL.Value.Base:
     """
     Remove the expression from a WDL value
     :param value: Original WDL value
     :return: New WDL value without the expr field
     """
+
     # TODO: This is an extra copy that we could get rid of by dropping the immutability idea
     def predicate(value: WDL.Value.Base) -> WDL.Value.Base:
         # Do a shallow copy to preserve immutability
@@ -3155,7 +3251,9 @@ def remove_expr_from_value(value: WDL.Value.Base) -> WDL.Value.Base:
         else:
             new_value._expr = value.expr
         return new_value
+
     return map_over_typed_value(value, predicate)
+
 
 # TODO: We want to type this to say, for anything descended from a WDL type, we
 # return something descended from the same WDL type or a null. But I can't
@@ -3164,7 +3262,9 @@ def remove_expr_from_value(value: WDL.Value.Base) -> WDL.Value.Base:
 #
 # For now we assume that any types extending the WDL value types will implement
 # compatible constructors.
-def map_over_typed_value(value: WDL.Value.Base, transform: Callable[[WDL.Value.Base], WDL.Value.Base]) -> WDL.Value.Base:
+def map_over_typed_value(
+    value: WDL.Value.Base, transform: Callable[[WDL.Value.Base], WDL.Value.Base]
+) -> WDL.Value.Base:
     """
     Apply a transform to a WDL value and all contained WDL values.
     :param value: WDL value to transform
@@ -3207,10 +3307,7 @@ def map_over_typed_value(value: WDL.Value.Base, transform: Callable[[WDL.Value.B
         # This is a struct, so recurse on the values in the backing dict
         value = WDL.Value.Struct(
             cast(Union[WDL.Type.StructInstance, WDL.Type.Object], value.type),
-            {
-                k: map_over_typed_value(v, transform)
-                for k, v in value.value.items()
-            },
+            {k: map_over_typed_value(v, transform) for k, v in value.value.items()},
             value.expr,
         )
     # Run the predicate on the final value
@@ -3235,6 +3332,7 @@ def map_over_typed_inodes_in_value(
     actually be used, to allow for scans. So error checking needs to be part of
     the transform itself.
     """
+
     def predicate(value: WDL.Value.Base) -> WDL.Value.Base:
         if is_inode(value):
             # This is a File or Directory so we need to process it
@@ -3402,7 +3500,9 @@ class WDLBaseJob(Job):
     def remove_expr_from_bindings(self, bindings: WDLBindings) -> WDLBindings:
         # We have to throw out the expressions because they drag the entire WDL document into the WDL outputs
         # which causes duplicate pickling and linear growth in scatter memory usage
-        return bindings.map(lambda b: WDL.Env.Binding(b.name, remove_expr_from_value(b.value), b.info))
+        return bindings.map(
+            lambda b: WDL.Env.Binding(b.name, remove_expr_from_value(b.value), b.info)
+        )
 
     def postprocess(self, bindings: WDLBindings) -> WDLBindings:
         """
@@ -3553,15 +3653,11 @@ class WDLTaskWrapperJob(WDLBaseJob):
             # Throw away anything input but not available outside the call or
             # output.
             delete_dead_files(
-                bindings,
-                [cached_bindings, self._enclosing_bindings],
-                file_store
+                bindings, [cached_bindings, self._enclosing_bindings], file_store
             )
 
             # Postprocess and ship the output bindings.
-            return self.postprocess(
-                cached_bindings
-            )
+            return self.postprocess(cached_bindings)
 
         if self._task.inputs:
             logger.debug("Evaluating task code")
@@ -3571,7 +3667,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
                 bindings,
                 standard_library,
                 include_previous=True,
-                expressions_are_defaults=True
+                expressions_are_defaults=True,
             )
         if self._task.postinputs:
             # Evaluate all the postinput decls.
@@ -4135,8 +4231,10 @@ class WDLTaskJob(WDLBaseJob):
                     "is not yet implemented in the MiniWDL Docker "
                     "containerization implementation."
                 )
-            if runtime_bindings.has_binding("memory") and human2bytes(runtime_bindings.resolve("memory").value) < human2bytes("4MiB"):
-                    runtime_bindings.resolve("memory").value = "4MiB"
+            if runtime_bindings.has_binding("memory") and human2bytes(
+                runtime_bindings.resolve("memory").value
+            ) < human2bytes("4MiB"):
+                runtime_bindings.resolve("memory").value = "4MiB"
         else:
             raise RuntimeError(
                 f"Could not find a working container engine to use; told to use {self._wdl_options.get('container')}"
@@ -4540,7 +4638,7 @@ class WDLTaskJob(WDLBaseJob):
         delete_dead_files(
             combine_bindings([bindings, runtime_bindings]),
             [output_bindings, self._enclosing_bindings],
-            file_store
+            file_store,
         )
         # If File objects somehow made it to the runtime block they shouldn't
         # have been virtualized so don't bother with them.
@@ -4598,7 +4696,9 @@ class WDLWorkflowNodeJob(WDLBaseJob):
             value = evaluate_decl(self._node, incoming_bindings, standard_library)
             bindings = incoming_bindings.bind(self._node.name, value)
             # TODO: Only virtualize the new binding
-            return self.postprocess(virtualize_inodes(bindings, standard_library, enforce_existence=False))
+            return self.postprocess(
+                virtualize_inodes(bindings, standard_library, enforce_existence=False)
+            )
         elif isinstance(self._node, WDL.Tree.Call):
             # This is a call of a task or workflow
 
@@ -4620,7 +4720,9 @@ class WDLWorkflowNodeJob(WDLBaseJob):
                 inputs_mapping,
             )
             # Prepare call inputs to move to another node
-            input_bindings = virtualize_inodes(input_bindings, standard_library, enforce_existence=False)
+            input_bindings = virtualize_inodes(
+                input_bindings, standard_library, enforce_existence=False
+            )
 
             # Bindings may also be added in from the enclosing workflow inputs
             # TODO: this is letting us also inject them from the workflow body.
@@ -4752,7 +4854,11 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
                 )
 
         # TODO: Only virtualize the new bindings created
-        return self.postprocess(virtualize_inodes(current_bindings, standard_library, enforce_existence=False))
+        return self.postprocess(
+            virtualize_inodes(
+                current_bindings, standard_library, enforce_existence=False
+            )
+        )
 
 
 class WDLCombineBindingsJob(WDLBaseJob):
@@ -5607,7 +5713,9 @@ class WDLWorkflowJob(WDLSectionJob):
                     [(p, p) for p in standard_library.get_local_paths()]
                 )
 
-        bindings = virtualize_inodes(bindings, standard_library, enforce_existence=False)
+        bindings = virtualize_inodes(
+            bindings, standard_library, enforce_existence=False
+        )
         # Make jobs to run all the parts of the workflow
         sink = self.create_subgraph(self._workflow.body, [], bindings)
 
@@ -5754,10 +5862,11 @@ class WDLOutputsJob(WDLBaseJob):
         delete_dead_files(
             unwrap(self._bindings),
             [output_bindings, self._enclosing_bindings],
-            file_store
+            file_store,
         )
 
         return self.postprocess(output_bindings)
+
 
 class WDLStartJob(WDLSectionJob):
     """
@@ -5826,7 +5935,7 @@ class WDLInstallImportsJob(Job):
         self,
         task_path: str,
         inputs: WDLBindings,
-        import_data: Promised[Tuple[Dict[str, FileID], Dict[str, FileMetadata]]],
+        import_data: Promised[tuple[dict[str, FileID], dict[str, FileMetadata]]],
         **kwargs: Any,
     ) -> None:
         """
@@ -5847,7 +5956,9 @@ class WDLInstallImportsJob(Job):
         """
         candidate_to_fileid = unwrap(self._import_data)[0]
         file_to_metadata = unwrap(self._import_data)[1]
-        return virtualize_inodes_in_bindings(self._inputs, candidate_to_fileid, file_to_metadata, self._task_path)
+        return virtualize_inodes_in_bindings(
+            self._inputs, candidate_to_fileid, file_to_metadata, self._task_path
+        )
 
 
 class WDLImportWrapper(WDLSectionJob):
@@ -5860,7 +5971,7 @@ class WDLImportWrapper(WDLSectionJob):
 
     def __init__(
         self,
-        target: Union[WDL.Tree.Workflow, WDL.Tree.Task],
+        target: WDL.Tree.Workflow | WDL.Tree.Task,
         inputs: WDLBindings,
         wdl_options: WDLContext,
         inputs_search_path: list[str],
@@ -5889,9 +6000,11 @@ class WDLImportWrapper(WDLSectionJob):
             file_store.jobStore,
             self._inputs_search_path,
             include_remote_files=self._import_remote_files,
-            execution_dir=self._wdl_options.get("execution_dir")
+            execution_dir=self._wdl_options.get("execution_dir"),
         )
-        imports_job = ImportsJob(file_to_metadata, self._import_workers_batchsize, self._import_workers_disk)
+        imports_job = ImportsJob(
+            file_to_metadata, self._import_workers_batchsize, self._import_workers_disk
+        )
         self.addChild(imports_job)
         install_imports_job = WDLInstallImportsJob(
             self._target.name, self._inputs, imports_job.rv()
@@ -5924,7 +6037,7 @@ def make_root_job(
             inputs_search_path=inputs_search_path,
             import_remote_files=options.reference_inputs,
             import_workers_batchsize=options.import_workers_batchsize,
-            import_workers_disk=options.import_workers_disk
+            import_workers_disk=options.import_workers_disk,
         )
     else:
         # Run WDL imports on leader
@@ -5964,7 +6077,7 @@ def main() -> None:
         raise RuntimeError(
             f"Workflow inputs cannot be specified with both the -i/--input/--inputs flag "
             f"and as a positional argument at the same time. Cannot use both "
-            f"\"{input_sources[0]}\" and \"{input_sources[1]}\"."
+            f'"{input_sources[0]}" and "{input_sources[1]}".'
         )
 
     # Make sure we have an output directory (or URL prefix) and we don't need
@@ -5977,9 +6090,13 @@ def main() -> None:
     )
 
     try:
-        wdl_uri, trs_spec = resolve_workflow(options.wdl_uri, supported_languages={"WDL"})
+        wdl_uri, trs_spec = resolve_workflow(
+            options.wdl_uri, supported_languages={"WDL"}
+        )
 
-        with Toil(options, workflow_name=trs_spec or wdl_uri, trs_spec=trs_spec) as toil:
+        with Toil(
+            options, workflow_name=trs_spec or wdl_uri, trs_spec=trs_spec
+        ) as toil:
             # TODO: Move all the input parsing outside the Toil context
             # manager to avoid leaving a job store behind if the workflow
             # can't start.
@@ -5995,9 +6112,7 @@ def main() -> None:
 
             # Load the WDL document.
             document: WDL.Tree.Document = WDL.load(
-                wdl_uri,
-                read_source=toil_read_source,
-                check_quant=options.quant_check
+                wdl_uri, read_source=toil_read_source, check_quant=options.quant_check
             )
 
             # See if we're going to run a workflow or a task
@@ -6053,12 +6168,16 @@ def main() -> None:
             )  # type: ignore[no-untyped-call]
 
             if getattr(WDL.Lint, "_shellcheck_available", None) is False:
-                logger.info("Suggestion: install shellcheck (www.shellcheck.net) to check task commands")
+                logger.info(
+                    "Suggestion: install shellcheck (www.shellcheck.net) to check task commands"
+                )
 
             if lint_warnings_counter[0]:
-                logger.warning('Workflow lint warnings:\n%s', lint_warnings_io.getvalue().rstrip())
+                logger.warning(
+                    "Workflow lint warnings:\n%s", lint_warnings_io.getvalue().rstrip()
+                )
                 if options.strict:
-                    logger.critical(f'Workflow did not pass linting in strict mode')
+                    logger.critical(f"Workflow did not pass linting in strict mode")
                     # MiniWDL uses exit code 2 to indicate linting errors, so replicate that behavior
                     sys.exit(2)
 

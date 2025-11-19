@@ -2,42 +2,34 @@ import json
 import logging
 import os
 import re
-import shutil
 import string
 import subprocess
 import unittest
 from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Optional, Union, cast
+from typing import Any, cast
 from unittest.mock import patch
 from urllib.parse import quote
 from uuid import uuid4
 
 import pytest
+import WDL.Error
+import WDL.Expr
 from pytest_httpserver import HTTPServer
 from pytest_subtests import SubTests
 
-import WDL.Error
-import WDL.Expr
-
 from toil.fileStores import FileID
 from toil.test import (
-    ToilTest,
     get_data,
     needs_docker,
     needs_docker_cuda,
     needs_google_storage,
     needs_online,
     needs_singularity_or_docker,
-    needs_wdl,
     slow,
 )
 from toil.version import exactPython
-from toil.wdl.wdltoil import (
-    WDLSectionJob,
-    WDLWorkflowGraph,
-    parse_disks,
-)
+from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph, parse_disks
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +78,7 @@ WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + 
     "outputs_task",  # 'outputs' section expected 2 results (['outputs.threshold', 'outputs.two_csvs']), got 3 instead (['outputs.two_csvs', 'outputs.csvs', 'outputs.threshold']) with exit code 0
     "glob_task",  # 'outputs' section expected 1 results (['glob.last_file_contents']), got 2 instead (['glob.last_file_contents', 'glob.outfiles']) with exit code 0
     "test_hints_task",  # Test is written as if the file has 3 lines, but it really has 2. See https://github.com/openwdl/wdl/issues/741
-    "input_hint_task", # Missing outputs in test definition: https://github.com/openwdl/wdl/issues/740
+    "input_hint_task",  # Missing outputs in test definition: https://github.com/openwdl/wdl/issues/740
     "test_allow_nested_inputs",  # Ln 27 Col 3: Unexpected token HINTS
     "multi_nested_inputs",  # Ln 8 Col 9: Unexpected token STRING1_FRAGMENT
     "allow_nested",  # Ln 32 Col 9: Unexpected token STRING1_FRAGMENT
@@ -244,9 +236,7 @@ class TestWDLConformance:
         ]
         if WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL:
             commands.append("--exclude-ids")
-            commands.append(
-                ",".join(WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL)
-            )
+            commands.append(",".join(WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL))
         p = subprocess.run(commands, capture_output=True)
 
         self.check(p)
@@ -267,9 +257,7 @@ class TestWDLConformance:
         ]
         if WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL:
             commands.append("--exclude-ids")
-            commands.append(
-                ",".join(WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL)
-            )
+            commands.append(",".join(WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL))
         p = subprocess.run(commands, capture_output=True)
 
         self.check(p)
@@ -277,7 +265,9 @@ class TestWDLConformance:
     # estimated running time: 10 minutes (once all the appropriate tests get
     # marked as "development")
     @slow
-    def test_conformance_tests_development(self, wdl_conformance_test_repo: Path) -> None:
+    def test_conformance_tests_development(
+        self, wdl_conformance_test_repo: Path
+    ) -> None:
         os.chdir(wdl_conformance_test_repo)
         commands = [
             exactPython,
@@ -291,9 +281,7 @@ class TestWDLConformance:
         ]
         if WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL:
             commands.append("--exclude-ids")
-            commands.append(
-                ",".join(WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL)
-            )
+            commands.append(",".join(WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL))
         p = subprocess.run(commands, capture_output=True)
 
         self.check(p)
@@ -366,7 +354,7 @@ class TestWDL:
                 # We need to wrap the absolute path to the input file in a JSON as a URI.
                 file_uri = f"file:{quote(os.path.abspath(input_file))}"
 
-                 # Then put that in inline input JSON
+                # Then put that in inline input JSON
                 input_json = json.dumps({"ga4ghMd5.inputFile": file_uri})
 
                 for worker_import in (False, True):
@@ -385,7 +373,9 @@ class TestWDL:
                             + (
                                 [
                                     "--runImportsOnWorkers",
-                                ] if worker_import else []
+                                ]
+                                if worker_import
+                                else []
                             )
                         )
                         result = json.loads(result_json)
@@ -393,7 +383,9 @@ class TestWDL:
                         assert "ga4ghMd5.value" in result
                         assert isinstance(result["ga4ghMd5.value"], str)
                         assert os.path.exists(result["ga4ghMd5.value"])
-                        assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
+                        assert (
+                            os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
+                        )
 
     @needs_online
     def test_url_to_file(self, tmp_path: Path) -> None:
@@ -425,7 +417,7 @@ class TestWDL:
                         "-o",
                         str(tmp_path),
                         "--logInfo",
-                        "--retryCount=0"
+                        "--retryCount=0",
                     ]
                 )
                 result = json.loads(result_json)
@@ -440,13 +432,7 @@ class TestWDL:
         with get_data("test/wdl/testfiles/gather.wdl") as wdl:
             result_json = subprocess.check_output(
                 self.base_command
-                + [
-                    str(wdl),
-                    "-o",
-                    str(tmp_path),
-                    "--logInfo",
-                    "--retryCount=0"
-                ]
+                + [str(wdl), "-o", str(tmp_path), "--logInfo", "--retryCount=0"]
             )
             result = json.loads(result_json)
 
@@ -485,25 +471,20 @@ class TestWDL:
             out_dir = tmp_path / "out"
             file_path = tmp_path / "file"
             jobstore_path = tmp_path / "tree"
-            command = (
-                self.base_command
-                + [
-                    str(wdl),
-                    "-o",
-                    str(out_dir),
-                    "-i",
-                    json.dumps({"read_file.input_string": str(file_path)}),
-                    "--jobStore",
-                    str(jobstore_path),
-                    "--retryCount=0"
-                ]
-            )
+            command = self.base_command + [
+                str(wdl),
+                "-o",
+                str(out_dir),
+                "-i",
+                json.dumps({"read_file.input_string": str(file_path)}),
+                "--jobStore",
+                str(jobstore_path),
+                "--retryCount=0",
+            ]
             with pytest.raises(subprocess.CalledProcessError):
                 # The first time we run it, it should fail because it's trying
                 # to work on a nonexistent file from a string path.
-                result_json = subprocess.check_output(
-                    command + ["--logCritical"]
-                )
+                result_json = subprocess.check_output(command + ["--logCritical"])
 
             # Then create the file
             with open(file_path, "w") as f:
@@ -511,16 +492,14 @@ class TestWDL:
                 f.write("This is a different line")
 
             # Now it should work
-            result_json = subprocess.check_output(
-                    command + ["--restart"]
-                )
+            result_json = subprocess.check_output(command + ["--restart"])
             result = json.loads(result_json)
 
             assert "read_file.lines" in result
             assert isinstance(result["read_file.lines"], list)
             assert result["read_file.lines"] == [
                 "This is a line",
-                "This is a different line"
+                "This is a different line",
             ]
 
             # Since we were catching
@@ -832,15 +811,14 @@ class TestWDL:
                 Return the parsed output.
                 """
                 logger.info("Test optional file with HTTP code %s", code)
-                httpserver.expect_request(
-                    "/" + str(code)
-                ).respond_with_data(
-                    "Some data",
-                    status=code,
-                    content_type="text/plain"
+                httpserver.expect_request("/" + str(code)).respond_with_data(
+                    "Some data", status=code, content_type="text/plain"
                 )
                 base_url = httpserver.url_for("/")
-                json_value = '{"url_to_optional_file.http_code": %d, "url_to_optional_file.base_url": "%s"}' % (code, base_url)
+                json_value = (
+                    '{"url_to_optional_file.http_code": %d, "url_to_optional_file.base_url": "%s"}'
+                    % (code, base_url)
+                )
                 result_json = subprocess.check_output(
                     self.base_command
                     + [
@@ -893,7 +871,7 @@ class TestWDL:
 
     @needs_singularity_or_docker
     def test_miniwdl_self_test(
-        self, tmp_path: Path, extra_args: Optional[list[str]] = None
+        self, tmp_path: Path, extra_args: list[str] | None = None
     ) -> None:
         """Test if the MiniWDL self test runs and produces the expected output."""
         with get_data("test/wdl/miniwdl_self_test/self_test.wdl") as wdl_file:
@@ -972,7 +950,7 @@ class TestWDL:
     @pytest.mark.integrative
     @needs_singularity_or_docker
     def test_dockstore_trs(
-        self, tmp_path: Path, extra_args: Optional[list[str]] = None
+        self, tmp_path: Path, extra_args: list[str] | None = None
     ) -> None:
         wdl_file = "#workflow/github.com/dockstore/bcc2020-training/HelloWorld:master"
         # Needs an input but doesn't provide a good one.
@@ -1006,7 +984,7 @@ class TestWDL:
     @pytest.mark.integrative
     @needs_singularity_or_docker
     def test_dockstore_metrics_publication(
-        self, tmp_path: Path, extra_args: Optional[list[str]] = None
+        self, tmp_path: Path, extra_args: list[str] | None = None
     ) -> None:
         wdl_file = "#workflow/github.com/dockstore/bcc2020-training/HelloWorld:master"
         # Needs an input but doesn't provide a good one.
@@ -1020,7 +998,9 @@ class TestWDL:
         # Set credentials we got permission to publish from the Dockstore team,
         # and work on the staging Dockstore.
         env["TOIL_TRS_ROOT"] = "https://staging.dockstore.org"
-        env["TOIL_DOCKSTORE_TOKEN"] = "99cf5578ebe94b194d7864630a86258fa3d6cedcc17d757b5dd49e64ee3b68c3"
+        env["TOIL_DOCKSTORE_TOKEN"] = (
+            "99cf5578ebe94b194d7864630a86258fa3d6cedcc17d757b5dd49e64ee3b68c3"
+        )
         # Enable history for when <https://github.com/DataBiosphere/toil/pull/5258> merges
         env["TOIL_HISTORY"] = "True"
 
@@ -1042,10 +1022,15 @@ class TestWDL:
                 env=env,
             ).decode("utf-8", errors="replace")
         except subprocess.CalledProcessError as e:
-            logger.error("Test run of Toil failed: %s", e.stdout.decode("utf-8", errors="replace"))
+            logger.error(
+                "Test run of Toil failed: %s",
+                e.stdout.decode("utf-8", errors="replace"),
+            )
             raise
 
-        assert "Workflow metrics were accepted by Dockstore." in output_log, f"No acceptance message in log: {output_log}"
+        assert (
+            "Workflow metrics were accepted by Dockstore." in output_log
+        ), f"No acceptance message in log: {output_log}"
 
     @slow
     @needs_docker_cuda
@@ -1150,19 +1135,24 @@ class TestWDL:
         """Test that Toil's lint check works"""
         with get_data("test/wdl/lint_error.wdl") as wdl:
             out = subprocess.check_output(
-                self.base_command + [str(wdl), "-o", str(tmp_path), "--logInfo"], stderr=subprocess.STDOUT)
+                self.base_command + [str(wdl), "-o", str(tmp_path), "--logInfo"],
+                stderr=subprocess.STDOUT,
+            )
 
-            assert b'UnnecessaryQuantifier' in out
+            assert b"UnnecessaryQuantifier" in out
 
             p = subprocess.Popen(
-                self.base_command + [wdl, "--strict=True", "--logCritical"], stderr=subprocess.PIPE)
+                self.base_command + [wdl, "--strict=True", "--logCritical"],
+                stderr=subprocess.PIPE,
+            )
             # Not actually a test assert; we need this to teach MyPy that we
             # get an stderr when we pass stderr=subprocess.PIPE.
             assert p.stderr is not None
             stderr = p.stderr.read()
             p.wait()
             assert p.returncode == 2
-            assert b'Workflow did not pass linting in strict mode' in stderr
+            assert b"Workflow did not pass linting in strict mode" in stderr
+
 
 class TestWDLToilBench(unittest.TestCase):
     """Tests for Toil's MiniWDL-based implementation that don't run workflows."""
@@ -1273,14 +1263,16 @@ class TestWDLToilBench(unittest.TestCase):
                     assert "decl2" in result[0]
                     assert "successor" in result[1]
 
-    def make_string_expr(self, to_parse: str, expr_type: type[WDL.Expr.String] = WDL.Expr.String) -> WDL.Expr.String:
+    def make_string_expr(
+        self, to_parse: str, expr_type: type[WDL.Expr.String] = WDL.Expr.String
+    ) -> WDL.Expr.String:
         """
         Parse pseudo-WDL for testing whitespace removal.
         """
 
         pos = WDL.Error.SourcePosition("nowhere", "nowhere", 0, 0, 0, 0)
 
-        parts: list[Union[str, WDL.Expr.Placeholder]] = re.split("(~{[^}]*})", to_parse)
+        parts: list[str | WDL.Expr.Placeholder] = re.split("(~{[^}]*})", to_parse)
         for i in range(1, len(parts), 2):
             parts[i] = WDL.Expr.Placeholder(pos, {}, WDL.Expr.Null(pos))
 
@@ -1291,9 +1283,7 @@ class TestWDLToilBench(unittest.TestCase):
         Test to make sure that we pick sensible but non-colliding directories to put files in.
         """
 
-        from toil.wdl.wdltoil import (
-            choose_human_readable_directory,
-        )
+        from toil.wdl.wdltoil import choose_human_readable_directory
 
         # The first time we should get a path with the task name
         first_chosen = choose_human_readable_directory(

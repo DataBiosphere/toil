@@ -13,15 +13,14 @@
 # limitations under the License.
 import logging
 import os
-
 from unittest import mock
 
 from toil.lib.aws.ami import (
+    ReleaseFeedUnavailableError,
     aws_marketplace_flatcar_ami_search,
     feed_flatcar_ami_release,
     flatcar_release_feed_ami,
     get_flatcar_ami,
-    ReleaseFeedUnavailableError
 )
 from toil.test import ToilTest, needs_aws_ec2, needs_online
 

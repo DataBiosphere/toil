@@ -14,8 +14,8 @@
 import json
 import logging
 import os
-import platform
 import pickle
+import platform
 import re
 import signal
 import subprocess
@@ -33,13 +33,13 @@ from argparse import (
     _StoreFalseAction,
     _StoreTrueAction,
 )
+from collections.abc import Callable
 from functools import lru_cache
 from types import TracebackType
 from typing import (
     IO,
     TYPE_CHECKING,
     Any,
-    Callable,
     ContextManager,
     Literal,
     Optional,
@@ -72,12 +72,17 @@ from toil.bus import (
 from toil.fileStores import FileID
 from toil.lib.compatibility import deprecated
 from toil.lib.history import HistoryManager
-from toil.lib.history_submission import ask_user_about_publishing_metrics, create_history_submission, create_current_submission
-from toil.lib.io import AtomicFileCreate, try_path, get_toil_home
-from toil.lib.misc import StrPath
+from toil.lib.history_submission import (
+    ask_user_about_publishing_metrics,
+    create_current_submission,
+    create_history_submission,
+)
+from toil.lib.io import AtomicFileCreate, get_toil_home, try_path
 from toil.lib.memoize import memoize
+from toil.lib.misc import StrPath
 from toil.lib.retry import retry
 from toil.lib.threading import ensure_filesystem_lockable
+from toil.lib.url import URLAccess
 from toil.options.common import JOBSTORE_HELP, add_base_toil_options
 from toil.options.cwl import add_cwl_options
 from toil.options.runner import add_runner_options
@@ -85,8 +90,7 @@ from toil.options.wdl import add_wdl_options
 from toil.provisioners import add_provisioner_options, cluster_factory
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import add_logging_options, set_logging_from_options
-from toil.version import dockerRegistry, dockerTag, version, baseVersion
-from toil.lib.url import URLAccess
+from toil.version import baseVersion, dockerRegistry, dockerTag, version
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
@@ -99,6 +103,7 @@ if TYPE_CHECKING:
 UUID_LENGTH = 32
 logger = logging.getLogger(__name__)
 
+
 @memoize
 def get_default_config_path() -> str:
     """
@@ -108,10 +113,11 @@ def get_default_config_path() -> str:
     """
     return os.path.join(get_toil_home(), "default.yaml")
 
+
 class Config:
     """Class to represent configuration operations for a toil workflow run."""
 
-    logFile: Optional[str]
+    logFile: str | None
     logRotating: bool
     cleanWorkDir: str
     max_jobs: int
@@ -119,27 +125,27 @@ class Config:
     manualMemArgs: bool
     run_local_jobs_on_workers: bool
     coalesceStatusCalls: bool
-    mesos_endpoint: Optional[str]
-    mesos_framework_id: Optional[str]
-    mesos_role: Optional[str]
+    mesos_endpoint: str | None
+    mesos_framework_id: str | None
+    mesos_role: str | None
     mesos_name: str
-    kubernetes_host_path: Optional[str]
-    kubernetes_owner: Optional[str]
-    kubernetes_service_account: Optional[str]
+    kubernetes_host_path: str | None
+    kubernetes_owner: str | None
+    kubernetes_service_account: str | None
     kubernetes_pod_timeout: float
     kubernetes_privileged: bool
-    kubernetes_pod_security_context: Optional[str]
-    kubernetes_security_context: Optional[str]
+    kubernetes_pod_security_context: str | None
+    kubernetes_security_context: str | None
     tes_endpoint: str
     tes_user: str
     tes_password: str
     tes_bearer_token: str
-    aws_batch_region: Optional[str]
-    aws_batch_queue: Optional[str]
-    aws_batch_job_role_arn: Optional[str]
+    aws_batch_region: str | None
+    aws_batch_queue: str | None
+    aws_batch_job_role_arn: str | None
     scale: float
     batchSystem: str
-    batch_logs_dir: Optional[str]
+    batch_logs_dir: str | None
     """The backing scheduler will be instructed, if possible, to save logs
     to this directory, where the leader can read them."""
     statePollingWait: float
@@ -147,7 +153,7 @@ class Config:
     disableAutoDeployment: bool
 
     # Core options
-    workflowID: Optional[str]
+    workflowID: str | None
     """This attribute uniquely identifies the job store and therefore the workflow. It is
     necessary in order to distinguish between two consecutive workflows for which
     self.jobStore is the same, e.g. when a job store name is reused after a previous run has
@@ -156,14 +162,14 @@ class Config:
     jobStore: str
     logLevel: str
     colored_logs: bool
-    workDir: Optional[str]
-    coordination_dir: Optional[str]
+    workDir: str | None
+    coordination_dir: str | None
     noStdOutErr: bool
     stats: bool
 
     # Because the stats option needs the jobStore to persist past the end of the run,
     # the clean default value depends the specified stats option and is determined in setOptions
-    clean: Optional[str]
+    clean: str | None
     clusterStats: str
 
     # Restarting the workflow options
@@ -172,14 +178,14 @@ class Config:
     # Batch system options
 
     # File store options
-    caching: Optional[bool]
+    caching: bool | None
     symlinkImports: bool
     moveOutputs: bool
     symlink_job_store_reads: bool
 
     # Autoscaling options
-    provisioner: Optional[str]
-    nodeTypes: list[tuple[set[str], Optional[float]]]
+    provisioner: str | None
+    nodeTypes: list[tuple[set[str], float | None]]
     minNodes: list[int]
     maxNodes: list[int]
     targetTime: float
@@ -194,12 +200,12 @@ class Config:
     # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
     maxPreemptibleServiceJobs: int
     maxServiceJobs: int
-    deadlockWait: Union[float, int]
-    deadlockCheckInterval: Union[float, int]
+    deadlockWait: float | int
+    deadlockCheckInterval: float | int
 
     # Resource requirements
     defaultMemory: int
-    defaultCores: Union[float, int]
+    defaultCores: float | int
     defaultDisk: int
     defaultPreemptible: bool
     # TODO: These names are generated programmatically in
@@ -224,17 +230,17 @@ class Config:
     writeLogs: str
     writeLogsGzip: str
     writeLogsFromAllJobs: bool
-    write_messages: Optional[str]
+    write_messages: str | None
     realTimeLogging: bool
 
     # Data publishing
-    publish_workflow_metrics: Union[Literal["all"], Literal["current"], Literal["no"], None]
+    publish_workflow_metrics: Literal["all"] | Literal["current"] | Literal["no"] | None
 
     # Misc
     environment: dict[str, str]
     disableChaining: bool
     disableJobStoreChecksumVerification: bool
-    sseKey: Optional[str]
+    sseKey: str | None
     servicePollingInterval: int
     useAsync: bool
     forceDockerAppliance: bool
@@ -291,7 +297,7 @@ class Config:
     def setOptions(self, options: Namespace) -> None:
         """Creates a config object from the options object."""
 
-        def set_option(option_name: str, old_names: Optional[list[str]] = None) -> None:
+        def set_option(option_name: str, old_names: list[str] | None = None) -> None:
             """
             Determine the correct value for the given option.
 
@@ -453,7 +459,9 @@ class Config:
         # Check for deprecated Toil built-in autoscaling
         # --provisioner is guaranteed to be set
         if self.provisioner is not None and self.batchSystem == "mesos":
-            logger.warning("Toil built-in autoscaling with Mesos is deprecated as Mesos is no longer active. Please use Kubernetes-based autoscaling instead.")
+            logger.warning(
+                "Toil built-in autoscaling with Mesos is deprecated as Mesos is no longer active. Please use Kubernetes-based autoscaling instead."
+            )
 
     def check_configuration_consistency(self) -> None:
         """Old checks that cannot be fit into an action class for argparse"""
@@ -487,6 +495,7 @@ class Config:
 
     def __hash__(self) -> int:
         return self.__dict__.__hash__()  # type: ignore
+
 
 def ensure_config(filepath: str) -> None:
     """
@@ -553,8 +562,7 @@ def generate_config(filepath: str) -> None:
         "version",
         # Toil built-in autoscaling with mesos is deprecated as mesos has not been updated since Python 3.10
         "provisioner",
-        "nodeTypes"
-        "minNodes",
+        "nodeTypes" "minNodes",
         "maxNodes",
         "targetTime",
         "betaInertia",
@@ -563,7 +571,7 @@ def generate_config(filepath: str) -> None:
         "nodeStorage",
         "nodeStorageOverrides",
         "metrics",
-        "assumeZeroOverhead"
+        "assumeZeroOverhead",
     )
 
     def create_config_dict_from_parser(parser: ArgumentParser) -> CommentedMap:
@@ -666,7 +674,8 @@ def generate_config(filepath: str) -> None:
                     transform=lambda s: re.sub(r"^(.)", r"#\1", s, flags=re.MULTILINE),
                 )
 
-def update_config(filepath: str, key: str, new_value: Union[str, bool, int, float]) -> None:
+
+def update_config(filepath: str, key: str, new_value: str | bool | int | float) -> None:
     """
     Set the given top-level key to the given value in the given YAML config
     file.
@@ -681,7 +690,12 @@ def update_config(filepath: str, key: str, new_value: Union[str, bool, int, floa
     yaml = YAML(typ="rt")
     data = yaml.load(open(filepath))
 
-    logger.info("Change config field %s from %s to %s", key, repr(data.get(key, None)), repr(new_value))
+    logger.info(
+        "Change config field %s from %s to %s",
+        key,
+        repr(data.get(key, None)),
+        repr(new_value),
+    )
 
     if isinstance(new_value, str):
         # Strings with some values (no, yes) will be interpreted as booleans on
@@ -696,11 +710,12 @@ def update_config(filepath: str, key: str, new_value: Union[str, bool, int, floa
         with open(temp_path, "w") as f:
             yaml.dump(data, f)
 
+
 def parser_with_common_options(
     provisioner_options: bool = False,
     jobstore_option: bool = True,
-    prog: Optional[str] = None,
-    default_log_level: Optional[int] = None,
+    prog: str | None = None,
+    default_log_level: int | None = None,
 ) -> ArgParser:
     """
     Get a command-line option parser for a Toil subcommand.
@@ -866,7 +881,11 @@ def addOptions(
         # So we make them accumulate to the same list.
         # Note that we will get a None in the list when there's no positional inputs.
         parser.add_argument(
-            "inputs_uri", type=str, nargs='?', action="append", help="WDL input JSON URI"
+            "inputs_uri",
+            type=str,
+            nargs="?",
+            action="append",
+            help="WDL input JSON URI",
         )
         parser.add_argument(
             "--input",
@@ -961,7 +980,12 @@ class Toil(ContextManager["Toil"]):
     _provisioner: Optional["AbstractProvisioner"]
     _start_time: float
 
-    def __init__(self, options: Namespace, workflow_name: Optional[str] = None, trs_spec: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        options: Namespace,
+        workflow_name: str | None = None,
+        trs_spec: str | None = None,
+    ) -> None:
         """
         Initialize a Toil object from the given options.
 
@@ -985,7 +1009,8 @@ class Toil(ContextManager["Toil"]):
         if workflow_name is None:
             # Try to use the entrypoint file.
             import __main__
-            if hasattr(__main__, '__file__'):
+
+            if hasattr(__main__, "__file__"):
                 workflow_name = __main__.__file__
         if workflow_name is None:
             # If there's no file, say this is an interactive usage of Toil.
@@ -1021,7 +1046,9 @@ class Toil(ContextManager["Toil"]):
             jobStore.initialize(config)
             assert config.workflowID is not None
             # Record that there is a workflow beign run
-            HistoryManager.record_workflow_creation(config.workflowID, self.canonical_locator(config.jobStore))
+            HistoryManager.record_workflow_creation(
+                config.workflowID, self.canonical_locator(config.jobStore)
+            )
         else:
             jobStore.resume()
             # Merge configuration from job store with command line options
@@ -1041,9 +1068,9 @@ class Toil(ContextManager["Toil"]):
 
     def __exit__(
         self,
-        exc_type: Optional[type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> Literal[False]:
         """
         Clean up after a workflow invocation.
@@ -1055,9 +1082,13 @@ class Toil(ContextManager["Toil"]):
                 # Record that this attempt to run the workflow succeeded or failed.
                 # TODO: Get ahold of the timing from statsAndLogging instead of redoing it here!
                 # To record the batch system, we need to avoid capturing typos/random text the user types instead of a real batch system.
-                batch_system_type="<Not Initialized>"
+                batch_system_type = "<Not Initialized>"
                 if hasattr(self, "_batchSystem"):
-                    batch_system_type = type(self._batchSystem).__module__ + "." + type(self._batchSystem).__qualname__
+                    batch_system_type = (
+                        type(self._batchSystem).__module__
+                        + "."
+                        + type(self._batchSystem).__qualname__
+                    )
                 HistoryManager.record_workflow_attempt(
                     self.config.workflowID,
                     self.config.workflowAttemptNumber,
@@ -1071,7 +1102,7 @@ class Toil(ContextManager["Toil"]):
                     # This should always be major.minor.patch.
                     python_version=platform.python_version(),
                     platform_system=platform.system(),
-                    platform_machine=platform.machine()
+                    platform_machine=platform.machine(),
                 )
 
             if self.config.publish_workflow_metrics == "all":
@@ -1087,13 +1118,17 @@ class Toil(ContextManager["Toil"]):
                     # history or something goes wrong.
                     submission = create_history_submission()
 
-            elif self.config.publish_workflow_metrics == "current" and self.config.workflowID is not None:
+            elif (
+                self.config.publish_workflow_metrics == "current"
+                and self.config.workflowID is not None
+            ):
                 # Publish metrics for this run only. Might be empty if we had no TRS ID.
-                create_current_submission(self.config.workflowID, self.config.workflowAttemptNumber).submit()
+                create_current_submission(
+                    self.config.workflowID, self.config.workflowAttemptNumber
+                ).submit()
 
             # Make sure the history doesn't stay too big
             HistoryManager.enforce_byte_size_limit()
-
 
             if (
                 exc_type is not None
@@ -1140,7 +1175,9 @@ class Toil(ContextManager["Toil"]):
         self._assertContextManagerUsed()
 
         assert self.config.workflowID is not None
-        HistoryManager.record_workflow_metadata(self.config.workflowID, self._workflow_name, self._trs_spec)
+        HistoryManager.record_workflow_metadata(
+            self.config.workflowID, self._workflow_name, self._trs_spec
+        )
 
         from toil.job import Job
 
@@ -1433,8 +1470,8 @@ class Toil(ContextManager["Toil"]):
 
     @deprecated(new_function_name="import_file")
     def importFile(
-        self, srcUrl: str, sharedFileName: Optional[str] = None, symlink: bool = True
-    ) -> Optional[FileID]:
+        self, srcUrl: str, sharedFileName: str | None = None, symlink: bool = True
+    ) -> FileID | None:
         return self.import_file(srcUrl, sharedFileName, symlink)
 
     @overload
@@ -1452,7 +1489,7 @@ class Toil(ContextManager["Toil"]):
         src_uri: str,
         shared_file_name: None = None,
         symlink: bool = True,
-        check_existence: Literal[True] = True
+        check_existence: Literal[True] = True,
     ) -> FileID: ...
 
     @overload
@@ -1461,16 +1498,16 @@ class Toil(ContextManager["Toil"]):
         src_uri: str,
         shared_file_name: None = None,
         symlink: bool = True,
-        check_existence: bool = True
-    ) -> Optional[FileID]: ...
+        check_existence: bool = True,
+    ) -> FileID | None: ...
 
     def import_file(
-      self,
-      src_uri: str,
-      shared_file_name: Optional[str] = None,
-      symlink: bool = True,
-      check_existence: bool = True
-    ) -> Optional[FileID]:
+        self,
+        src_uri: str,
+        shared_file_name: str | None = None,
+        symlink: bool = True,
+        check_existence: bool = True,
+    ) -> FileID | None:
         """
         Import the file at the given URL into the job store.
 
@@ -1524,7 +1561,9 @@ class Toil(ContextManager["Toil"]):
         self._jobStore.export_file(file_id, dst_uri)
 
     @staticmethod
-    def normalize_uri(uri: str, check_existence: bool = False, dir_path: Optional[str] = None) -> str:
+    def normalize_uri(
+        uri: str, check_existence: bool = False, dir_path: str | None = None
+    ) -> str:
         """
         Given a URI, if it has no scheme, make it a properly quoted file: URI.
 
@@ -1592,7 +1631,7 @@ class Toil(ContextManager["Toil"]):
         self._jobCache[job.jobStoreID] = job
 
     @staticmethod
-    def getToilWorkDir(configWorkDir: Optional[str] = None) -> str:
+    def getToilWorkDir(configWorkDir: str | None = None) -> str:
         """
         Return a path to a writable directory under which per-workflow directories exist.
 
@@ -1617,7 +1656,7 @@ class Toil(ContextManager["Toil"]):
 
     @classmethod
     def get_toil_coordination_dir(
-        cls, config_work_dir: Optional[str], config_coordination_dir: Optional[str]
+        cls, config_work_dir: str | None, config_coordination_dir: str | None
     ) -> str:
         """
         Return a path to a writable directory, which will be in memory if
@@ -1638,7 +1677,7 @@ class Toil(ContextManager["Toil"]):
         # Go get a coordination directory, using a lot of short-circuiting of
         # or and the fact that and returns its second argument when it
         # succeeds.
-        coordination_dir: Optional[str] = (
+        coordination_dir: str | None = (
             # First try an override env var
             os.getenv("TOIL_COORDINATION_DIR_OVERRIDE")
             or
@@ -1696,7 +1735,7 @@ class Toil(ContextManager["Toil"]):
 
     @classmethod
     def getLocalWorkflowDir(
-        cls, workflowID: str, configWorkDir: Optional[str] = None
+        cls, workflowID: str, configWorkDir: str | None = None
     ) -> str:
         """
         Return the directory where worker directories and the cache will be located for this workflow on this machine.
@@ -1729,8 +1768,8 @@ class Toil(ContextManager["Toil"]):
     def get_local_workflow_coordination_dir(
         cls,
         workflow_id: str,
-        config_work_dir: Optional[str],
-        config_coordination_dir: Optional[str],
+        config_work_dir: str | None,
+        config_coordination_dir: str | None,
     ) -> str:
         """
         Return the directory where coordination files should be located for
@@ -1859,7 +1898,7 @@ class ToilMetrics:
             pass
 
         try:
-            self.mtailProc: Optional[subprocess.Popen[bytes]] = subprocess.Popen(
+            self.mtailProc: subprocess.Popen[bytes] | None = subprocess.Popen(
                 [
                     "docker",
                     "run",
@@ -1883,7 +1922,7 @@ class ToilMetrics:
 
         # On single machine, launch a node exporter instance to monitor CPU/RAM usage.
         # On AWS this is handled by the EC2 init script
-        self.nodeExporterProc: Optional[subprocess.Popen[bytes]] = None
+        self.nodeExporterProc: subprocess.Popen[bytes] | None = None
         if not provisioner:
             try:
                 self.nodeExporterProc = subprocess.Popen(

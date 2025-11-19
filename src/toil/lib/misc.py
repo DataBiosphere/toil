@@ -9,12 +9,13 @@ import sys
 import time
 from collections.abc import Iterator
 from contextlib import closing
-from typing import Optional, Union, TypeAlias
+from typing import TypeAlias, Union
 
 logger = logging.getLogger(__name__)
 
 StrPath: TypeAlias = Union[str, os.PathLike[str]]
 FileDescriptorOrPath: TypeAlias = Union[int, bytes, os.PathLike[bytes], StrPath]
+
 
 def get_public_ip() -> str:
     """Get the IP that this machine uses to contact the internet.
@@ -65,17 +66,24 @@ def unix_now_ms() -> float:
     """Return the current time in milliseconds since the Unix epoch."""
     return time.time() * 1000
 
+
 def unix_seconds_to_timestamp(timestamp: float) -> str:
     """
     Convert a time in seconds since the Unix epoch to an ISO 8601 string.
     """
-    return datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc).isoformat()
+    return datetime.datetime.fromtimestamp(
+        timestamp, tz=datetime.timezone.utc
+    ).isoformat()
+
 
 def unix_seconds_to_local_time(timestamp: float) -> datetime.datetime:
     """
     Returns a local time corresponding to the given number of seconds since the Unix epoch.
     """
-    return datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc).astimezone()
+    return datetime.datetime.fromtimestamp(
+        timestamp, tz=datetime.timezone.utc
+    ).astimezone()
+
 
 def seconds_to_duration(time_difference: float) -> str:
     """
@@ -153,11 +161,11 @@ class CalledProcessErrorStderr(subprocess.CalledProcessError):
 def call_command(
     cmd: list[str],
     *args: str,
-    input: Optional[str] = None,
-    timeout: Optional[float] = None,
+    input: str | None = None,
+    timeout: float | None = None,
     useCLocale: bool = True,
-    env: Optional[dict[str, str]] = None,
-    quiet: Optional[bool] = False
+    env: dict[str, str] | None = None,
+    quiet: bool | None = False,
 ) -> str:
     """
     Simplified calling of external commands.

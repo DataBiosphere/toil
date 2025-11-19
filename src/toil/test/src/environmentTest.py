@@ -16,7 +16,6 @@ import os
 import time
 from argparse import Namespace
 from threading import Thread
-from typing import Optional
 
 from toil.common import Toil
 from toil.job import Job
@@ -87,7 +86,7 @@ def check_environment_repeatedly(job):
     check3 = waiter.addFollowOnJobFn(check_environment, "try3")
 
 
-def main(options: Optional[Namespace] = None):
+def main(options: Namespace | None = None):
     """
     Run the actual workflow with the given options.
     """

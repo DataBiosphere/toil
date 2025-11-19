@@ -18,7 +18,6 @@ import shlex
 import tempfile
 from queue import Empty
 from shlex import quote
-from typing import Optional
 
 from toil.batchSystems.abstractGridEngineBatchSystem import (
     AbstractGridEngineBatchSystem,
@@ -137,8 +136,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             jobID: int,
             command: str,
             jobName: str,
-            job_environment: Optional[dict[str, str]] = None,
-            gpus: Optional[int] = None,
+            job_environment: dict[str, str] | None = None,
+            gpus: int | None = None,
         ) -> list[str]:
             return self.prepareQsub(cpu, memory, jobID, job_environment) + [
                 self.generateTorqueWrapper(command, jobID)
@@ -186,7 +185,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             cpu: int,
             mem: int,
             jobID: int,
-            job_environment: Optional[dict[str, str]],
+            job_environment: dict[str, str] | None,
         ) -> list[str]:
 
             # TODO: passing $PWD on command line not working for -d, resorting to

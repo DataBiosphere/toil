@@ -35,7 +35,7 @@ import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
 from collections.abc import Iterator
-from typing import Any, Optional, Union
+from typing import Any
 
 from botocore.exceptions import ClientError
 
@@ -137,7 +137,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # is managed by the BatchSystemLocalSupport.
 
         # Here is where we will store the user script resource object if we get one.
-        self.user_script: Optional[Resource] = None
+        self.user_script: Resource | None = None
 
         # Get the image to deploy from Toil's configuration
         self.docker_image = applianceSelf()
@@ -145,7 +145,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # We can't use AWS Batch without a job definition. But we can use one
         # of them for all the jobs. We want to lazily initialize it. This will
         # be an ARN.
-        self.job_definition: Optional[str] = None
+        self.job_definition: str | None = None
 
         # We need a way to map between our batch system ID numbers, and AWS Batch job IDs from the server.
         self.bs_id_to_aws_id: dict[int, str] = {}
@@ -179,7 +179,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         self,
         command: str,
         job_desc: JobDescription,
-        job_environment: Optional[dict[str, str]] = None,
+        job_environment: dict[str, str] | None = None,
     ) -> int:
         # Try the job as local
         local_id = self.handleLocalJob(command, job_desc)
@@ -298,7 +298,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # And re-compose them into a string
         return "".join(kept_chars)
 
-    def _get_runtime(self, job_detail: dict[str, Any]) -> Optional[float]:
+    def _get_runtime(self, job_detail: dict[str, Any]) -> float | None:
         """
         Internal function. Should not be called outside this class.
 
@@ -349,7 +349,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             )
         )
 
-    def getUpdatedBatchJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
+    def getUpdatedBatchJob(self, maxWait: int) -> UpdatedBatchJobInfo | None:
         # Remember when we started, for respecting the timeout
         entry = datetime.datetime.now()
         while (
@@ -494,7 +494,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         if self.job_definition is None:
             # First work out what volume mounts to make, because the type
             # system is happiest this way
-            volumes: list[dict[str, Union[str, dict[str, str]]]] = []
+            volumes: list[dict[str, str | dict[str, str]]] = []
             mount_points: list[dict[str, str]] = []
             for i, shared_path in enumerate(
                 {
@@ -650,7 +650,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 self._wait_until_stopped(self.bs_id_to_aws_id[bs_id])
 
     @classmethod
-    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+    def add_options(cls, parser: ArgumentParser | _ArgumentGroup) -> None:
         parser.add_argument(
             "--awsBatchRegion",
             dest="aws_batch_region",

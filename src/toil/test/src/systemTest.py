@@ -1,9 +1,9 @@
 import errno
 import multiprocessing
 import os
-from pathlib import Path
 from functools import partial
-from typing import Any, Optional
+from pathlib import Path
+from typing import Any
 
 from toil.lib.io import mkdtemp
 from toil.lib.threading import cpu_count
@@ -44,7 +44,7 @@ class TestSystem:
 
 def _testAtomicityOfNonEmptyDirectoryRenamesTask(
     parent: Path, child: Path, _: Any
-) -> Optional[int]:
+) -> int | None:
     tmpChildDir = mkdtemp(dir=parent, prefix="child", suffix=".tmp")
     grandChild = os.path.join(tmpChildDir, "grandChild")
     open(grandChild, "w").close()

@@ -13,11 +13,14 @@
 # limitations under the License.
 
 
-from argparse import Namespace
 import os
-from pathlib import Path
 import stat
 import uuid
+from argparse import Namespace
+from pathlib import Path
+
+import pytest
+from pytest_subtests import SubTests
 
 from toil.common import Toil
 from toil.exceptions import FailedJobsException
@@ -25,9 +28,6 @@ from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
 from toil.test import pslow as slow
-
-import pytest
-from pytest_subtests import SubTests
 
 
 def create_file(tmp_path: Path, content: str, executable: bool = False) -> Path:

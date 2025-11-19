@@ -18,7 +18,7 @@ import subprocess
 import time
 from itertools import count
 from shlex import quote
-from typing import Any, Optional, Union
+from typing import Any
 
 from toil.lib.memoize import parse_iso_utc
 
@@ -35,11 +35,11 @@ class Node:
         publicIP: str,
         privateIP: str,
         name: str,
-        launchTime: Union[datetime.datetime, str],
-        nodeType: Optional[str],
+        launchTime: datetime.datetime | str,
+        nodeType: str | None,
         preemptible: bool,
-        tags: Optional[dict[str, str]] = None,
-        use_private_ip: Optional[bool] = None,
+        tags: dict[str, str] | None = None,
+        use_private_ip: bool | None = None,
     ) -> None:
         """
         Create a new node.
@@ -65,9 +65,9 @@ class Node:
         self.name = name
         # Typing should prevent an empty launch time, but just to make sure,
         # check it at runtime.
-        assert launchTime is not None, (
-            f"Attempted to create a Node {name} without a launch time"
-        )
+        assert (
+            launchTime is not None
+        ), f"Attempted to create a Node {name} without a launch time"
         if isinstance(launchTime, datetime.datetime):
             self.launchTime = launchTime
         else:
@@ -79,9 +79,7 @@ class Node:
                 self.launchTime = datetime.datetime.fromisoformat(launchTime)
         if self.launchTime.tzinfo is None:
             # Read naive datatimes as in UTC
-            self.launchTime = self.launchTime.replace(
-                tzinfo=datetime.timezone.utc
-            )
+            self.launchTime = self.launchTime.replace(tzinfo=datetime.timezone.utc)
         self.nodeType = nodeType
         self.preemptible = preemptible
         self.tags = tags
@@ -123,13 +121,13 @@ class Node:
         True
 
         >>> node = Node("127.0.0.1", "127.0.0.1", "localhost",
-        ...             datetime.datetime.now(datetime.timezone.utc) - 
+        ...             datetime.datetime.now(datetime.timezone.utc) -
         ...             datetime.timedelta(minutes=5), None, False)
         >>> node.remainingBillingInterval() < 0.99
         True
         >>> node.remainingBillingInterval() > 0.9
         True
-        
+
         """
         now = datetime.datetime.now(datetime.timezone.utc)
         delta = now - self.launchTime

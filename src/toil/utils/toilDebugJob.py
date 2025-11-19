@@ -18,7 +18,6 @@ import os
 import pprint
 import sys
 from pathlib import Path
-from typing import Optional
 
 from toil.common import Toil, parser_with_common_options
 from toil.job import FilesDownloadedStoppingPointReached
@@ -163,7 +162,7 @@ def main() -> None:
             # And tell the job to just download files
             debug_flags.add("download_only")
         # We might need to reconstruct a container environment.
-        host_and_job_paths: Optional[list[tuple[str, str]]] = None
+        host_and_job_paths: list[tuple[str, str]] | None = None
         # Track if the run succeeded without error
         run_succeeded = False
 

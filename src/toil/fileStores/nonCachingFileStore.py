@@ -16,20 +16,9 @@ import logging
 import os
 import tempfile
 from collections import defaultdict
-from collections.abc import Generator, Iterator
+from collections.abc import Callable, Generator, Iterator
 from contextlib import contextmanager
-from typing import (
-    IO,
-    Any,
-    Callable,
-    ContextManager,
-    DefaultDict,
-    Literal,
-    Optional,
-    Union,
-    cast,
-    overload,
-)
+from typing import IO, Any, ContextManager, DefaultDict, Literal, cast, overload
 
 import dill
 
@@ -61,13 +50,13 @@ class NonCachingFileStore(AbstractFileStore):
     ) -> None:
         super().__init__(jobStore, jobDesc, file_store_dir, waitForPreviousCommit)
         # This will be defined in the `open` method.
-        self.jobStateFile: Optional[str] = None
+        self.jobStateFile: str | None = None
         self.localFileMap: DefaultDict[str, list[str]] = defaultdict(list)
 
         self.check_for_state_corruption()
 
     @staticmethod
-    def check_for_coordination_corruption(coordination_dir: Optional[str]) -> None:
+    def check_for_coordination_corruption(coordination_dir: str | None) -> None:
         """
         Make sure the coordination directory hasn't been deleted unexpectedly.
 
@@ -145,7 +134,7 @@ class NonCachingFileStore(AbstractFileStore):
     def readGlobalFile(
         self,
         fileStoreID: str,
-        userPath: Optional[str] = None,
+        userPath: str | None = None,
         cache: bool = True,
         mutable: bool = False,
         symlink: bool = False,
@@ -169,12 +158,12 @@ class NonCachingFileStore(AbstractFileStore):
         self,
         fileStoreID: str,
         encoding: Literal[None] = None,
-        errors: Optional[str] = None,
+        errors: str | None = None,
     ) -> ContextManager[IO[bytes]]: ...
 
     @overload
     def readGlobalFileStream(
-        self, fileStoreID: str, encoding: str, errors: Optional[str] = None
+        self, fileStoreID: str, encoding: str, errors: str | None = None
     ) -> ContextManager[IO[str]]: ...
 
     # TODO: This seems to hit https://github.com/python/mypy/issues/11373
@@ -184,9 +173,9 @@ class NonCachingFileStore(AbstractFileStore):
     def readGlobalFileStream(
         self,
         fileStoreID: str,
-        encoding: Optional[str] = None,
-        errors: Optional[str] = None,
-    ) -> Iterator[Union[IO[bytes], IO[str]]]:
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> Iterator[IO[bytes] | IO[str]]:
         with self.jobStore.read_file_stream(
             fileStoreID, encoding=encoding, errors=errors
         ) as f:

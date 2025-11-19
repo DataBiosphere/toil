@@ -23,7 +23,6 @@ from argparse import ArgumentParser, _ArgumentGroup
 from collections.abc import Sequence
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
-from typing import Optional, Union
 
 import toil
 from toil import worker as toil_worker
@@ -96,7 +95,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         maxCores: float,
         maxMemory: float,
         maxDisk: int,
-        max_jobs: Optional[int] = None,
+        max_jobs: int | None = None,
     ) -> None:
         self.config = config
 
@@ -219,7 +218,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # Also takes care of resource accounting.
         self.daddyThread = None
         # If it breaks it will fill this in
-        self.daddyException: Optional[Exception] = None
+        self.daddyException: Exception | None = None
 
         if self.debugWorker:
             logger.debug("Started batch system %s in worker debug mode.", id(self))
@@ -614,9 +613,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 details=[f"The accelerator {problem} could not be provided."],
             )
 
-    def _release_acquired_resources(
-        self, resources: list[Union[int, set[int]]]
-    ) -> None:
+    def _release_acquired_resources(self, resources: list[int | set[int]]) -> None:
         """
         Release all resources acquired for a job.
         Assumes resources are in the order: core fractions, memory, disk, accelerators.
@@ -634,7 +631,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self,
         needed_accelerators: list[AcceleratorRequirement],
         available_accelerator_ids: set[int],
-    ) -> tuple[Optional[set[int]], Optional[AcceleratorRequirement]]:
+    ) -> tuple[set[int] | None, AcceleratorRequirement | None]:
         """
         Given the accelerator requirements of a job, and the set of available
         accelerators out of our associated collection of accelerators, find a
@@ -709,7 +706,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # And what do we want from each resource in self.resource_sources?
         # We know they go job slot, cores, memory, disk, accelerators.
-        resource_requests: list[Union[int, set[int]]] = [
+        resource_requests: list[int | set[int]] = [
             1,
             coreFractions,
             jobMemory,
@@ -891,7 +888,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self,
         command: str,
         job_desc: JobDescription,
-        job_environment: Optional[dict[str, str]] = None,
+        job_environment: dict[str, str] | None = None,
     ) -> int:
         """Adds the command and resources to a queue to be run."""
 
@@ -995,7 +992,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
 
-    def getUpdatedBatchJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
+    def getUpdatedBatchJob(self, maxWait: int) -> UpdatedBatchJobInfo | None:
         """Returns a tuple of a no-longer-running job, the return value of its process, and its runtime, or None."""
 
         self._checkOnDaddy()
@@ -1009,7 +1006,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         return item
 
     @classmethod
-    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+    def add_options(cls, parser: ArgumentParser | _ArgumentGroup) -> None:
         parser.add_argument(
             "--scale",
             dest="scale",

@@ -424,7 +424,7 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         or "Specify a minimum memory allocation for all tasks ."
         "If --no-cwl-default-ram is passed, this does not apply to tools that do not "
         "specify a memory requirement; --defaultMemory is used for those tools"
-        "in that case."
+        "in that case.",
     )
     parser.add_argument(
         "--destBucket",
@@ -439,5 +439,5 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         "recomputing steps. Can be very helpful in the development and "
         "troubleshooting of CWL documents. This automatically bypasses the file store."
         " Not to be confused with --caching.",
-        dest="cachedir"
+        dest="cachedir",
     )

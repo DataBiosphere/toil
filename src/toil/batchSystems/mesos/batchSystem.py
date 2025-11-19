@@ -22,7 +22,6 @@ import time
 import traceback
 from argparse import ArgumentParser, _ArgumentGroup
 from queue import Empty, Queue
-from typing import Optional, Union
 from urllib.parse import quote_plus
 from urllib.request import urlopen
 
@@ -186,7 +185,7 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
         self,
         command: str,
         jobNode: JobDescription,
-        job_environment: Optional[dict[str, str]] = None,
+        job_environment: dict[str, str] | None = None,
     ) -> str:
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory
@@ -370,15 +369,20 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
             # TODO: Use a condition instead of a spin wait.
 
             if wait_count >= self.mesos_timeout:
-                error_message = f"Could not connect to Mesos endpoint at {self.mesos_endpoint}"
+                error_message = (
+                    f"Could not connect to Mesos endpoint at {self.mesos_endpoint}"
+                )
                 log.error(error_message)
                 self.shutdown()
                 raise RuntimeError(error_message)
             elif wait_count > 1 and wait_count % 10 == 0:
-                log.warning("Waiting for Mesos registration (try %s/%s)", wait_count, self.mesos_timeout)
+                log.warning(
+                    "Waiting for Mesos registration (try %s/%s)",
+                    wait_count,
+                    self.mesos_timeout,
+                )
             time.sleep(1)
             wait_count += 1
-
 
     @staticmethod
     def _resolveAddress(address):
@@ -862,7 +866,7 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
         return executor
 
     def getNodes(
-        self, preemptible: Optional[bool] = None, timeout: Optional[int] = None
+        self, preemptible: bool | None = None, timeout: int | None = None
     ) -> dict[str, NodeInfo]:
         """
         Return all nodes that match:
@@ -1008,7 +1012,7 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
         return f"{get_public_ip()}:5050"
 
     @classmethod
-    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+    def add_options(cls, parser: ArgumentParser | _ArgumentGroup) -> None:
         parser.add_argument(
             "--mesosEndpoint",
             "--mesosMaster",

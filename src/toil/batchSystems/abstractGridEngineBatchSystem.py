@@ -17,7 +17,6 @@ from abc import ABCMeta, abstractmethod
 from datetime import datetime
 from queue import Empty, Queue
 from threading import Lock, Thread
-from typing import Optional, Union
 
 from toil.batchSystems.abstractBatchSystem import (
     BatchJobExitReason,
@@ -27,9 +26,9 @@ from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.bus import ExternalBatchIdMessage, get_job_kind
 from toil.common import Config
 from toil.job import AcceleratorRequirement, JobDescription
-from toil.statsAndLogging import TRACE
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.lib.retry import DEFAULT_DELAYS, old_retry
+from toil.statsAndLogging import TRACE
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +171,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                     "Job %s with batch system ID %s queued as job %s",
                     jobName,
                     jobID,
-                    str(batchJobID)
+                    str(batchJobID),
                 )
 
                 # Store dict for mapping Toil job ID to batch job ID
@@ -258,8 +257,12 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                     self.coalesce_job_exit_codes, batch_job_id_list
                 )
                 # We got the statuses as a batch
-                for running_job_id, status, backing_id in zip(running_job_list, statuses, batch_job_id_list):
-                    activity = self._handle_job_status(running_job_id, status, activity, backing_id)
+                for running_job_id, status, backing_id in zip(
+                    running_job_list, statuses, batch_job_id_list
+                ):
+                    activity = self._handle_job_status(
+                        running_job_id, status, activity, backing_id
+                    )
 
             self._checkOnJobsCache = activity
             self._checkOnJobsTimestamp = datetime.now()
@@ -268,7 +271,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         def _handle_job_status(
             self,
             job_id: int,
-            status: Union[int, tuple[int, Optional[BatchJobExitReason]], None],
+            status: int | tuple[int, BatchJobExitReason | None] | None,
             activity: bool,
             backing_id: str,
         ) -> bool:
@@ -313,7 +316,9 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             if self.checkOnJobs():
                 activity = True
             if not activity:
-                logger.log(TRACE, "No activity, sleeping for %is", self.boss.sleepSeconds())
+                logger.log(
+                    TRACE, "No activity, sleeping for %is", self.boss.sleepSeconds()
+                )
             return True
 
         def run(self):
@@ -332,7 +337,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
         def coalesce_job_exit_codes(
             self, batch_job_id_list: list
-        ) -> list[Union[int, tuple[int, Optional[BatchJobExitReason]], None]]:
+        ) -> list[int | tuple[int, BatchJobExitReason | None] | None]:
             """
             Returns exit codes and possibly exit reasons for a list of jobs, or None if they are running.
 
@@ -362,8 +367,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             jobID: int,
             command: str,
             jobName: str,
-            job_environment: Optional[dict[str, str]] = None,
-            gpus: Optional[int] = None,
+            job_environment: dict[str, str] | None = None,
+            gpus: int | None = None,
         ) -> list[str]:
             """
             Preparation in putting together a command-line string
@@ -416,7 +421,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         @abstractmethod
         def getJobExitCode(
             self, batchJobID
-        ) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
+        ) -> int | tuple[int, BatchJobExitReason | None] | None:
             """
             Returns job exit code and possibly an instance of abstractBatchSystem.BatchJobExitReason.
 
@@ -478,7 +483,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         self,
         command: str,
         job_desc: JobDescription,
-        job_environment: Optional[dict[str, str]] = None,
+        job_environment: dict[str, str] | None = None,
     ):
         # Avoid submitting internal jobs to the batch queue, handle locally
         local_id = self.handleLocalJob(command, job_desc)

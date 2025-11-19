@@ -12,19 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import io
 import logging
-import pytest
-from typing import IO
 import urllib.request
+from typing import IO
 from urllib.error import URLError
 
+import pytest
+
 from toil.lib.retry import retry
-from toil.lib.trs import find_workflow, fetch_workflow
+from toil.lib.trs import fetch_workflow, find_workflow
 from toil.test import ToilTest, needs_online
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
+
 
 @pytest.mark.integrative
 @needs_online
@@ -57,7 +58,9 @@ class DockstoreLookupTest(ToilTest):
         PAGE_URL = "https://dockstore.org/workflows/github.com/dockstore/bcc2020-training/HelloWorld:master?tab=info"
         trs_id, trs_version, language = find_workflow(PAGE_URL)
 
-        self.assertEqual(trs_id, "#workflow/github.com/dockstore/bcc2020-training/HelloWorld")
+        self.assertEqual(
+            trs_id, "#workflow/github.com/dockstore/bcc2020-training/HelloWorld"
+        )
         self.assertEqual(trs_version, "master")
         self.assertEqual(language, "WDL")
 
@@ -65,7 +68,7 @@ class DockstoreLookupTest(ToilTest):
         TRS_ID = "#workflow/github.com/dockstore-testing/md5sum-checker"
         TRS_VERSION = "master"
         trs_id, trs_version, language = find_workflow(f"{TRS_ID}:{TRS_VERSION}")
-        
+
         self.assertEqual(trs_id, TRS_ID)
         self.assertEqual(trs_version, TRS_VERSION)
         self.assertEqual(language, "CWL")
@@ -90,7 +93,7 @@ class DockstoreLookupTest(ToilTest):
         # checker workflow itself.
         WORKFLOW_URL = "https://raw.githubusercontent.com/dockstore-testing/md5sum-checker/master/md5sum/md5sum-workflow.cwl"
         looked_up = fetch_workflow(TRS_ID, TRS_VERSION, LANGUAGE)
-        
+
         data_from_lookup = self.read_result(looked_up).read()
         data_from_source = self.read_result(WORKFLOW_URL).read()
         self.assertEqual(data_from_lookup, data_from_source)
@@ -104,7 +107,7 @@ class DockstoreLookupTest(ToilTest):
         fetch_workflow(TRS_ID, TRS_VERSION, LANGUAGE)
         # This lookup is definitely cached
         looked_up = fetch_workflow(TRS_ID, TRS_VERSION, LANGUAGE)
-        
+
         data_from_lookup = self.read_result(looked_up).read()
         data_from_source = self.read_result(WORKFLOW_URL).read()
         self.assertEqual(data_from_lookup, data_from_source)
@@ -112,7 +115,7 @@ class DockstoreLookupTest(ToilTest):
     def test_lookup_from_trs_with_version(self) -> None:
         TRS_VERSIONED_ID = "#workflow/github.com/dockstore-testing/md5sum-checker:workflowWithHTTPImport"
         trs_id, trs_version, language = find_workflow(TRS_VERSIONED_ID)
-        
+
         parts = TRS_VERSIONED_ID.split(":")
 
         self.assertEqual(trs_id, parts[0])
@@ -130,10 +133,12 @@ class DockstoreLookupTest(ToilTest):
             looked_up = find_workflow(TRS_VERSIONED_ID)
 
     def test_lookup_from_trs_nonexistent_version(self) -> None:
-        TRS_VERSIONED_ID = "#workflow/github.com/dockstore-testing/md5sum-checker:notARealVersion"
+        TRS_VERSIONED_ID = (
+            "#workflow/github.com/dockstore-testing/md5sum-checker:notARealVersion"
+        )
         with self.assertRaises(FileNotFoundError):
             looked_up = find_workflow(TRS_VERSIONED_ID)
-    
+
     def test_get_nonexistent_workflow(self) -> None:
         TRS_ID = "#workflow/github.com/adamnovak/veryfakerepo"
         TRS_VERSION = "notARealVersion"
@@ -156,6 +161,3 @@ class DockstoreLookupTest(ToilTest):
         LANGUAGE = "CWL"
         with self.assertRaises(FileNotFoundError):
             looked_up = fetch_workflow(TRS_ID, TRS_VERSION, LANGUAGE)
-
-
-
