@@ -22,7 +22,7 @@ import os
 import pickle
 import subprocess
 import sys
-from typing import Any, Optional
+from typing import Any
 
 from toil.batchSystems.abstractBatchSystem import EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.resource import Resource
@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 def pack_job(
     command: str,
-    user_script: Optional[Resource] = None,
-    environment: Optional[dict[str, str]] = None,
+    user_script: Resource | None = None,
+    environment: dict[str, str] | None = None,
 ) -> list[str]:
     """
     Create a command that runs the given command in an environment.

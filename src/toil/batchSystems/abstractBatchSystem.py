@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dataclasses import dataclass
 import enum
 import logging
 import os
@@ -21,8 +20,9 @@ from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from threading import Condition
-from typing import Any, ContextManager, NamedTuple, Optional, Union, cast
+from typing import Any, ContextManager, NamedTuple, cast
 
 from toil.batchSystems.options import OptionSetter
 from toil.bus import MessageBus, MessageOutbox
@@ -73,6 +73,7 @@ class BatchJobExitReason(enum.IntEnum):
         except ValueError:
             return str(value)
 
+
 @dataclass
 class UpdatedBatchJobInfo:
     jobID: int
@@ -87,9 +88,9 @@ class UpdatedBatchJobInfo:
     (e.g. job is lost, or otherwise died but actual exit code was not reported).
     """
 
-    exitReason: Optional[BatchJobExitReason] = None
-    wallTime: Union[float, int, None] = None
-    backing_id: Optional[str] = None
+    exitReason: BatchJobExitReason | None = None
+    wallTime: float | int | None = None
+    backing_id: str | None = None
     """
     The identifier for the job in the backing scheduler, if available.
     """
@@ -97,10 +98,10 @@ class UpdatedBatchJobInfo:
 
 # Information required for worker cleanup on shutdown of the batch system.
 class WorkerCleanupInfo(NamedTuple):
-    work_dir: Optional[str]
+    work_dir: str | None
     """Work directory path (where the cache would go) if specified by user"""
 
-    coordination_dir: Optional[str]
+    coordination_dir: str | None
     """Coordination directory path (where lock files would go) if specified by user"""
 
     workflow_id: str
@@ -171,7 +172,7 @@ class AbstractBatchSystem(ABC):
         self,
         command: str,
         job_desc: JobDescription,
-        job_environment: Optional[dict[str, str]] = None,
+        job_environment: dict[str, str] | None = None,
     ) -> int:
         """
         Issues a job with the specified command to the batch system and returns
@@ -224,7 +225,7 @@ class AbstractBatchSystem(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def getUpdatedBatchJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
+    def getUpdatedBatchJob(self, maxWait: int) -> UpdatedBatchJobInfo | None:
         """
         Returns information about job that has updated its status (i.e. ceased
         running, either successfully or with an error). Each such job will be
@@ -242,7 +243,7 @@ class AbstractBatchSystem(ABC):
         """
         raise NotImplementedError()
 
-    def getSchedulingStatusMessage(self) -> Optional[str]:
+    def getSchedulingStatusMessage(self) -> str | None:
         """
         Get a log message fragment for the user about anything that might be
         going wrong in the batch system, if available.
@@ -269,7 +270,7 @@ class AbstractBatchSystem(ABC):
         """
         raise NotImplementedError()
 
-    def setEnv(self, name: str, value: Optional[str] = None) -> None:
+    def setEnv(self, name: str, value: str | None = None) -> None:
         """
         Set an environment variable for the worker process before it is launched.
 
@@ -286,7 +287,7 @@ class AbstractBatchSystem(ABC):
         raise NotImplementedError()
 
     @classmethod
-    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+    def add_options(cls, parser: ArgumentParser | _ArgumentGroup) -> None:
         """
         If this batch system provides any command line options, add them to the given parser.
         """
@@ -351,7 +352,7 @@ class BatchSystemSupport(AbstractBatchSystem):
                 workflow_id=config.workflowID,
                 clean_work_dir=config.cleanWorkDir,
             )
-        self._outbox: Optional[MessageOutbox] = None
+        self._outbox: MessageOutbox | None = None
 
     def check_resource_request(self, requirer: Requirer) -> None:
         """
@@ -400,7 +401,7 @@ class BatchSystemSupport(AbstractBatchSystem):
                 details=["The batch system does not support any accelerators."],
             )
 
-    def setEnv(self, name: str, value: Optional[str] = None) -> None:
+    def setEnv(self, name: str, value: str | None = None) -> None:
         """
         Set an environment variable for the worker process before it is launched. The worker
         process will typically inherit the environment of the machine it is running on but this
@@ -572,7 +573,7 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
 
     @abstractmethod
     def getNodes(
-        self, preemptible: Optional[bool] = None, timeout: int = 600
+        self, preemptible: bool | None = None, timeout: int = 600
     ) -> dict[str, NodeInfo]:
         """
         Returns a dictionary mapping node identifiers of preemptible or non-preemptible nodes to
@@ -622,9 +623,9 @@ class InsufficientSystemResources(Exception):
         self,
         requirer: Requirer,
         resource: str,
-        available: Optional[ParsedRequirement] = None,
-        batch_system: Optional[str] = None,
-        source: Optional[str] = None,
+        available: ParsedRequirement | None = None,
+        batch_system: str | None = None,
+        source: str | None = None,
         details: list[str] = [],
     ) -> None:
         """
@@ -639,7 +640,7 @@ class InsufficientSystemResources(Exception):
         :param details: Any extra details about the problem that can be attached to the error.
         """
 
-        self.job_name: Optional[str] = str(requirer)
+        self.job_name: str | None = str(requirer)
         self.resource = resource
         self.requested = cast(ParsedRequirement, getattr(requirer, resource))
         self.available = available
@@ -695,8 +696,8 @@ class AcquisitionTimeoutException(Exception):
     def __init__(
         self,
         resource: str,
-        requested: Union[int, float, set[int]],
-        available: Union[int, float, set[int]],
+        requested: int | float | set[int],
+        available: int | float | set[int],
     ) -> None:
         """
         Creates an instance of this exception that indicates which resource is insufficient for

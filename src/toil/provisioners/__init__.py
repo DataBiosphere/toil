@@ -14,7 +14,7 @@
 import argparse
 import logging
 from difflib import get_close_matches
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from toil.provisioners.aws.awsProvisioner import AWSProvisioner
@@ -26,12 +26,12 @@ logger = logging.getLogger(__name__)
 
 def cluster_factory(
     provisioner: str,
-    clusterName: Optional[str] = None,
+    clusterName: str | None = None,
     clusterType: str = "mesos",
-    zone: Optional[str] = None,
+    zone: str | None = None,
     nodeStorage: int = 50,
-    nodeStorageOverrides: Optional[list[str]] = None,
-    sseKey: Optional[str] = None,
+    nodeStorageOverrides: list[str] | None = None,
+    sseKey: str | None = None,
     enable_fuse: bool = False,
 ) -> Union["AWSProvisioner", "GCEProvisioner"]:
     """
@@ -114,8 +114,8 @@ def add_provisioner_options(parser: argparse.ArgumentParser) -> None:
 
 
 def parse_node_types(
-    node_type_specs: Optional[str],
-) -> list[tuple[set[str], Optional[float]]]:
+    node_type_specs: str | None,
+) -> list[tuple[set[str], float | None]]:
     """
     Parse a specification for zero or more node types.
 
@@ -180,7 +180,7 @@ def parse_node_types(
 
 
 def check_valid_node_types(
-    provisioner, node_types: list[tuple[set[str], Optional[float]]]
+    provisioner, node_types: list[tuple[set[str], float | None]]
 ):
     """
     Raises if an invalid nodeType is specified for aws or gce.
@@ -256,7 +256,7 @@ class ClusterCombinationNotSupportedException(Exception):
         provisioner_class: type,
         cluster_type: str,
         architecture: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ):
         message = (
             f"The {provisioner_class} provisioner does not support making {cluster_type} clusters "

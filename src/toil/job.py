@@ -27,36 +27,29 @@ import time
 import uuid
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from io import BytesIO
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Dict,
-    Iterator,
-    List,
-    Mapping,
+    Literal,
     NamedTuple,
-    Optional,
-    Sequence,
-    Tuple,
+    TypedDict,
     TypeVar,
     Union,
     cast,
     overload,
-    TypedDict,
-    Literal,
 )
 from urllib.error import HTTPError
-from urllib.parse import urlsplit, unquote, urljoin
+from urllib.parse import unquote, urljoin, urlsplit
 
 import dill
 from configargparse import ArgParser
 
+from toil.lib.io import is_remote_url
 from toil.lib.memoize import memoize
 from toil.lib.misc import StrPath
-from toil.lib.io import is_remote_url
 
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
@@ -69,19 +62,16 @@ from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
+from toil.lib.exceptions import UnimplementedURLException
 from toil.lib.expando import Expando
 from toil.lib.resources import ResourceMonitor
 from toil.resource import ModuleDescriptor
 from toil.statsAndLogging import set_logging_from_options
 
-from toil.lib.exceptions import UnimplementedURLException
-
 if TYPE_CHECKING:
     from optparse import OptionParser
 
-    from toil.batchSystems.abstractBatchSystem import (
-        BatchJobExitReason
-    )
+    from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
     from toil.fileStores.abstractFileStore import AbstractFileStore
     from toil.jobStores.abstractJobStore import AbstractJobStore
 
@@ -95,9 +85,7 @@ class JobPromiseConstraintError(RuntimeError):
     (Due to the return value not yet been hit in the topological order of the job graph.)
     """
 
-    def __init__(
-        self, promisingJob: "Job", recipientJob: Optional["Job"] = None
-    ) -> None:
+    def __init__(self, promisingJob: Job, recipientJob: Job | None = None) -> None:
         """
         Initialize this error.
 
@@ -122,7 +110,7 @@ class JobPromiseConstraintError(RuntimeError):
 
 
 class ConflictingPredecessorError(Exception):
-    def __init__(self, predecessor: "Job", successor: "Job") -> None:
+    def __init__(self, predecessor: Job, successor: Job) -> None:
         super().__init__(
             f'The given job: "{predecessor.description}" is already a predecessor of job: "{successor.description}".'
         )
@@ -140,7 +128,7 @@ class FilesDownloadedStoppingPointReached(DebugStoppingPointReached):
     """
 
     def __init__(
-        self, message: str, host_and_job_paths: Optional[list[tuple[str, str]]] = None
+        self, message: str, host_and_job_paths: list[tuple[str, str]] | None = None
     ) -> None:
         super().__init__(message)
 
@@ -222,7 +210,7 @@ class AcceleratorRequirement(TypedDict):
 
 
 def parse_accelerator(
-    spec: Union[int, str, dict[str, Union[str, int]]]
+    spec: int | str | dict[str, str | int],
 ) -> AcceleratorRequirement:
     """
     Parse an AcceleratorRequirement specified by user code.
@@ -375,7 +363,7 @@ def accelerator_satisfies(
 
 
 def accelerators_fully_satisfy(
-    candidates: Optional[list[AcceleratorRequirement]],
+    candidates: list[AcceleratorRequirement] | None,
     requirement: AcceleratorRequirement,
     ignore: list[str] = [],
 ) -> bool:
@@ -412,7 +400,7 @@ class RequirementsDict(TypedDict):
     Where requirement values are of different types depending on the requirement.
     """
 
-    cores: NotRequired[Union[int, float]]
+    cores: NotRequired[int | float]
     memory: NotRequired[int]
     disk: NotRequired[int]
     accelerators: NotRequired[list[AcceleratorRequirement]]
@@ -472,7 +460,7 @@ class Requirer:
 
         # We can have a toil.common.Config assigned to fill in default values
         # for e.g. job requirements not explicitly specified.
-        self._config: Optional[Config] = None
+        self._config: Config | None = None
 
         # Save requirements, parsing and validating anything that needs parsing
         # or validating. Don't save Nones.
@@ -502,7 +490,7 @@ class Requirer:
         state["_config"] = None
         return state
 
-    def __copy__(self) -> "Requirer":
+    def __copy__(self) -> Requirer:
         """Return a semantically-shallow copy of the object, for :meth:`copy.copy`."""
         # The hide-the-method-and-call-the-copy-module approach from
         # <https://stackoverflow.com/a/40484215> doesn't seem to work for
@@ -519,7 +507,7 @@ class Requirer:
 
         return clone
 
-    def __deepcopy__(self, memo: Any) -> "Requirer":
+    def __deepcopy__(self, memo: Any) -> Requirer:
         """Return a semantically-deep copy of the object, for :meth:`copy.deepcopy`."""
         # We used to use <https://stackoverflow.com/a/40484215> and
         # <https://stackoverflow.com/a/71125311> but that would result in
@@ -540,7 +528,7 @@ class Requirer:
     @overload
     @staticmethod
     def _parseResource(
-        name: Union[Literal["memory"], Literal["disks"]],
+        name: Literal["memory"] | Literal["disks"],
         value: ParseableIndivisibleResource,
     ) -> int: ...
 
@@ -548,7 +536,7 @@ class Requirer:
     @staticmethod
     def _parseResource(
         name: Literal["cores"], value: ParseableDivisibleResource
-    ) -> Union[int, float]: ...
+    ) -> int | float: ...
 
     @overload
     @staticmethod
@@ -566,8 +554,8 @@ class Requirer:
 
     @staticmethod
     def _parseResource(
-        name: str, value: Optional[ParseableRequirement]
-    ) -> Optional[ParsedRequirement]:
+        name: str, value: ParseableRequirement | None
+    ) -> ParsedRequirement | None:
         """
         Parse a Toil resource requirement value and apply resource-specific type checks.
 
@@ -650,7 +638,7 @@ class Requirer:
             # Anything else we just pass along without opinons
             return cast(ParsedRequirement, value)
 
-    def _fetchRequirement(self, requirement: str) -> Optional[ParsedRequirement]:
+    def _fetchRequirement(self, requirement: str) -> ParsedRequirement | None:
         """
         Get the value of the specified requirement ('blah').
 
@@ -708,7 +696,7 @@ class Requirer:
         self._requirementOverrides["memory"] = Requirer._parseResource("memory", val)
 
     @property
-    def cores(self) -> Union[int, float]:
+    def cores(self) -> int | float:
         """Get the number of CPU cores required."""
         return cast(Union[int, float], self._fetchRequirement("cores"))
 
@@ -746,7 +734,7 @@ class Requirer:
             "accelerators", val
         )
 
-    def scale(self, requirement: str, factor: float) -> "Requirer":
+    def scale(self, requirement: str, factor: float) -> Requirer:
         """
         Return a copy of this object with the given requirement scaled up or down.
 
@@ -813,14 +801,15 @@ class JobDescription(Requirer):
     Subclassed into variants for checkpoint jobs and service jobs that have
     their specific parameters.
     """
+
     def __init__(
         self,
-        requirements: Mapping[str, Union[int, str, float, bool, list]],
+        requirements: Mapping[str, int | str | float | bool | list],
         jobName: str,
-        unitName: Optional[str] = "",
-        displayName: Optional[str] = "",
-        local: Optional[bool] = None,
-        files: Optional[set[FileID]] = None,
+        unitName: str | None = "",
+        displayName: str | None = "",
+        local: bool | None = None,
+        files: set[FileID] | None = None,
     ) -> None:
         """
         Create a new JobDescription.
@@ -852,7 +841,7 @@ class JobDescription(Requirer):
         self.local: bool = local or False
 
         # Save names, making sure they are strings and not e.g. bytes or None.
-        def makeString(x: Union[str, bytes, None]) -> str:
+        def makeString(x: str | bytes | None) -> str:
             if isinstance(x, bytes):
                 return x.decode("utf-8", errors="replace")
             if x is None:
@@ -866,12 +855,12 @@ class JobDescription(Requirer):
         # Set properties that are not fully filled in on creation.
 
         # ID of this job description in the JobStore.
-        self.jobStoreID: Union[str, TemporaryID] = TemporaryID()
+        self.jobStoreID: str | TemporaryID = TemporaryID()
 
         # Information that encodes how to find the Job body data that this
         # JobDescription describes, and the module(s) needed to unpickle it.
         # None if no body needs to run.
-        self._body: Optional[JobBodyReference] = None
+        self._body: JobBodyReference | None = None
 
         # Set scheduling properties that the leader read to think about scheduling.
 
@@ -1091,7 +1080,7 @@ class JobDescription(Requirer):
             self._body.module_string
         )
 
-    def nextSuccessors(self) -> Optional[set[str]]:
+    def nextSuccessors(self) -> set[str] | None:
         """
         Return the collection of job IDs for the successors of this job that are ready to run.
 
@@ -1150,7 +1139,7 @@ class JobDescription(Requirer):
             if k not in toRemove
         }
 
-    def clear_nonexistent_dependents(self, job_store: "AbstractJobStore") -> None:
+    def clear_nonexistent_dependents(self, job_store: AbstractJobStore) -> None:
         """
         Remove all references to child, follow-on, and associated service jobs that do not exist.
 
@@ -1178,7 +1167,7 @@ class JobDescription(Requirer):
             not self.has_body() and next(self.successorsAndServiceHosts(), None) is None
         )
 
-    def replace(self, other: "JobDescription") -> None:
+    def replace(self, other: JobDescription) -> None:
         """
         Take on the ID of another JobDescription, retaining our own state and type.
 
@@ -1238,7 +1227,7 @@ class JobDescription(Requirer):
         self._job_version = other._job_version
         self._job_version_writer = os.getpid()
 
-    def assert_is_not_newer_than(self, other: "JobDescription") -> None:
+    def assert_is_not_newer_than(self, other: JobDescription) -> None:
         """
         Make sure this JobDescription is not newer than a prospective new version of the JobDescription.
         """
@@ -1247,7 +1236,7 @@ class JobDescription(Requirer):
                 f"Cannot replace {self} from PID {self._job_version_writer} with older version {other} from PID {other._job_version_writer}"
             )
 
-    def is_updated_by(self, other: "JobDescription") -> bool:
+    def is_updated_by(self, other: JobDescription) -> bool:
         """
         Return True if the passed JobDescription is a distinct, newer version of this one.
         """
@@ -1341,7 +1330,7 @@ class JobDescription(Requirer):
         """Notify the JobDescription that a predecessor has been added to its Job."""
         self.predecessorNumber += 1
 
-    def onRegistration(self, jobStore: "AbstractJobStore") -> None:
+    def onRegistration(self, jobStore: AbstractJobStore) -> None:
         """
         Perform setup work that requires the JobStore.
 
@@ -1355,8 +1344,8 @@ class JobDescription(Requirer):
 
     def setupJobAfterFailure(
         self,
-        exit_status: Optional[int] = None,
-        exit_reason: Optional["BatchJobExitReason"] = None,
+        exit_status: int | None = None,
+        exit_reason: BatchJobExitReason | None = None,
     ) -> None:
         """
         Configure job after a failure.
@@ -1519,15 +1508,15 @@ class ServiceJobDescription(JobDescription):
 
         # An empty file in the jobStore which when deleted is used to signal that the service
         # should cease.
-        self.terminateJobStoreID: Optional[str] = None
+        self.terminateJobStoreID: str | None = None
 
         # Similarly a empty file which when deleted is used to signal that the service is
         # established
-        self.startJobStoreID: Optional[str] = None
+        self.startJobStoreID: str | None = None
 
         # An empty file in the jobStore which when deleted is used to signal that the service
         # should terminate signaling an error.
-        self.errorJobStoreID: Optional[str] = None
+        self.errorJobStoreID: str | None = None
 
     def onRegistration(self, jobStore):
         """
@@ -1555,7 +1544,7 @@ class CheckpointJobDescription(JobDescription):
         # Set checkpoint-specific properties
 
         # None, or a copy of the original self._body used to reestablish the job after failure.
-        self.checkpoint: Optional[JobBodyReference] = None
+        self.checkpoint: JobBodyReference | None = None
 
         # Files that can not be deleted until the job and its successors have completed
         self.checkpointFilesToDelete = []
@@ -1577,7 +1566,7 @@ class CheckpointJobDescription(JobDescription):
             raise RuntimeError(f"Cannot restore an empty checkpoint for a job {self}")
         self._body = self.checkpoint
 
-    def restartCheckpoint(self, jobStore: "AbstractJobStore") -> list[str]:
+    def restartCheckpoint(self, jobStore: AbstractJobStore) -> list[str]:
         """
         Restart a checkpoint after the total failure of jobs in its subtree.
 
@@ -1648,18 +1637,18 @@ class Job:
 
     def __init__(
         self,
-        memory: Optional[ParseableIndivisibleResource] = None,
-        cores: Optional[ParseableDivisibleResource] = None,
-        disk: Optional[ParseableIndivisibleResource] = None,
-        accelerators: Optional[ParseableAcceleratorRequirement] = None,
-        preemptible: Optional[ParseableFlag] = None,
-        preemptable: Optional[ParseableFlag] = None,
-        unitName: Optional[str] = "",
-        checkpoint: Optional[bool] = False,
-        displayName: Optional[str] = "",
-        descriptionClass: Optional[type] = None,
-        local: Optional[bool] = None,
-        files: Optional[set[FileID]] = None,
+        memory: ParseableIndivisibleResource | None = None,
+        cores: ParseableDivisibleResource | None = None,
+        disk: ParseableIndivisibleResource | None = None,
+        accelerators: ParseableAcceleratorRequirement | None = None,
+        preemptible: ParseableFlag | None = None,
+        preemptable: ParseableFlag | None = None,
+        unitName: str | None = "",
+        checkpoint: bool | None = False,
+        displayName: str | None = "",
+        descriptionClass: type | None = None,
+        local: bool | None = None,
+        files: set[FileID] | None = None,
     ) -> None:
         """
         Job initializer.
@@ -1792,7 +1781,7 @@ class Job:
             )
 
     @property
-    def jobStoreID(self) -> Union[str, TemporaryID]:
+    def jobStoreID(self) -> str | TemporaryID:
         """Get the ID of this Job."""
         # This is managed by the JobDescription.
         return self._description.jobStoreID
@@ -1824,7 +1813,7 @@ class Job:
         self.description.memory = val
 
     @property
-    def cores(self) -> Union[int, float]:
+    def cores(self) -> int | float:
         """The number of CPU cores required."""
         return self.description.cores
 
@@ -1883,7 +1872,7 @@ class Job:
         """
         self.description.assignConfig(config)
 
-    def run(self, fileStore: "AbstractFileStore") -> Any:
+    def run(self, fileStore: AbstractFileStore) -> Any:
         """
         Override this function to perform work and dynamically create successor jobs.
 
@@ -1894,7 +1883,7 @@ class Job:
                  :func:`toil.job.Job.rv`.
         """
 
-    def _jobGraphsJoined(self, other: "Job") -> None:
+    def _jobGraphsJoined(self, other: Job) -> None:
         """
         Called whenever the job graphs of this job and the other job may have been merged into one connected component.
 
@@ -1929,7 +1918,7 @@ class Job:
                     # Point all their jobs at the new combined registry
                     job._registry = self._registry
 
-    def addChild(self, childJob: "Job") -> "Job":
+    def addChild(self, childJob: Job) -> Job:
         """
         Add a childJob to be run as child of this job.
 
@@ -1954,7 +1943,7 @@ class Job:
 
         return childJob
 
-    def hasChild(self, childJob: "Job") -> bool:
+    def hasChild(self, childJob: Job) -> bool:
         """
         Check if childJob is already a child of this job.
 
@@ -1962,7 +1951,7 @@ class Job:
         """
         return self._description.hasChild(childJob.jobStoreID)
 
-    def addFollowOn(self, followOnJob: "Job") -> "Job":
+    def addFollowOn(self, followOnJob: Job) -> Job:
         """
         Add a follow-on job.
 
@@ -1986,11 +1975,11 @@ class Job:
 
         return followOnJob
 
-    def hasPredecessor(self, job: "Job") -> bool:
+    def hasPredecessor(self, job: Job) -> bool:
         """Check if a given job is already a predecessor of this job."""
         return job in self._directPredecessors
 
-    def hasFollowOn(self, followOnJob: "Job") -> bool:
+    def hasFollowOn(self, followOnJob: Job) -> bool:
         """
         Check if given job is already a follow-on of this job.
 
@@ -1999,8 +1988,8 @@ class Job:
         return self._description.hasChild(followOnJob.jobStoreID)
 
     def addService(
-        self, service: "Job.Service", parentService: Optional["Job.Service"] = None
-    ) -> "Promise":
+        self, service: Job.Service, parentService: Job.Service | None = None
+    ) -> Promise:
         """
         Add a service.
 
@@ -2046,7 +2035,7 @@ class Job:
         # Return the promise for the service's startup result
         return hostingJob.rv()
 
-    def hasService(self, service: "Job.Service") -> bool:
+    def hasService(self, service: Job.Service) -> bool:
         """Return True if the given Service is a service of this job, and False otherwise."""
         return service.hostID is None or self._description.hasServiceHostJob(
             service.hostID
@@ -2054,7 +2043,7 @@ class Job:
 
     # Convenience functions for creating jobs
 
-    def addChildFn(self, fn: Callable, *args, **kwargs) -> "FunctionWrappingJob":
+    def addChildFn(self, fn: Callable, *args, **kwargs) -> FunctionWrappingJob:
         """
         Add a function as a child job.
 
@@ -2070,7 +2059,7 @@ class Job:
         else:
             return self.addChild(FunctionWrappingJob(fn, *args, **kwargs))
 
-    def addFollowOnFn(self, fn: Callable, *args, **kwargs) -> "FunctionWrappingJob":
+    def addFollowOnFn(self, fn: Callable, *args, **kwargs) -> FunctionWrappingJob:
         """
         Add a function as a follow-on job.
 
@@ -2086,7 +2075,7 @@ class Job:
         else:
             return self.addFollowOn(FunctionWrappingJob(fn, *args, **kwargs))
 
-    def addChildJobFn(self, fn: Callable, *args, **kwargs) -> "FunctionWrappingJob":
+    def addChildJobFn(self, fn: Callable, *args, **kwargs) -> FunctionWrappingJob:
         """
         Add a job function as a child job.
 
@@ -2104,7 +2093,7 @@ class Job:
         else:
             return self.addChild(JobFunctionWrappingJob(fn, *args, **kwargs))
 
-    def addFollowOnJobFn(self, fn: Callable, *args, **kwargs) -> "FunctionWrappingJob":
+    def addFollowOnJobFn(self, fn: Callable, *args, **kwargs) -> FunctionWrappingJob:
         """
         Add a follow-on job function.
 
@@ -2139,7 +2128,7 @@ class Job:
         self._fileStore.log_to_leader(text, level)
 
     @staticmethod
-    def wrapFn(fn, *args, **kwargs) -> "FunctionWrappingJob":
+    def wrapFn(fn, *args, **kwargs) -> FunctionWrappingJob:
         """
         Makes a Job out of a function.
 
@@ -2156,7 +2145,7 @@ class Job:
             return FunctionWrappingJob(fn, *args, **kwargs)
 
     @staticmethod
-    def wrapJobFn(fn, *args, **kwargs) -> "JobFunctionWrappingJob":
+    def wrapJobFn(fn, *args, **kwargs) -> JobFunctionWrappingJob:
         """
         Makes a Job out of a job function.
 
@@ -2172,7 +2161,7 @@ class Job:
         else:
             return JobFunctionWrappingJob(fn, *args, **kwargs)
 
-    def encapsulate(self, name: Optional[str] = None) -> "EncapsulatedJob":
+    def encapsulate(self, name: str | None = None) -> EncapsulatedJob:
         """
         Encapsulates the job, see :class:`toil.job.EncapsulatedJob`.
         Convenience function for constructor of :class:`toil.job.EncapsulatedJob`.
@@ -2188,7 +2177,7 @@ class Job:
     # job run functions
     ####################################################
 
-    def rv(self, *path) -> "Promise":
+    def rv(self, *path) -> Promise:
         """
         Create a *promise* (:class:`toil.job.Promise`).
 
@@ -2230,7 +2219,7 @@ class Job:
         self._rvs[path].append(jobStoreFileID)
         return self._promiseJobStore.config.jobStore, jobStoreFileID
 
-    def prepareForPromiseRegistration(self, jobStore: "AbstractJobStore") -> None:
+    def prepareForPromiseRegistration(self, jobStore: AbstractJobStore) -> None:
         """
         Set up to allow this job's promises to register themselves.
 
@@ -2275,7 +2264,7 @@ class Job:
         self.checkJobGraphAcylic()
         self.checkNewCheckpointsAreLeafVertices()
 
-    def getRootJobs(self) -> set["Job"]:
+    def getRootJobs(self) -> set[Job]:
         """
         Return the set of root job objects that contain this job.
 
@@ -2363,7 +2352,7 @@ class Job:
             )
 
     @staticmethod
-    def _getImpliedEdges(roots) -> dict["Job", list["Job"]]:
+    def _getImpliedEdges(roots) -> dict[Job, list[Job]]:
         """
         Gets the set of implied edges (between children and follow-ons of a common job).
 
@@ -2501,7 +2490,7 @@ class Job:
 
         @staticmethod
         def getDefaultOptions(
-            jobStore: Optional[StrPath] = None, jobstore_as_flag: bool = False
+            jobStore: StrPath | None = None, jobstore_as_flag: bool = False
         ) -> Namespace:
             """
             Get default options for a toil workflow.
@@ -2529,7 +2518,7 @@ class Job:
 
         @staticmethod
         def addToilOptions(
-            parser: Union["OptionParser", ArgumentParser],
+            parser: OptionParser | ArgumentParser,
             jobstore_as_flag: bool = False,
         ) -> None:
             """
@@ -2549,7 +2538,7 @@ class Job:
             addOptions(parser, jobstore_as_flag=jobstore_as_flag)
 
         @staticmethod
-        def startToil(job: "Job", options) -> Any:
+        def startToil(job: Job, options) -> Any:
             """
             Run the toil workflow using the given options.
 
@@ -2580,12 +2569,12 @@ class Job:
 
         def __init__(
             self,
-            memory: Optional[ParseableIndivisibleResource] = None,
-            cores: Optional[ParseableDivisibleResource] = None,
-            disk: Optional[ParseableIndivisibleResource] = None,
-            accelerators: Optional[ParseableAcceleratorRequirement] = None,
-            preemptible: Optional[ParseableFlag] = None,
-            unitName: Optional[str] = "",
+            memory: ParseableIndivisibleResource | None = None,
+            cores: ParseableDivisibleResource | None = None,
+            disk: ParseableIndivisibleResource | None = None,
+            accelerators: ParseableAcceleratorRequirement | None = None,
+            preemptible: ParseableFlag | None = None,
+            unitName: str | None = "",
         ) -> None:
             """
             Memory, core and disk requirements are specified identically to as in \
@@ -2612,7 +2601,7 @@ class Job:
             self.hostID = None
 
         @abstractmethod
-        def start(self, job: "ServiceHostJob") -> Any:
+        def start(self, job: ServiceHostJob) -> Any:
             """
             Start the service.
 
@@ -2625,7 +2614,7 @@ class Job:
             """
 
         @abstractmethod
-        def stop(self, job: "ServiceHostJob") -> None:
+        def stop(self, job: ServiceHostJob) -> None:
             """
             Stops the service. Function can block until complete.
 
@@ -2781,7 +2770,7 @@ class Job:
                         # We added this successor locally
                         todo.append(self._registry[successorID])
 
-    def getTopologicalOrderingOfJobs(self) -> list["Job"]:
+    def getTopologicalOrderingOfJobs(self) -> list[Job]:
         """
         :returns: a list of jobs such that for all pairs of indices i, j for which i < j, \
         the job at index i can be run before the job at index j.
@@ -2872,7 +2861,7 @@ class Job:
         # Do renames in the description
         self._description.renameReferences(renames)
 
-    def saveBody(self, jobStore: "AbstractJobStore") -> None:
+    def saveBody(self, jobStore: AbstractJobStore) -> None:
         """
         Save the execution data for just this job to the JobStore, and fill in
         the JobDescription with the information needed to retrieve it.
@@ -2943,7 +2932,7 @@ class Job:
 
     def _saveJobGraph(
         self,
-        jobStore: "AbstractJobStore",
+        jobStore: AbstractJobStore,
         saveSelf: bool = False,
         returnValues: bool = None,
     ):
@@ -3050,7 +3039,7 @@ class Job:
                 if job != self or saveSelf:
                     jobStore.create_job(job.description)
 
-    def saveAsRootJob(self, jobStore: "AbstractJobStore") -> JobDescription:
+    def saveAsRootJob(self, jobStore: AbstractJobStore) -> JobDescription:
         """
         Save this job to the given jobStore as the root job of the workflow.
 
@@ -3079,8 +3068,8 @@ class Job:
 
     @classmethod
     def loadJob(
-        cls, job_store: "AbstractJobStore", job_description: JobDescription
-    ) -> "Job":
+        cls, job_store: AbstractJobStore, job_description: JobDescription
+    ) -> Job:
         """
         Retrieves a :class:`toil.job.Job` instance from a JobStore
 
@@ -3155,7 +3144,9 @@ class Job:
 
             if "download_only" in self._debug_flags:
                 # We should stop right away
-                logger.debug("Job did not stop itself after downloading files; stopping.")
+                logger.debug(
+                    "Job did not stop itself after downloading files; stopping."
+                )
                 raise DebugStoppingPointReached()
 
             # If the job is not a checkpoint job, add the promise files to delete
@@ -3196,7 +3187,7 @@ class Job:
                     f"CPU than the requested {self.cores} cores. Consider "
                     f"increasing the job's required CPU cores or limiting the "
                     f"number of processes/threads launched.",
-                    level=logging.WARNING
+                    level=logging.WARNING,
                 )
 
             # Finish up the stats
@@ -3210,7 +3201,9 @@ class Job:
                         clock=str(job_cpu_time),
                         class_name=self._jobName(),
                         memory=str(total_memory_kib),
-                        requested_cores=str(self.cores), # TODO: Isn't this really consumed cores?
+                        requested_cores=str(
+                            self.cores
+                        ),  # TODO: Isn't this really consumed cores?
                         disk=str(fileStore.get_disk_usage()),
                         succeeded=str(succeeded),
                     )
@@ -3218,8 +3211,8 @@ class Job:
 
     def _runner(
         self,
-        jobStore: "AbstractJobStore",
-        fileStore: "AbstractFileStore",
+        jobStore: AbstractJobStore,
+        fileStore: AbstractFileStore,
         defer: Callable[[Any], None],
         **kwargs,
     ) -> None:
@@ -3286,7 +3279,7 @@ class Job:
         return flag in self._debug_flags
 
     def files_downloaded_hook(
-        self, host_and_job_paths: Optional[list[tuple[str, str]]] = None
+        self, host_and_job_paths: list[tuple[str, str]] | None = None
     ) -> None:
         """
         Function that subclasses can call when they have downloaded their input files.
@@ -3354,9 +3347,7 @@ class FunctionWrappingJob(Job):
                 list(zip(argSpec.args[-len(argSpec.defaults) :], argSpec.defaults))
             )
 
-        def resolve(
-            key, default: Optional[Any] = None, dehumanize: bool = False
-        ) -> Any:
+        def resolve(key, default: Any | None = None, dehumanize: bool = False) -> Any:
             try:
                 # First, try constructor arguments, ...
                 value = kwargs.pop(key)
@@ -3399,7 +3390,7 @@ class FunctionWrappingJob(Job):
         userFunctionModule = self._loadUserModule(self.userFunctionModule)
         return getattr(userFunctionModule, self.userFunctionName)
 
-    def run(self, fileStore: "AbstractFileStore") -> Any:
+    def run(self, fileStore: AbstractFileStore) -> Any:
         userFunction = self._getUserFunction()
         return userFunction(*self._args, **self._kwargs)
 
@@ -3444,10 +3435,10 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     """
 
     @property
-    def fileStore(self) -> "AbstractFileStore":
+    def fileStore(self) -> AbstractFileStore:
         return self._fileStore
 
-    def run(self, fileStore: "AbstractFileStore") -> Any:
+    def run(self, fileStore: AbstractFileStore) -> Any:
         userFunction = self._getUserFunction()
         rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
         return rValue
@@ -3543,7 +3534,7 @@ class EncapsulatedJob(Job):
     the same value after A or A.encapsulate() has been run.
     """
 
-    def __init__(self, job: Optional[Job], unitName: Optional[str] = None) -> None:
+    def __init__(self, job: Job | None, unitName: str | None = None) -> None:
         """
         :param toil.job.Job job: the job to encapsulate.
         :param str unitName: human-readable name to identify this job instance.
@@ -3600,7 +3591,7 @@ class EncapsulatedJob(Job):
             )
         return Job.addFollowOn(self.encapsulatedFollowOn, followOnJob)
 
-    def rv(self, *path) -> "Promise":
+    def rv(self, *path) -> Promise:
         if self.encapsulatedJob is None:
             raise RuntimeError("The encapsulated job was not set.")
         return self.encapsulatedJob.rv(*path)
@@ -3824,14 +3815,14 @@ class FileMetadata(NamedTuple):
 
     source: str
     parent_dir: str
-    size: Optional[int]
+    size: int | None
 
 
 def potential_absolute_uris(
     uri: str,
     path: list[str],
-    importer: Optional[str] = None,
-    execution_dir: Optional[str] = None,
+    importer: str | None = None,
+    execution_dir: str | None = None,
 ) -> Iterator[str]:
     """
     Get potential absolute URIs to check for an imported file.
@@ -3903,12 +3894,12 @@ def potential_absolute_uris(
 
 
 def get_file_sizes(
-    filenames: List[str],
+    filenames: list[str],
     file_source: AbstractJobStore,
-    search_paths: Optional[List[str]] = None,
+    search_paths: list[str] | None = None,
     include_remote_files: bool = True,
-    execution_dir: Optional[str] = None,
-) -> Dict[str, FileMetadata]:
+    execution_dir: str | None = None,
+) -> dict[str, FileMetadata]:
     """
     Resolve relative-URI files in the given environment and turn them into absolute normalized URIs. Returns a dictionary of the *string values* from the WDL file values
     to a tuple of the normalized URI, parent directory ID, and size of the file. The size of the file may be None, which means unknown size.
@@ -3975,9 +3966,7 @@ def get_file_sizes(
             if file_basename == "":
                 # We can't have files with no basename because we need to
                 # download them at that basename later in WDL.
-                raise RuntimeError(
-                    f"File {candidate_uri} has no basename"
-                )
+                raise RuntimeError(f"File {candidate_uri} has no basename")
 
             # Was actually found
             if is_remote_url(candidate_uri):
@@ -4009,14 +3998,14 @@ class CombineImportsJob(Job):
     Combine the outputs of multiple WorkerImportJobs into one promise
     """
 
-    def __init__(self, d: Sequence[Promised[Dict[str, FileID]]], **kwargs):
+    def __init__(self, d: Sequence[Promised[dict[str, FileID]]], **kwargs):
         """
         :param d: Sequence of dictionaries to merge
         """
         self._d = d
         super().__init__(**kwargs)
 
-    def run(self, file_store: "AbstractFileStore") -> Promised[Dict[str, FileID]]:
+    def run(self, file_store: AbstractFileStore) -> Promised[dict[str, FileID]]:
         """
         Merge the dicts
         """
@@ -4031,12 +4020,7 @@ class WorkerImportJob(Job):
     For the CWL/WDL runners, this class is only used when runImportsOnWorkers is enabled.
     """
 
-    def __init__(
-        self,
-        filenames: List[str],
-        local: bool = False,
-        **kwargs: Any
-    ):
+    def __init__(self, filenames: list[str], local: bool = False, **kwargs: Any):
         """
         Setup importing files on a worker.
         :param filenames: List of file URIs to import
@@ -4047,8 +4031,8 @@ class WorkerImportJob(Job):
 
     @staticmethod
     def import_files(
-        files: List[str], file_source: "AbstractJobStore", symlink: bool = True
-    ) -> Dict[str, FileID]:
+        files: list[str], file_source: AbstractJobStore, symlink: bool = True
+    ) -> dict[str, FileID]:
         """
         Import a list of files into the jobstore. Returns a mapping of the filename to the associated FileIDs
 
@@ -4068,7 +4052,7 @@ class WorkerImportJob(Job):
         path_to_fileid = {}
 
         @memoize
-        def import_filename(filename: str) -> Optional[FileID]:
+        def import_filename(filename: str) -> FileID | None:
             return file_source.import_file(filename, symlink=symlink)
 
         for file in files:
@@ -4077,7 +4061,7 @@ class WorkerImportJob(Job):
                 path_to_fileid[file] = imported
         return path_to_fileid
 
-    def run(self, file_store: "AbstractFileStore") -> Promised[Dict[str, FileID]]:
+    def run(self, file_store: AbstractFileStore) -> Promised[dict[str, FileID]]:
         """
         Import the workflow inputs and then create and run the workflow.
         :return: Promise of workflow outputs
@@ -4094,7 +4078,7 @@ class ImportsJob(Job):
 
     def __init__(
         self,
-        file_to_data: Dict[str, FileMetadata],
+        file_to_data: dict[str, FileMetadata],
         max_batch_size: ParseableIndivisibleResource,
         import_worker_disk: ParseableIndivisibleResource,
         **kwargs: Any,
@@ -4113,8 +4097,8 @@ class ImportsJob(Job):
         self._import_worker_disk = import_worker_disk
 
     def run(
-        self, file_store: "AbstractFileStore"
-    ) -> Tuple[Promised[Dict[str, FileID]], Dict[str, FileMetadata]]:
+        self, file_store: AbstractFileStore
+    ) -> tuple[Promised[dict[str, FileID]], dict[str, FileMetadata]]:
         """
         Import the workflow inputs and then create and run the workflow.
 
@@ -4165,7 +4149,9 @@ class ImportsJob(Job):
         # Create batch import jobs for each group of files
         for batch in file_batches:
             candidate_uris = [file_to_data[filename][0] for filename in batch]
-            import_jobs.append(WorkerImportJob(candidate_uris, disk=self._import_worker_disk))
+            import_jobs.append(
+                WorkerImportJob(candidate_uris, disk=self._import_worker_disk)
+            )
 
         for job in import_jobs:
             self.addChild(job)
@@ -4193,7 +4179,7 @@ class Promise:
     run function has been executed.
     """
 
-    _jobstore: Optional["AbstractJobStore"] = None
+    _jobstore: AbstractJobStore | None = None
     """
     Caches the job store instance used during unpickling to prevent it from being instantiated
     for each promise
@@ -4204,7 +4190,7 @@ class Promise:
     A set of IDs of files containing promised values when we know we won't need them anymore
     """
 
-    def __init__(self, job: "Job", path: Any):
+    def __init__(self, job: Job, path: Any):
         """
         Initialize this promise.
 
@@ -4235,7 +4221,7 @@ class Promise:
         return self.__class__, (jobStoreLocator, jobStoreFileID)
 
     @staticmethod
-    def __new__(cls, *args) -> "Promise":
+    def __new__(cls, *args) -> Promise:
         """Instantiate this Promise."""
         if len(args) != 2:
             raise RuntimeError(

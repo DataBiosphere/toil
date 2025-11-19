@@ -1,4 +1,4 @@
-from argparse import ArgumentParser, SUPPRESS
+from argparse import SUPPRESS, ArgumentParser
 
 from toil.lib.conversions import human2bytes
 
@@ -39,7 +39,11 @@ def add_runner_options(
 
     # Deprecated
     parser.add_argument(
-        "--importWorkersThreshold", "--import-workers-threshold", dest="import_workers_batchsize",type=lambda x: human2bytes(str(x)), help=SUPPRESS
+        "--importWorkersThreshold",
+        "--import-workers-threshold",
+        dest="import_workers_batchsize",
+        type=lambda x: human2bytes(str(x)),
+        help=SUPPRESS,
     )
 
     import_workers_disk_argument = ["--importWorkersDisk"]
@@ -51,7 +55,7 @@ def add_runner_options(
         type=lambda x: human2bytes(str(x)),
         default="1 MiB",
         help="Specify the disk size each import worker will get. This usually will not need to be set as Toil will attempt to use file streaming when downloading files. "
-             "If not possible, for example, when downloading from AWS to a GCE job store, "
-             "this should be set to the largest file size of all files to import. This should be set in conjunction with the arguments "
-             "--runImportsOnWorkers and --importWorkersBatchSize."
+        "If not possible, for example, when downloading from AWS to a GCE job store, "
+        "this should be set to the largest file size of all files to import. This should be set in conjunction with the arguments "
+        "--runImportsOnWorkers and --importWorkersBatchSize."
     )

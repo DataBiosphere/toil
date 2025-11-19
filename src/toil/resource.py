@@ -20,12 +20,12 @@ import os
 import shutil
 import sys
 from collections import namedtuple
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextlib import closing
 from io import BytesIO
 from pydoc import locate
 from types import ModuleType
-from typing import IO, TYPE_CHECKING, BinaryIO, Callable, Optional
+from typing import IO, TYPE_CHECKING, BinaryIO, Optional
 from urllib.error import HTTPError
 from urllib.request import urlopen
 from zipfile import ZipFile
@@ -157,7 +157,7 @@ class Resource(namedtuple("Resource", ("name", "pathHash", "url", "contentHash")
 
             return self
 
-    def download(self, callback: Optional[Callable[[str], None]] = None) -> None:
+    def download(self, callback: Callable[[str], None] | None = None) -> None:
         """
         Download this resource from its URL to a file on the local system.
 
@@ -625,7 +625,7 @@ class ModuleDescriptor(
             return self.dirPath
 
     @classmethod
-    def _initModuleName(cls, dirPath: str) -> Optional[str]:
+    def _initModuleName(cls, dirPath: str) -> str | None:
         for name in ("__init__.py", "__init__.pyc", "__init__.pyo"):
             if os.path.exists(os.path.join(dirPath, name)):
                 return name
@@ -656,7 +656,7 @@ class ModuleDescriptor(
             sys.path.append(module.dirPath)
         return module
 
-    def load(self) -> Optional[ModuleType]:
+    def load(self) -> ModuleType | None:
         module = self.makeLoadable()
         try:
             return importlib.import_module(module.name)

@@ -15,7 +15,6 @@ import logging
 import os
 import subprocess
 import time
-from typing import Optional
 from uuid import uuid4
 
 from toil.lib.aws import zone_to_region
@@ -30,7 +29,6 @@ from toil.test import (
     needs_fetchable_appliance,
     slow,
 )
-
 from toil.test.cwl.cwlTest import TestCWLv12Conformance
 
 log = logging.getLogger(__name__)
@@ -193,7 +191,7 @@ class AbstractClusterTest(ToilTest):
         subprocess.check_call(cmd)
 
     @retry(errors=[subprocess.CalledProcessError], intervals=[1, 1])
-    def createClusterUtil(self, args: Optional[list[str]] = None) -> None:
+    def createClusterUtil(self, args: list[str] | None = None) -> None:
         args = [] if args is None else args
 
         command = [

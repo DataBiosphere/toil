@@ -26,15 +26,16 @@ themselves.
 """
 
 import importlib
-from typing import Any, Literal, Union
 import pkgutil
-from toil.lib.memoize import memoize
+from typing import Any, Literal, Union
 
+from toil.lib.memoize import memoize
 
 PluginType = Union[Literal["batch_system"], Literal["url_access"]]
 plugin_types: list[PluginType] = ["batch_system", "url_access"]
 
 _registry: dict[str, dict[str, Any]] = {k: {} for k in plugin_types}
+
 
 def register_plugin(
     plugin_type: PluginType, plugin_name: str, plugin_being_registered: Any
@@ -56,8 +57,8 @@ def register_plugin(
     """
     _registry[plugin_type][plugin_name] = plugin_being_registered
 
-def remove_plugin(
-    plugin_type: PluginType, plugin_name: str) -> None:
+
+def remove_plugin(plugin_type: PluginType, plugin_name: str) -> None:
     """
     Removes a plugin from the registry for the given type of plugin.
     """
@@ -67,12 +68,14 @@ def remove_plugin(
         # If the plugin does not exist, it can be ignored
         pass
 
-def get_plugin_names(plugin_type:PluginType) -> list[str]:
+
+def get_plugin_names(plugin_type: PluginType) -> list[str]:
     """
     Get the names of all the available plugins of the given type.
     """
     _load_all_plugins(plugin_type)
     return list(_registry[plugin_type].keys())
+
 
 def get_plugin(plugin_type: PluginType, plugin_name: str) -> Any:
     """
@@ -87,11 +90,12 @@ def get_plugin(plugin_type: PluginType, plugin_name: str) -> Any:
 
 def _plugin_name_prefix(plugin_type: PluginType) -> str:
     """
-    Get prefix for plugin type. 
-    
+    Get prefix for plugin type.
+
     Any packages with prefix will count as toil plugins of that type.
     """
     return f"toil_{plugin_type}_"
+
 
 @memoize
 def _load_all_plugins(plugin_type: PluginType) -> None:

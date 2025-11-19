@@ -7,7 +7,7 @@ import time
 from base64 import b64encode
 from collections.abc import Iterable
 from io import BytesIO
-from typing import Any, Optional, cast
+from typing import Any, cast
 from urllib.parse import urldefrag, urljoin, urlparse
 
 import ruamel.yaml
@@ -107,7 +107,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
     TODO: Propose a PR in wes-service to include workflow_engine_params.
     """
 
-    def __init__(self, endpoint: str, auth: Optional[tuple[str, str]] = None) -> None:
+    def __init__(self, endpoint: str, auth: tuple[str, str] | None = None) -> None:
         """
         :param endpoint: The http(s) URL of the WES server. Must include the
                          protocol.
@@ -212,9 +212,9 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
     def build_wes_request(
         self,
         workflow_file: str,
-        workflow_params_file: Optional[str],
-        attachments: Optional[list[str]],
-        workflow_engine_parameters: Optional[list[str]] = None,
+        workflow_params_file: str | None,
+        attachments: list[str] | None,
+        workflow_engine_parameters: list[str] | None = None,
     ) -> tuple[dict[str, str], Iterable[tuple[str, tuple[str, BytesIO]]]]:
         """
         Build the workflow run request to submit to WES.
@@ -295,9 +295,9 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
     def run_with_engine_options(
         self,
         workflow_file: str,
-        workflow_params_file: Optional[str],
-        attachments: Optional[list[str]],
-        workflow_engine_parameters: Optional[list[str]],
+        workflow_params_file: str | None,
+        attachments: list[str] | None,
+        workflow_engine_parameters: list[str] | None,
     ) -> dict[str, Any]:
         """
         Composes and sends a post request that signals the WES server to run a
@@ -325,7 +325,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         return cast(dict[str, Any], wes_response(post_result))
 
 
-def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None) -> list[str]:
+def get_deps_from_cwltool(cwl_file: str, input_file: str | None = None) -> list[str]:
     """
     Return a list of dependencies of the given workflow from cwltool.
 
@@ -387,8 +387,8 @@ def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None) -> li
 def submit_run(
     client: WESClientWithWorkflowEngineParameters,
     cwl_file: str,
-    input_file: Optional[str] = None,
-    engine_options: Optional[list[str]] = None,
+    input_file: str | None = None,
+    engine_options: list[str] | None = None,
 ) -> str:
     """
     Given a CWL file, its input files, and an optional list of engine options,

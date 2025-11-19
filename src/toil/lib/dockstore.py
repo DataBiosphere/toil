@@ -18,23 +18,19 @@ Contains functions for integrating Toil with UCSC Dockstore, for reporting metri
 For basic TRS functionality for fetching workflows, see trs.py.
 """
 
-import datetime
 import logging
 import math
 import os
 import re
 import sys
-import uuid
-from typing import Any, Literal, Optional, Union, TypedDict, cast
+from typing import Any, Literal, TypedDict, Union
+from urllib.parse import quote
 
-from urllib.parse import urlparse, unquote, quote
 import requests
 
-from toil.lib.misc import unix_seconds_to_timestamp, seconds_to_duration
+from toil.lib.misc import seconds_to_duration, unix_seconds_to_timestamp
 from toil.lib.trs import TRS_ROOT
-from toil.lib.retry import retry
 from toil.lib.web import web_session
-from toil.version import baseVersion
 
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
@@ -47,7 +43,9 @@ logger = logging.getLogger(__name__)
 
 # This is a publish-able token for production Dockstore for Toil to use.
 # This is NOT a secret value.
-DEFAULT_DOCKSTORE_TOKEN = "2bff46294daddef6df185452b04db6143ea8a59f52ee3c325d3e1df418511b7d"
+DEFAULT_DOCKSTORE_TOKEN = (
+    "2bff46294daddef6df185452b04db6143ea8a59f52ee3c325d3e1df418511b7d"
+)
 
 # How should we authenticate our Dockstore requests?
 DOCKSTORE_TOKEN = os.environ.get("TOIL_DOCKSTORE_TOKEN", DEFAULT_DOCKSTORE_TOKEN)
@@ -59,7 +57,15 @@ DOCKSTORE_PLATFORM = "TOIL"
 # This is a https://schema.org/CompletedActionStatus
 # The values here are from expanding the type info in the Docksotre docs at
 # <https://dockstore.org/api/static/swagger-ui/index.html#/extendedGA4GH/executionMetricsPost>
-ExecutionStatus = Union[Literal["ALL"], Literal["SUCCESSFUL"], Literal["FAILED"], Literal["FAILED_SEMANTIC_INVALID"], Literal["FAILED_RUNTIME_INVALID"], Literal["ABORTED"]]
+ExecutionStatus = Union[
+    Literal["ALL"],
+    Literal["SUCCESSFUL"],
+    Literal["FAILED"],
+    Literal["FAILED_SEMANTIC_INVALID"],
+    Literal["FAILED_RUNTIME_INVALID"],
+    Literal["ABORTED"],
+]
+
 
 class Cost(TypedDict):
     """
@@ -70,6 +76,7 @@ class Cost(TypedDict):
     """
     Cost in US Dollars.
     """
+
 
 class RunExecution(TypedDict):
     """
@@ -125,6 +132,7 @@ class RunExecution(TypedDict):
     Dockstore can take any JSON-able structured data.
     """
 
+
 class TaskExecutions(TypedDict):
     """
     Dockstore metrics data for all the tasks in a workflow.
@@ -155,6 +163,7 @@ class TaskExecutions(TypedDict):
     Dockstore can take any JSON-able structured data.
     """
 
+
 def ensure_valid_id(execution_id: str) -> None:
     """
     Make sure the given execution ID is in Dockstore format and will be accepted by Dockstore.
@@ -173,24 +182,25 @@ def ensure_valid_id(execution_id: str) -> None:
     if not re.fullmatch("[a-zA-Z0-9_]+", execution_id):
         raise ValueError("Execution ID must be alphanumeric with internal underscores")
 
+
 def pack_workflow_metrics(
-        execution_id: str,
-        start_time: float,
-        runtime: float,
-        succeeded: bool,
-        job_store_type: Optional[str] = None,
-        batch_system: Optional[str] = None,
-        caching: Optional[bool] = None,
-        toil_version: Optional[str] = None,
-        python_version: Optional[str] = None,
-        platform_system: Optional[str] = None,
-        platform_machine: Optional[str] = None
-    ) -> RunExecution:
+    execution_id: str,
+    start_time: float,
+    runtime: float,
+    succeeded: bool,
+    job_store_type: str | None = None,
+    batch_system: str | None = None,
+    caching: bool | None = None,
+    toil_version: str | None = None,
+    python_version: str | None = None,
+    platform_system: str | None = None,
+    platform_machine: str | None = None,
+) -> RunExecution:
     """
     Pack up per-workflow metrics into a format that can be submitted to Dockstore.
 
     :param execution_id: Unique ID for the workflow execution. Must be in
-        Dockstore format. 
+        Dockstore format.
     :param start_time: Execution start time in seconds since the Unix epoch.
     :param rutime: Execution duration in seconds.
     :param jobstore_type: Kind of job store used, like "file" or "aws".
@@ -210,7 +220,7 @@ def pack_workflow_metrics(
         executionId=execution_id,
         dateExecuted=unix_seconds_to_timestamp(start_time),
         executionTime=seconds_to_duration(runtime),
-        executionStatus="SUCCESSFUL" if succeeded else "FAILED"
+        executionStatus="SUCCESSFUL" if succeeded else "FAILED",
     )
 
     # TODO: Just use kwargs here?
@@ -242,22 +252,23 @@ def pack_workflow_metrics(
 
     return result
 
+
 def pack_single_task_metrics(
-        execution_id: str,
-        start_time: float,
-        runtime: float,
-        succeeded: bool,
-        job_name: Optional[str] = None,
-        cores: Optional[float] = None,
-        cpu_seconds: Optional[float] = None,
-        memory_bytes: Optional[int] = None,
-        disk_bytes: Optional[int] = None,
-    ) -> RunExecution:
+    execution_id: str,
+    start_time: float,
+    runtime: float,
+    succeeded: bool,
+    job_name: str | None = None,
+    cores: float | None = None,
+    cpu_seconds: float | None = None,
+    memory_bytes: int | None = None,
+    disk_bytes: int | None = None,
+) -> RunExecution:
     """
     Pack up metrics for a single task execution in a format that can be used in a Dockstore submission.
 
     :param execution_id: Unique ID for the workflow execution. Must be in
-        Dockstore format. 
+        Dockstore format.
     :param start_time: Execution start time in seconds since the Unix epoch.
     :param rutime: Execution duration in seconds.
     :param succeeded: Whether the execution succeeded.
@@ -278,7 +289,7 @@ def pack_single_task_metrics(
         executionId=execution_id,
         dateExecuted=unix_seconds_to_timestamp(start_time),
         executionTime=seconds_to_duration(runtime),
-        executionStatus="SUCCESSFUL" if succeeded else "FAILED"
+        executionStatus="SUCCESSFUL" if succeeded else "FAILED",
     )
 
     if memory_bytes is not None:
@@ -310,12 +321,14 @@ def pack_single_task_metrics(
     return result
 
 
-def pack_workflow_task_set_metrics(execution_id: str, start_time: float, tasks: list[RunExecution]) -> TaskExecutions:
+def pack_workflow_task_set_metrics(
+    execution_id: str, start_time: float, tasks: list[RunExecution]
+) -> TaskExecutions:
     """
     Pack up metrics for all the tasks in a workflow execution into a format that can be submitted to Dockstore.
-    
+
     :param execution_id: Unique ID for the workflow execution. Must be in
-        Dockstore format. 
+        Dockstore format.
     :param start_time: Execution start time for the overall workflow execution
         in seconds since the Unix epoch.
     :param tasks: Packed tasks from pack_single_task_metrics()
@@ -327,10 +340,16 @@ def pack_workflow_task_set_metrics(execution_id: str, start_time: float, tasks: 
     return TaskExecutions(
         executionId=execution_id,
         dateExecuted=unix_seconds_to_timestamp(start_time),
-        taskExecutions=tasks
+        taskExecutions=tasks,
     )
 
-def send_metrics(trs_workflow_id: str, trs_version: str, workflow_runs: list[RunExecution], workflow_task_sets: list[TaskExecutions]) -> None:
+
+def send_metrics(
+    trs_workflow_id: str,
+    trs_version: str,
+    workflow_runs: list[RunExecution],
+    workflow_task_sets: list[TaskExecutions],
+) -> None:
     """
     Send packed workflow and/or task metrics to Dockstore.
 
@@ -340,7 +359,7 @@ def send_metrics(trs_workflow_id: str, trs_version: str, workflow_runs: list[Run
         each workflow. Each workflow should have one entry containing all its
         tasks. Does not have to be the same order/set of workflows as
         workflow_runs.
-    
+
     :raises requests.HTTPError: if Dockstore does not accept the metrics.
     """
 
@@ -348,13 +367,13 @@ def send_metrics(trs_workflow_id: str, trs_version: str, workflow_runs: list[Run
     to_post = {
         "runExecutions": workflow_runs,
         "taskExecutions": workflow_task_sets,
-        "validationExecutions": []
+        "validationExecutions": [],
     }
 
     # Set the submission query string metadata
     submission_params = {
         "platform": DOCKSTORE_PLATFORM,
-        "description": "Workflow status from Toil"
+        "description": "Workflow status from Toil",
     }
 
     # Set the headers. Even though user agent isn't in here, it still gets
@@ -371,12 +390,21 @@ def send_metrics(trs_workflow_id: str, trs_version: str, workflow_runs: list[Run
     logger.debug("With headers: %s", headers)
 
     try:
-        result = web_session.post(endpoint_url, params=submission_params, json=to_post, headers=headers)
+        result = web_session.post(
+            endpoint_url, params=submission_params, json=to_post, headers=headers
+        )
         result.raise_for_status()
-        logger.debug("Workflow metrics were accepted by Dockstore. Dockstore response code: %s", result.status_code)
+        logger.debug(
+            "Workflow metrics were accepted by Dockstore. Dockstore response code: %s",
+            result.status_code,
+        )
     except requests.HTTPError as e:
-        logger.warning("Workflow metrics were not accepted by Dockstore. Dockstore complained: %s", e.response.text)
+        logger.warning(
+            "Workflow metrics were not accepted by Dockstore. Dockstore complained: %s",
+            e.response.text,
+        )
         raise
+
 
 def get_metrics_url(trs_workflow_id: str, trs_version: str, execution_id: str) -> str:
     """
@@ -384,4 +412,3 @@ def get_metrics_url(trs_workflow_id: str, trs_version: str, execution_id: str) -
     """
 
     return f"{TRS_ROOT}/api/api/ga4gh/v2/extended/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}/execution?platform={DOCKSTORE_PLATFORM}&executionId={quote(execution_id, safe='')}"
-

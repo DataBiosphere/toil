@@ -11,14 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from argparse import Namespace
-from collections.abc import Callable, Generator, Sequence
 import logging
 import os
-from pathlib import Path
 import signal
 import time
-from typing import Optional
+from argparse import Namespace
+from collections.abc import Callable, Generator, Sequence
+from pathlib import Path
 from uuid import uuid4
 
 import psutil
@@ -262,6 +261,7 @@ def _writeNonLocalFilesLambda(job: Job, files: tuple[Path, Path]) -> None:
     def lmd(x: Path, nlf: Path) -> None:
         x.unlink()
         nlf.unlink()
+
     for nlf in files:
         with nlf.open("wb") as nonLocalFileHandle:
             nonLocalFileHandle.write(os.urandom(1 * 1024 * 1024))
@@ -282,7 +282,7 @@ def _deferredFunctionRunsWithFailuresFn(job: Job, files: tuple[Path, Path]) -> N
         job.defer(_deleteFile, files[1])
 
 
-def _deleteFile(nonLocalFile: Path, nlf: Optional[Path] = None) -> None:
+def _deleteFile(nonLocalFile: Path, nlf: Path | None = None) -> None:
     """
     Delete nonLocalFile and nlf
     :param nonLocalFile:
@@ -350,7 +350,7 @@ def _testNewJobsCanHandleOtherJobDeaths_C(
 
 class _deleteMethods:
     @staticmethod
-    def _deleteFileMethod(nonLocalFile: Path, nlf: Optional[Path] = None) -> None:
+    def _deleteFileMethod(nonLocalFile: Path, nlf: Path | None = None) -> None:
         """
         Delete nonLocalFile and nlf
         """
@@ -360,7 +360,7 @@ class _deleteMethods:
 
     @classmethod
     def _deleteFileClassMethod(
-        cls, nonLocalFile: Path, nlf: Optional[Path] = None
+        cls, nonLocalFile: Path, nlf: Path | None = None
     ) -> None:
         """
         Delete nonLocalFile and nlf

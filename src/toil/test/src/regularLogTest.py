@@ -14,10 +14,9 @@
 import logging
 import mimetypes
 import os
-from pathlib import Path
 import subprocess
 import sys
-from typing import Optional
+from pathlib import Path
 
 from toil.test import pslow as slow
 from toil.test.mesos import helloWorld
@@ -36,7 +35,7 @@ class RegularLogTest:
         ]
 
     def _assertFileTypeExists(
-        self, dirpath: Path, extension: str, encoding: Optional[str] = None
+        self, dirpath: Path, extension: str, encoding: str | None = None
     ) -> None:
         # an encoding of None implies no compression
         logger.info("Checking for %s file in %s", extension, dirpath)

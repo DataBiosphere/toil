@@ -30,7 +30,7 @@ import time
 import traceback
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Optional, Union, cast
+from typing import cast
 
 import psutil
 
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 def ensure_filesystem_lockable(
-    path: StrPath, timeout: float = 30, hint: Optional[str] = None
+    path: StrPath, timeout: float = 30, hint: str | None = None
 ) -> None:
     """
     Make sure that the filesystem used at the given path is one where locks are safe to use.
@@ -221,12 +221,12 @@ class ExceptionalThread(threading.Thread):
     def tryRun(self) -> None:
         super().run()
 
-    def join(self, *args: Optional[float], **kwargs: Optional[float]) -> None:
+    def join(self, *args: float | None, **kwargs: float | None) -> None:
         super().join(*args, **kwargs)
         if not self.is_alive() and self.exc_info is not None:
             exc_type, exc_value, traceback = self.exc_info
             self.exc_info = None
-            raise_(exc_type, exc_value, traceback) 
+            raise_(exc_type, exc_value, traceback)
 
 
 def cpu_count() -> int:
@@ -257,18 +257,18 @@ def cpu_count() -> int:
     if psutil_cpu_count is None:
         logger.debug("Could not retrieve the logical CPU count.")
 
-    total_machine_size: Union[float, int] = (
+    total_machine_size: float | int = (
         psutil_cpu_count if psutil_cpu_count is not None else float("inf")
     )
     logger.debug("Total machine size: %s core(s)", total_machine_size)
 
     # cgroups may limit the size
-    cgroup_size: Union[float, int] = float("inf")
+    cgroup_size: float | int = float("inf")
 
     try:
         # See if we can fetch these and use them
-        quota: Optional[int] = None
-        period: Optional[int] = None
+        quota: int | None = None
+        period: int | None = None
 
         # CGroups v1 keeps quota and period separate
         CGROUP1_QUOTA_FILE = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
@@ -312,7 +312,7 @@ def cpu_count() -> int:
         logger.debug("Could not inspect cgroup: %s", traceback.format_exc())
 
     # CPU affinity may limit the size
-    affinity_size: Union[float, int] = float("inf")
+    affinity_size: float | int = float("inf")
     if hasattr(os, "sched_getaffinity"):
         try:
             logger.debug("CPU affinity available")
@@ -326,7 +326,7 @@ def cpu_count() -> int:
     else:
         logger.debug("CPU affinity not available")
 
-    limit: Union[float, int] = float("inf")
+    limit: float | int = float("inf")
     # Apply all the limits to take the smallest
     limit = min(limit, total_machine_size)
     limit = min(limit, cgroup_size)
@@ -582,7 +582,7 @@ def global_mutex(base_dir: StrPath, mutex: str) -> Iterator[None]:
 
         try:
             # And get the stats for the name in the directory
-            path_stats: Optional[os.stat_result] = os.stat(lock_filename)
+            path_stats: os.stat_result | None = os.stat(lock_filename)
         except FileNotFoundError:
             path_stats = None
 

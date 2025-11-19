@@ -23,10 +23,10 @@ import string
 import textwrap
 import time
 import uuid
-from collections.abc import Collection, Iterable
+from collections.abc import Callable, Collection, Iterable
 from functools import wraps
 from shlex import quote
-from typing import TYPE_CHECKING, Any, Callable, Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 
 # We need these to exist as attributes we can get off of the boto object
 from botocore.exceptions import ClientError
@@ -325,7 +325,9 @@ class AWSProvisioner(AbstractProvisioner):
         self._worker_subnets_by_zone = self._get_good_subnets_like(self._leader_subnet)
 
         # Find the SSH key name to use to start instances
-        if hasattr(ec2_metadata, 'public_keys') and isinstance(ec2_metadata.public_keys, dict):
+        if hasattr(ec2_metadata, "public_keys") and isinstance(
+            ec2_metadata.public_keys, dict
+        ):
             key_names = list(ec2_metadata.public_keys.keys())
             if len(key_names) > 0 and isinstance(key_names[0], str):
                 # We have a key name from the EC2 metadata. This should always
@@ -334,8 +336,10 @@ class AWSProvisioner(AbstractProvisioner):
                 # merged. Override anything from the tags.
                 self._keyName = key_names[0]
 
-        if not hasattr(self, '_keyName'):
-            raise RuntimeError("Unable to determine the SSH key name the cluster is using")
+        if not hasattr(self, "_keyName"):
+            raise RuntimeError(
+                "Unable to determine the SSH key name the cluster is using"
+            )
 
         self._leaderPrivateIP = ec2_metadata.private_ipv4  # this is PRIVATE IP
         self._tags = {
@@ -1021,9 +1025,7 @@ class AWSProvisioner(AbstractProvisioner):
         )
         # Boto 3 demands we base64 the user data ourselves *only* for spot
         # instances, and still wants a str.
-        spot_user_data = base64.b64encode(
-            userData.encode("utf-8")
-        ).decode("utf-8")
+        spot_user_data = base64.b64encode(userData.encode("utf-8")).decode("utf-8")
         spot_kwargs: dict[Literal["LaunchSpecification"], dict[str, Any]] = {
             "LaunchSpecification": {
                 "KeyName": self._keyName,

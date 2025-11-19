@@ -17,9 +17,10 @@
 import json
 import logging
 from io import StringIO
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from cwltest import utils
+
 logger = logging.getLogger(__name__)
 
 collect_ignore = ["spec"]
@@ -30,15 +31,13 @@ collect_ignore = ["spec"]
 # See cwltool's reference implementation:
 # https://github.com/common-workflow-language/cwltool/blob/05af6c1357c327b3146e9f5da40e7c0aa3e6d976/tests/cwl-conformance/cwltool-conftest.py
 def pytest_cwl_execute_test(
-        config: utils.CWLTestConfig,
-        processfile: str,
-        jobfile: Optional[str]
-) -> Tuple[int, Optional[Dict[str, Any]]]:
+    config: utils.CWLTestConfig, processfile: str, jobfile: str | None
+) -> tuple[int, dict[str, Any] | None]:
     """Use Toil to execute CWL tests (equivalent to running toil-cwl-runner)."""
     from toil.cwl.cwltoil import main
 
     stdout = StringIO()
-    argsl: List[str] = [f"--outdir={config.outdir}"]
+    argsl: list[str] = [f"--outdir={config.outdir}"]
     if config.runner_quiet:
         argsl.append("--quiet")
     elif config.verbose:

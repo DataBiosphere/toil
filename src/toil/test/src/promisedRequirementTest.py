@@ -12,22 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Generator
 import argparse
 import logging
 import os
-from pathlib import Path
 import time
+from collections.abc import Generator
+from pathlib import Path
 from typing import Any
 
-from toil.test.batchSystems import batchSystemTest
+import pytest
+
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.fileStores import FileID
-from toil.job import Job, PromisedRequirement, JobFunctionWrappingJob, Promise
+from toil.job import Job, JobFunctionWrappingJob, Promise, PromisedRequirement
 from toil.lib.retry import retry_flaky_test
-from toil.test import pneeds_mesos as needs_mesos, pslow as slow
-
-import pytest
+from toil.test import pneeds_mesos as needs_mesos
+from toil.test import pslow as slow
+from toil.test.batchSystems import batchSystemTest
 
 log = logging.getLogger(__name__)
 

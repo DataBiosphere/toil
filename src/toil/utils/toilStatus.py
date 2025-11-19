@@ -15,7 +15,7 @@
 import logging
 import os
 import sys
-from typing import Any, Optional
+from typing import Any
 
 from toil.bus import replay_message_bus
 from toil.common import Toil, parser_with_common_options
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class ToilStatus:
     """Tool for reporting on job status."""
 
-    def __init__(self, jobStoreName: str, specifiedJobs: Optional[list[str]] = None):
+    def __init__(self, jobStoreName: str, specifiedJobs: list[str] | None = None):
         self.jobStoreName = jobStoreName
         self.jobStore = Toil.resumeJobStore(jobStoreName)
 
@@ -42,7 +42,9 @@ class ToilStatus:
                 self.jobsToReport = self.traverseJobGraph(rootJob)
             except JobException:
                 # Root job isn't set.
-                logger.warning("Workflow does not have a root job (yet? anymore?). Cannot look for jobs.")
+                logger.warning(
+                    "Workflow does not have a root job (yet? anymore?). Cannot look for jobs."
+                )
                 self.jobsToReport = []
 
         else:
@@ -60,19 +62,14 @@ class ToilStatus:
             """
             Change a job ID into a GraphViz node name.
             """
-            replacements = [
-                ("_", "_u_"),
-                ("/", "_s_"),
-                ("-", "_d_")
-            ]
+            replacements = [("_", "_u_"), ("/", "_s_"), ("-", "_d_")]
             result = job_id
             for char, replacement in replacements:
                 result = result.replace(char, replacement)
             return result
+
         id_strings = [str(job.jobStoreID) for job in self.jobsToReport]
-        jobsToNodeNames = {
-            s: id_to_name(s) for s in id_strings
-        }
+        jobsToNodeNames = {s: id_to_name(s) for s in id_strings}
 
         # Print the nodes
         for job in set(self.jobsToReport):
@@ -81,7 +78,7 @@ class ToilStatus:
                     jobsToNodeNames[str(job.jobStoreID)],
                     job.jobName,
                     job.displayName,
-                    "black" if job.has_body() else "green"
+                    "black" if job.has_body() else "green",
                 )
             )
 
@@ -359,8 +356,8 @@ class ToilStatus:
     def traverseJobGraph(
         self,
         rootJob: JobDescription,
-        jobsToReport: Optional[list[JobDescription]] = None,
-        foundJobStoreIDs: Optional[set[str]] = None,
+        jobsToReport: list[JobDescription] | None = None,
+        foundJobStoreIDs: set[str] | None = None,
     ) -> list[JobDescription]:
         """
         Find all current jobs in the jobStore and return them as an Array.

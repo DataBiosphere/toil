@@ -11,20 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import getpass
 import logging
 
 from pytest_httpserver import HTTPServer
 
-from toil.lib.misc import get_user_name
 from toil.lib.url import URLAccess
-from toil.test import needs_aws_s3, needs_online
-
+from toil.test import needs_aws_s3
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
-class TestURLAccess():
+
+class TestURLAccess:
     """
     Test URLAccess class handling read, list,
     and checking the size/existence of resources at given URL
@@ -54,8 +52,11 @@ class TestURLAccess():
     @needs_aws_s3
     def test_read_from_url(self) -> None:
         import io
+
         output = io.BytesIO()
-        size, executable = URLAccess.read_from_url("s3://toil-datasets/hello.txt", output)
+        size, executable = URLAccess.read_from_url(
+            "s3://toil-datasets/hello.txt", output
+        )
         assert isinstance(size, int)
         assert size > 0
         assert not executable

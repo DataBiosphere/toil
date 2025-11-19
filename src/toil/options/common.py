@@ -1,7 +1,8 @@
 import logging
 import os
 from argparse import Action, ArgumentParser, _AppendAction
-from typing import TYPE_CHECKING, Any, Callable, Optional, Union
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from configargparse import SUPPRESS
 from ruamel.yaml import YAML
@@ -23,7 +24,7 @@ SYS_MAX_SIZE = 9223372036854775807
 # use the same number
 
 
-def parse_set_env(l: list[str]) -> dict[str, Optional[str]]:
+def parse_set_env(l: list[str]) -> dict[str, str | None]:
     """
     Parse a list of strings of the form "NAME=VALUE" or just "NAME" into a dictionary.
 
@@ -53,7 +54,7 @@ def parse_set_env(l: list[str]) -> dict[str, Optional[str]]:
     ValueError: Empty name
     """
     d = {}
-    v: Optional[str] = None
+    v: str | None = None
     for i in l:
         try:
             k, v = i.split("=", 1)
@@ -73,7 +74,7 @@ def parse_int_list(s: str) -> list[int]:
     return [int(x) for x in s.split(",")]
 
 
-def iC(min_value: int, max_value: Optional[int] = None) -> Callable[[int], bool]:
+def iC(min_value: int, max_value: int | None = None) -> Callable[[int], bool]:
     """Returns a function that checks if a given int is in the given half-open interval."""
     assert isinstance(min_value, int)
     if max_value is None:
@@ -82,7 +83,7 @@ def iC(min_value: int, max_value: Optional[int] = None) -> Callable[[int], bool]
     return lambda x: min_value <= x < max_value
 
 
-def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], bool]:
+def fC(minValue: float, maxValue: float | None = None) -> Callable[[float], bool]:
     """Returns a function that checks if a given float is in the given half-open interval."""
     assert isinstance(minValue, float)
     if maxValue is None:
@@ -91,7 +92,7 @@ def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], b
     return lambda x: minValue <= x < maxValue
 
 
-def parse_accelerator_list(specs: Optional[str]) -> list["AcceleratorRequirement"]:
+def parse_accelerator_list(specs: str | None) -> list["AcceleratorRequirement"]:
     """
     Parse a string description of one or more accelerator requirements.
     """
@@ -116,7 +117,7 @@ def parseBool(val: str) -> bool:
 
 # This is kept in the outer scope as multiple batchsystem files use this
 def make_open_interval_action(
-    min: Union[int, float], max: Optional[Union[int, float]] = None
+    min: int | float, max: int | float | None = None
 ) -> type[Action]:
     """
     Returns an argparse action class to check if the input is within the given half-open interval.
@@ -286,7 +287,7 @@ def add_base_toil_options(
             setattr(namespace, self.dest, coordination_dir)
 
     def make_closed_interval_action(
-        min: Union[int, float], max: Optional[Union[int, float]] = None
+        min: int | float, max: int | float | None = None
     ) -> type[Action]:
         """
         Returns an argparse action class to check if the input is within the given half-open interval.
@@ -306,7 +307,7 @@ def add_base_toil_options(
                 values: Any,
                 option_string: Any = None,
             ) -> None:
-                def is_within(x: Union[int, float]) -> bool:
+                def is_within(x: int | float) -> bool:
                     if max is None:
                         return min <= x
                     else:
@@ -467,8 +468,10 @@ def add_base_toil_options(
     )
 
     caching = file_store_options.add_mutually_exclusive_group()
-    caching_help = ("Enable or disable worker level file caching for your workflow, specifying this overrides default from batch system. "
-                    "Does not affect CWL or WDL task caching.")
+    caching_help = (
+        "Enable or disable worker level file caching for your workflow, specifying this overrides default from batch system. "
+        "Does not affect CWL or WDL task caching."
+    )
     caching.add_argument(
         "--caching",
         dest="caching",
@@ -1119,11 +1122,11 @@ def add_base_toil_options(
         default=None,
         help="Whether to publish workflow metrics reports (including unique workflow "
         "and task run IDs, job names, and version and Toil feature use information) to "
-        "Dockstore when a workflow completes. Selecting \"current\" will publish metrics "
-        "for the current workflow. Selecting \"all\" will also publish prior workflow "
-        "runs from the Toil history database, even if they themselves were run with \"no\". "
+        'Dockstore when a workflow completes. Selecting "current" will publish metrics '
+        'for the current workflow. Selecting "all" will also publish prior workflow '
+        'runs from the Toil history database, even if they themselves were run with "no". '
         "Note that once published, workflow metrics CANNOT be deleted or un-published; they "
-        "will stay published forever!"
+        "will stay published forever!",
     )
 
     # Debug options

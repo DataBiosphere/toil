@@ -28,9 +28,9 @@ import sys
 import threading
 import time
 import traceback
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Any, Callable, Optional
+from typing import Any
 
 from configargparse import ArgParser
 
@@ -62,9 +62,10 @@ class StatsDict(MagicExpando):
 
     jobs: list[MagicExpando]
 
+
 def nextChainable(
     predecessor: JobDescription, job_store: AbstractJobStore, config: Config
-) -> Optional[JobDescription]:
+) -> JobDescription | None:
     """
     Returns the next chainable job's JobDescription after the given predecessor
     JobDescription, if one exists, or None if the chain must terminate.
@@ -167,6 +168,7 @@ def nextChainable(
     # Made it through! This job is chainable.
     return successor
 
+
 def unstick_worker(interval: float = 120, timeout: float = 120) -> None:
     """
     Thread function that tries to prevent the process from getting stuck.
@@ -189,7 +191,7 @@ def unstick_worker(interval: float = 120, timeout: float = 120) -> None:
     # Figure out our process ID
     pid = os.getpid()
 
-    child: Optional[subprocess.Popen[bytes]] = None
+    child: subprocess.Popen[bytes] | None = None
 
     def clean_up_child() -> None:
         """
@@ -233,7 +235,9 @@ def unstick_worker(interval: float = 120, timeout: float = 120) -> None:
             )
         except FileNotFoundError:
             # If there isn't an lsof, don't try and use it.
-            logger.info("lsof is not available. We will not be able to use it to unstick a stuck Toil leader.")
+            logger.info(
+                "lsof is not available. We will not be able to use it to unstick a stuck Toil leader."
+            )
             return
         try:
             child.wait(timeout=timeout)
@@ -247,10 +251,14 @@ def unstick_worker(interval: float = 120, timeout: float = 120) -> None:
         if child.returncode != 0:
             # Something went wrong, which is suspicious. Either it failed or it
             # timed out and could not be killed promptly.
-            logger.warning("Could not list open files on ourselves. Return code: %s", child.returncode)
+            logger.warning(
+                "Could not list open files on ourselves. Return code: %s",
+                child.returncode,
+            )
 
         # Wait the interval.
         time.sleep(interval)
+
 
 def workerScript(
     job_store: AbstractJobStore,
@@ -258,8 +266,8 @@ def workerScript(
     job_name: str,
     job_store_id: str,
     redirect_output_to_log_file: bool = True,
-    local_worker_temp_dir: Optional[str] = None,
-    debug_flags: Optional[set[str]] = None,
+    local_worker_temp_dir: str | None = None,
+    debug_flags: set[str] | None = None,
 ) -> int:
     """
     Worker process script, runs a job.
@@ -575,9 +583,7 @@ def workerScript(
                     caching=config.caching,
                 )
                 try:
-                    with job._executor(
-                        stats=statsDict, fileStore=fileStore
-                    ):
+                    with job._executor(stats=statsDict, fileStore=fileStore):
                         with deferredFunctionManager.open() as defer:
                             with fileStore.open(job):
                                 # Get the next block function to wait on committing this job
@@ -978,7 +984,7 @@ def in_contexts(contexts: list[str]) -> Iterator[None]:
                 yield
 
 
-def main(argv: Optional[list[str]] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     if argv is None:
         argv = sys.argv
     # Parse our command line

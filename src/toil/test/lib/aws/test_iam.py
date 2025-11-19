@@ -29,9 +29,7 @@ class IAMTest(ToilTest):
     """Check that given permissions and associated functions perform correctly"""
 
     def test_permissions_iam(self) -> None:
-        granted_perms = {
-            "*": {"Action": ["ec2:*", "iam:*", "s3:*"], "NotAction": []}
-        }
+        granted_perms = {"*": {"Action": ["ec2:*", "iam:*", "s3:*"], "NotAction": []}}
         assert (
             iam.policy_permissions_allow(
                 granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS

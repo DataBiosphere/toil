@@ -14,21 +14,19 @@
 import inspect
 import logging
 import os
-import re
-from pathlib import Path
 import random
+import re
 import sys
-from types import FrameType
+from pathlib import Path
 from uuid import uuid4
-from typing import cast, Union
+
+import pytest
 
 from toil.common import getNodeID
 from toil.lib.exceptions import panic, raise_
 from toil.lib.io import AtomicFileCreate, atomic_install, atomic_tmp_file, mkdtemp
 from toil.lib.misc import CalledProcessErrorStderr, StrPath, call_command
 from toil.test import pslow as slow
-
-import pytest
 
 log = logging.getLogger(__name__)
 logging.basicConfig()
@@ -63,7 +61,7 @@ class TestMisc:
         # a list of the directories used in the test
         directories: list[StrPath] = [tmp_path]
         # A dict of {FILENAME: FILESIZE or FILELINK} for all files used in the test
-        files: dict[Path, Union[int, str]] = {}
+        files: dict[Path, int | str] = {}
         # Create a random directory structure
         for i in range(0, 10):
             directories.append(mkdtemp(dir=random.choice(directories), prefix="test"))

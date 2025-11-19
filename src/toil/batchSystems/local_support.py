@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-from typing import Optional
 
 from toil.batchSystems.abstractBatchSystem import (
     BatchSystemSupport,
@@ -40,7 +39,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
             config, maxCores, maxMemory, maxDisk, max_jobs=max_local_jobs
         )
 
-    def handleLocalJob(self, command: str, jobDesc: JobDescription) -> Optional[int]:
+    def handleLocalJob(self, command: str, jobDesc: JobDescription) -> int | None:
         """
         To be called by issueBatchJob.
 
@@ -78,7 +77,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         local_running: dict[int, float] = self.localBatch.getRunningBatchJobIDs()
         return local_running
 
-    def getUpdatedLocalJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
+    def getUpdatedLocalJob(self, maxWait: int) -> UpdatedBatchJobInfo | None:
         """To be called by getUpdatedBatchJob()."""
         return self.localBatch.getUpdatedBatchJob(maxWait)
 

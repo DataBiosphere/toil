@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from collections.abc import Generator
 import json
 import logging
 import os
@@ -23,10 +22,11 @@ import subprocess
 import sys
 import uuid
 import zipfile
+from collections.abc import Callable, Generator
 from functools import partial
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional, cast
+from typing import TYPE_CHECKING, cast
 from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 
@@ -43,33 +43,29 @@ from schema_salad.exceptions import ValidationException
 from toil.cwl.utils import (
     DirectoryStructure,
     download_structure,
+    remove_redundant_mounts,
     visit_cwl_class_and_reduce,
     visit_top_cwl_class,
-    remove_redundant_mounts
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import WorkerImportJob
 from toil.lib.threading import cpu_count
-from toil.test import (
-    get_data,
-)
-from toil.test import (
-    pslow as slow,
-    pneeds_docker as needs_docker,
-    pneeds_cwl as needs_cwl,
-    pneeds_aws_s3 as needs_aws_s3,
-    pneeds_docker_cuda as needs_docker_cuda,
-    pneeds_gridengine as needs_gridengine,
-    pneeds_kubernetes as needs_kubernetes,
-    pneeds_local_cuda as needs_local_cuda,
-    pneeds_lsf as needs_lsf,
-    pneeds_mesos as needs_mesos,
-    pneeds_online as needs_online,
-    pneeds_slurm as needs_slurm,
-    pneeds_torque as needs_torque,
-    pneeds_wes_server as needs_wes_server,
-)
+from toil.test import get_data
+from toil.test import pneeds_aws_s3 as needs_aws_s3
+from toil.test import pneeds_cwl as needs_cwl
+from toil.test import pneeds_docker as needs_docker
+from toil.test import pneeds_docker_cuda as needs_docker_cuda
+from toil.test import pneeds_gridengine as needs_gridengine
+from toil.test import pneeds_kubernetes as needs_kubernetes
+from toil.test import pneeds_local_cuda as needs_local_cuda
+from toil.test import pneeds_lsf as needs_lsf
+from toil.test import pneeds_mesos as needs_mesos
+from toil.test import pneeds_online as needs_online
+from toil.test import pneeds_slurm as needs_slurm
+from toil.test import pneeds_torque as needs_torque
+from toil.test import pneeds_wes_server as needs_wes_server
+from toil.test import pslow as slow
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 10000
@@ -78,15 +74,15 @@ CONFORMANCE_TEST_TIMEOUT = 10000
 def run_conformance_tests(
     workDir: str,
     yml: str,
-    runner: Optional[str] = None,
+    runner: str | None = None,
     caching: bool = False,
-    batchSystem: Optional[str] = None,
-    selected_tests: Optional[str] = None,
-    selected_tags: Optional[str] = None,
-    skipped_tests: Optional[str] = None,
-    extra_args: Optional[list[str]] = None,
+    batchSystem: str | None = None,
+    selected_tests: str | None = None,
+    selected_tags: str | None = None,
+    skipped_tests: str | None = None,
+    extra_args: list[str] | None = None,
     must_support_all_features: bool = False,
-    junit_file: Optional[str] = None,
+    junit_file: str | None = None,
 ) -> None:
     """
     Run the CWL conformance tests.
@@ -259,7 +255,7 @@ class TestCWLWorkflow:
         expect: "CWLObjectType",
         outdir: Path,
         out_name: str = "output",
-        main_args: Optional[list[str]] = None,
+        main_args: list[str] | None = None,
     ) -> None:
         """
         Helper function that runs a CWL workflow and checks the result.
@@ -281,7 +277,6 @@ class TestCWLWorkflow:
             in and stamp out a TesterFuncType that runs toil-cwl-runner with
             various closed-over arguments.
         """
-    
 
         from toil.cwl import cwltoil
 
@@ -655,7 +650,7 @@ class TestCWLWorkflow:
         self.download(
             "download_file.json",
             partial(self._tester, main_args=["--run-imports-on-workers"]),
-            tmp_path
+            tmp_path,
         )
 
     def test_download_file_uri(self, tmp_path: Path) -> None:
@@ -665,7 +660,7 @@ class TestCWLWorkflow:
         self.download(
             "download_file_uri.json",
             partial(self._tester, main_args=["--run-imports-on-workers"]),
-            tmp_path
+            tmp_path,
         )
 
     def test_download_file_uri_no_hostname(self, tmp_path: Path) -> None:
@@ -674,11 +669,7 @@ class TestCWLWorkflow:
         """
         # We can in fact ship an absolute file URI to an empty file if we
         # assume /dev/null is available. So we can still use the helpers.
-        self.download(
-            "download_file_uri_no_hostname.json",
-            self._tester,
-            tmp_path
-        )
+        self.download("download_file_uri_no_hostname.json", self._tester, tmp_path)
 
     def test_download_file_uri_no_hostname_worker_import(self, tmp_path: Path) -> None:
         """
@@ -687,7 +678,7 @@ class TestCWLWorkflow:
         self.download(
             "download_file_uri_no_hostname.json",
             partial(self._tester, main_args=["--run-imports-on-workers"]),
-            tmp_path
+            tmp_path,
         )
 
     @needs_aws_s3
@@ -921,7 +912,7 @@ class TestCWLWorkflow:
     @pytest.mark.aws_s3
     @pytest.mark.online
     def test_streamable(
-        self, tmp_path: Path, extra_args: Optional[list[str]] = None
+        self, tmp_path: Path, extra_args: list[str] | None = None
     ) -> None:
         """
         Test that a file with 'streamable'=True is a named pipe.
@@ -1208,6 +1199,7 @@ def cwl_v1_0_spec(tmp_path: Path) -> Generator[Path]:
     finally:
         pass  # no cleanup
 
+
 @pytest.mark.integrative
 @pytest.mark.conformance
 @needs_cwl
@@ -1237,11 +1229,11 @@ class TestCWLv10Conformance:
     def test_run_conformance(
         self,
         cwl_v1_0_spec: Path,
-        batchSystem: Optional[str] = None,
+        batchSystem: str | None = None,
         caching: bool = False,
-        selected_tests: Optional[str] = None,
-        skipped_tests: Optional[str] = None,
-        extra_args: Optional[list[str]] = None,
+        selected_tests: str | None = None,
+        skipped_tests: str | None = None,
+        extra_args: list[str] | None = None,
     ) -> None:
         run_conformance_tests(
             workDir=str(cwl_v1_0_spec / "v1.0"),
@@ -1413,9 +1405,9 @@ class TestCWLv11Conformance:
         self,
         cwl_v1_1_spec: Path,
         caching: bool = False,
-        batchSystem: Optional[str] = None,
-        skipped_tests: Optional[str] = None,
-        extra_args: Optional[list[str]] = None,
+        batchSystem: str | None = None,
+        skipped_tests: str | None = None,
+        extra_args: list[str] | None = None,
     ) -> None:
         run_conformance_tests(
             workDir=str(cwl_v1_1_spec),
@@ -1502,14 +1494,14 @@ class TestCWLv12Conformance:
     def test_run_conformance(
         self,
         cwl_v1_2_spec: Path,
-        runner: Optional[str] = None,
+        runner: str | None = None,
         caching: bool = False,
-        batchSystem: Optional[str] = None,
-        selected_tests: Optional[str] = None,
-        skipped_tests: Optional[str] = None,
-        extra_args: Optional[list[str]] = None,
+        batchSystem: str | None = None,
+        selected_tests: str | None = None,
+        skipped_tests: str | None = None,
+        extra_args: list[str] | None = None,
         must_support_all_features: bool = False,
-        junit_file: Optional[str] = None,
+        junit_file: str | None = None,
     ) -> None:
         if junit_file is None:
             junit_file = os.path.abspath("conformance-1.2.junit.xml")
@@ -1580,7 +1572,7 @@ class TestCWLv12Conformance:
         self,
         cwl_v1_2_spec: Path,
         caching: bool = False,
-        junit_file: Optional[str] = None,
+        junit_file: str | None = None,
     ) -> None:
         if junit_file is None:
             junit_file = os.path.abspath("kubernetes-conformance-1.2.junit.xml")
@@ -2014,12 +2006,17 @@ def test_trim_mounts_op_nonredundant() -> None:
     """
     Make sure we don't remove all non-duplicate listings
     """
-    s: CWLObjectType = {"class": "Directory", "basename": "directory", "listing": [{"class": "File", "basename": "file", "contents": "hello world"}]}
+    s: CWLObjectType = {
+        "class": "Directory",
+        "basename": "directory",
+        "listing": [{"class": "File", "basename": "file", "contents": "hello world"}],
+    }
     remove_redundant_mounts(s)
 
     # nothing should have been removed
-    assert isinstance(s['listing'], list)
-    assert len(s['listing']) == 1
+    assert isinstance(s["listing"], list)
+    assert len(s["listing"]) == 1
+
 
 @needs_cwl
 @pytest.mark.cwl
@@ -2038,7 +2035,7 @@ def test_trim_mounts_op_redundant() -> None:
                 "location": "file:///home/heaucques/Documents/toil/test_dir/nested_dir",
                 "basename": "nested_dir",
                 "listing": [],
-                "path": "/home/heaucques/Documents/toil/test_dir/nested_dir"
+                "path": "/home/heaucques/Documents/toil/test_dir/nested_dir",
             },
             {
                 "class": "File",
@@ -2048,16 +2045,17 @@ def test_trim_mounts_op_redundant() -> None:
                 "nameroot": "test_file",
                 "nameext": "",
                 "path": "/home/heaucques/Documents/toil/test_dir/test_file",
-                "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709"
-            }
+                "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
+            },
         ],
-        "path": "/home/heaucques/Documents/toil/test_dir"
+        "path": "/home/heaucques/Documents/toil/test_dir",
     }
     remove_redundant_mounts(s)
 
     # everything should have been removed
-    assert isinstance(s['listing'], list)
-    assert len(s['listing']) == 0
+    assert isinstance(s["listing"], list)
+    assert len(s["listing"]) == 0
+
 
 @needs_cwl
 @pytest.mark.cwl
@@ -2076,7 +2074,7 @@ def test_trim_mounts_op_partially_redundant() -> None:
                 "location": "file:///home/heaucques/Documents/thing",
                 "basename": "thing2",
                 "listing": [],
-                "path": "/home/heaucques/Documents/toil/thing2"
+                "path": "/home/heaucques/Documents/toil/thing2",
             },
             {
                 "class": "File",
@@ -2086,16 +2084,17 @@ def test_trim_mounts_op_partially_redundant() -> None:
                 "nameroot": "test_file",
                 "nameext": "",
                 "path": "/home/heaucques/Documents/toil/test_dir/test_file",
-                "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709"
-            }
+                "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
+            },
         ],
-        "path": "/home/heaucques/Documents/toil/test_dir"
+        "path": "/home/heaucques/Documents/toil/test_dir",
     }
     remove_redundant_mounts(s)
 
     # everything except the nested directory should be removed
-    assert isinstance(s['listing'], list)
-    assert len(s['listing']) == 1
+    assert isinstance(s["listing"], list)
+    assert len(s["listing"]) == 1
+
 
 @needs_cwl
 @pytest.mark.cwl
@@ -2106,10 +2105,16 @@ def test_trim_mounts_op_mixed_urls_and_paths() -> None:
     """
     # Edge cases around encoding:
     # Ensure URL decoded file URIs match the bare path equivalent. Both of these paths should have the same shared directory
-    s: CWLObjectType = {"class": "Directory", "basename": "123", "location": "file:///tmp/%25/123", "listing": [{"class": "File", "path": "/tmp/%/123/456", "basename": "456"}]}
+    s: CWLObjectType = {
+        "class": "Directory",
+        "basename": "123",
+        "location": "file:///tmp/%25/123",
+        "listing": [{"class": "File", "path": "/tmp/%/123/456", "basename": "456"}],
+    }
     remove_redundant_mounts(s)
-    assert isinstance(s['listing'], list)
-    assert len(s['listing']) == 0
+    assert isinstance(s["listing"], list)
+    assert len(s["listing"]) == 0
+
 
 @needs_cwl
 @pytest.mark.cwl
@@ -2117,22 +2122,39 @@ def test_trim_mounts_op_mixed_urls_and_paths() -> None:
 def test_trim_mounts_op_decodable_paths() -> None:
     """"""
     # Ensure path names don't get unnecessarily decoded
-    s: CWLObjectType = {"class": "Directory", "basename": "dir", "path": "/tmp/cat%2Ftag/dir", "listing": [{"class": "File", "path": "/tmp/cat/tag/dir/file", "basename": "file"}]}
+    s: CWLObjectType = {
+        "class": "Directory",
+        "basename": "dir",
+        "path": "/tmp/cat%2Ftag/dir",
+        "listing": [
+            {"class": "File", "path": "/tmp/cat/tag/dir/file", "basename": "file"}
+        ],
+    }
     remove_redundant_mounts(s)
-    assert isinstance(s['listing'], list)
-    assert len(s['listing']) == 1
+    assert isinstance(s["listing"], list)
+    assert len(s["listing"]) == 1
+
 
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
 def test_trim_mounts_op_multiple_encodings() -> None:
     # Ensure differently encoded URLs are properly decoded
-    s: CWLObjectType = {"class": "Directory", "basename": "dir", "location": "file:///tmp/cat%2Ftag/dir", "listing": [{"class": "File", "location": "file:///tmp/cat%2ftag/dir/file", "basename": "file"}]}
+    s: CWLObjectType = {
+        "class": "Directory",
+        "basename": "dir",
+        "location": "file:///tmp/cat%2Ftag/dir",
+        "listing": [
+            {
+                "class": "File",
+                "location": "file:///tmp/cat%2ftag/dir/file",
+                "basename": "file",
+            }
+        ],
+    }
     remove_redundant_mounts(s)
-    assert isinstance(s['listing'], list)
-    assert len(s['listing']) == 0
-
-
+    assert isinstance(s["listing"], list)
+    assert len(s["listing"]) == 0
 
 
 @needs_cwl
@@ -2257,6 +2279,7 @@ def test_import_on_workers() -> None:
 
         assert detector.detected is True
 
+
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
@@ -2274,12 +2297,13 @@ def test_missing_tmpdir_and_tmp_outdir(tmp_path: Path) -> None:
             "toil-cwl-runner",
             f"--jobStore=file:{tmp_path / 'jobstore'}",
             "--strict-memory-limit",
-            f'--tmpdir-prefix={tmpdir_prefix}',
-            f'--tmp-outdir-prefix={tmp_outdir_prefix}',
+            f"--tmpdir-prefix={tmpdir_prefix}",
+            f"--tmp-outdir-prefix={tmp_outdir_prefix}",
             str(cwl_file),
         ]
         p = subprocess.run(cmd)
         assert p.returncode == 0
+
 
 # StreamHandler is generic, _typeshed doesn't exist at runtime, do a bit of typing trickery, see https://github.com/python/typeshed/issues/5680
 if TYPE_CHECKING:
@@ -2312,7 +2336,5 @@ class ImportWorkersMessageHandler(_stream_handler):
                 f"Log message {record.msg} has wrong number of "
                 f"fields in {record.args}"
             ) from e
-        if formatted.startswith(
-            f"Issued job '{WorkerImportJob.__name__}'"
-        ):
+        if formatted.startswith(f"Issued job '{WorkerImportJob.__name__}'"):
             self.detected = True

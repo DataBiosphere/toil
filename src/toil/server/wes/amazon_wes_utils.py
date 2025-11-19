@@ -22,7 +22,7 @@ import json
 import logging
 import zipfile
 from os import path
-from typing import IO, Optional, TypedDict, cast
+from typing import IO, TypedDict, cast
 from urllib.parse import ParseResult, urlparse
 
 from toil.bus import JobStatus
@@ -237,7 +237,7 @@ def parse_workflow_manifest_file(manifest_file: str) -> WorkflowPlan:
 
 
 def workflow_manifest_url_to_path(
-    url: ParseResult, parent_dir: Optional[str] = None
+    url: ParseResult, parent_dir: str | None = None
 ) -> str:
     """
     Interpret a possibly-relative parsed URL, relative to the given parent directory.
@@ -249,7 +249,7 @@ def workflow_manifest_url_to_path(
 
 
 # This one is all UCSC code
-def task_filter(task: TaskLog, job_status: JobStatus) -> Optional[TaskLog]:
+def task_filter(task: TaskLog, job_status: JobStatus) -> TaskLog | None:
     """
     AGC requires task names to be annotated with an AWS Batch job ID that they
     were run under. If it encounters an un-annotated task name, it will crash.
