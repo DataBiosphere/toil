@@ -14,11 +14,11 @@
 
 import logging
 import os
-from pathlib import Path
 import subprocess
 import sys
 import time
 import unittest
+from pathlib import Path
 
 from toil.common import Toil
 from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException

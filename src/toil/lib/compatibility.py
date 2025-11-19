@@ -1,6 +1,7 @@
 import functools
 import warnings
-from typing import Any, Callable, Union
+from collections.abc import Callable
+from typing import Any
 
 
 def deprecated(new_function_name: str) -> Callable[..., Any]:
@@ -18,7 +19,7 @@ def deprecated(new_function_name: str) -> Callable[..., Any]:
     return decorate
 
 
-def compat_bytes(s: Union[bytes, str]) -> str:
+def compat_bytes(s: bytes | str) -> str:
     return s.decode("utf-8") if isinstance(s, bytes) else s
 
 

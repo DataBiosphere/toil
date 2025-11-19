@@ -15,7 +15,6 @@
 
 import logging
 import os
-from typing import Union
 
 from toil import applianceSelf
 from toil.common import parser_with_common_options
@@ -217,7 +216,7 @@ def main() -> None:
 
     # This holds either ints to launch static nodes, or tuples of ints
     # specifying ranges to launch managed auto-scaling nodes, for each type.
-    nodeCounts: list[Union[int, tuple[int, int]]] = []
+    nodeCounts: list[int | tuple[int, int]] = []
 
     if (worker_node_types != [] or worker_node_ranges != []) and not (
         worker_node_types != [] and worker_node_ranges != []

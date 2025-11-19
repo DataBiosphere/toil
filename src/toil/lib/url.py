@@ -12,26 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-import os
-from abc import ABC, ABCMeta, abstractmethod
-from typing import (
-    IO,
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    ContextManager,
-    Literal,
-    Optional,
-    Union,
-    cast,
-    overload,
-    Type,
-)
+from abc import abstractmethod
+from typing import IO, cast
 from urllib.parse import ParseResult, urlparse
 
 from toil.lib.exceptions import UnimplementedURLException
-from toil.lib.memoize import memoize
-from toil.lib.plugins import register_plugin, get_plugin
+from toil.lib.plugins import get_plugin, register_plugin
 
 try:
     from botocore.exceptions import ProxyConnectionError
@@ -40,7 +26,9 @@ except ImportError:
     class ProxyConnectionError(BaseException):  # type: ignore
         """Dummy class."""
 
+
 logger = logging.getLogger(__name__)
+
 
 class URLAccess:
     """
@@ -62,7 +50,7 @@ class URLAccess:
         return otherCls._url_exists(parseResult)
 
     @classmethod
-    def get_size(cls, src_uri: str) -> Optional[int]:
+    def get_size(cls, src_uri: str) -> int | None:
         """
         Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
 
@@ -147,7 +135,7 @@ class URLAccess:
 
     @classmethod
     @abstractmethod
-    def _get_size(cls, url: ParseResult) -> Optional[int]:
+    def _get_size(cls, url: ParseResult) -> int | None:
         """
         Get the size of the object at the given URL, or None if it cannot be obtained.
         """
@@ -217,7 +205,7 @@ class URLAccess:
     @abstractmethod
     def _write_to_url(
         cls,
-        readable: Union[IO[bytes], IO[str]],
+        readable: IO[bytes] | IO[str],
         url: ParseResult,
         executable: bool = False,
     ) -> None:
@@ -264,9 +252,9 @@ class URLAccess:
             implementation_factory = get_plugin("url_access", url.scheme.lower())
         except KeyError:
             raise UnimplementedURLException(url, "export" if export else "import")
-        
+
         try:
-            implementation = cast(Type[URLAccess], implementation_factory())
+            implementation = cast(type[URLAccess], implementation_factory())
         except (ImportError, ProxyConnectionError):
             logger.debug(
                 "Unable to import implementation for scheme '%s', as is expected if the corresponding extra was "
@@ -279,9 +267,11 @@ class URLAccess:
             return implementation
         raise UnimplementedURLException(url, "export" if export else "import")
 
+
 #####
 # Built-in url access
 #####
+
 
 def file_job_store_factory() -> type[URLAccess]:
     from toil.jobStores.fileJobStore import FileJobStore
@@ -306,7 +296,8 @@ def job_store_support_factory() -> type[URLAccess]:
 
     return JobStoreSupport
 
-#make sure my py still works and the tests work
+
+# make sure my py still works and the tests work
 # can then get rid of _url_access_classes method
 
 #####

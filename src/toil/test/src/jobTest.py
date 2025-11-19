@@ -11,15 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from collections.abc import Callable
 import collections
-import logging
 import os
-from pathlib import Path
 import random
-from typing import cast, Optional, Union, Any, NoReturn
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, NoReturn, cast
 
 import pytest
+from pytest_subtests import SubTests
 
 from toil.common import Toil
 from toil.exceptions import FailedJobsException
@@ -28,13 +28,11 @@ from toil.job import (
     Job,
     JobFunctionWrappingJob,
     JobGraphDeadlockException,
-    ServiceHostJob,
     Promise,
+    ServiceHostJob,
 )
 from toil.lib.misc import FileDescriptorOrPath
 from toil.test import pslow as slow
-
-from pytest_subtests import SubTests
 
 
 class TestJob:
@@ -369,10 +367,10 @@ class TestJob:
         workflowRootJob: Job,
         checkpointJob: Job,
         tmp_path: Path,
-        checkpointJobService: Optional[Job.Service] = None,
-        checkpointJobChild: Optional[Job] = None,
-        checkpointJobFollowOn: Optional[Job] = None,
-        expectedException: Optional[type[Exception]] = None,
+        checkpointJobService: Job.Service | None = None,
+        checkpointJobChild: Job | None = None,
+        checkpointJobFollowOn: Job | None = None,
+        expectedException: type[Exception] | None = None,
     ) -> None:
         """
         Modifies the checkpoint job according to the given parameters
@@ -590,7 +588,7 @@ class TestJob:
         nodeNumber: int,
         childEdges: set[tuple[int, int]],
         followOnEdges: set[tuple[int, int]],
-        outPath: Optional[Path],
+        outPath: Path | None,
         addServices: bool = True,
     ) -> Job:
         """
@@ -666,7 +664,7 @@ class TestJob:
         list.
         """
 
-        def cyclic(fNode: int, visited: set[int], stack: list[int]) -> Union[bool, int]:
+        def cyclic(fNode: int, visited: set[int], stack: list[int]) -> bool | int:
             if fNode not in visited:
                 visited.add(fNode)
                 assert fNode not in stack

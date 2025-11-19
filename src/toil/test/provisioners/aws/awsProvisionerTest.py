@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import datetime
 import logging
 import os
 import subprocess
@@ -26,17 +25,15 @@ from uuid import uuid4
 import pytest
 
 import toil.lib.aws.session
-
 from toil.lib.aws import zone_to_region
 from toil.provisioners import cluster_factory
-from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.provisioners.aws import (
     _get_spot_history,
     get_aws_zone_from_spot_market,
     get_best_aws_zone,
 )
+from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.test import (
-    ToilTest,
     get_data,
     integrative,
     needs_aws_ec2,
@@ -63,6 +60,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+
 @pytest.fixture
 def aws_zone():
     """
@@ -74,12 +72,14 @@ def aws_zone():
     ), "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
     return zone
 
+
 @pytest.fixture
 def aws_region(aws_zone):
     """
     Supply an appropriate AWS region to work in to tests that need one.
     """
     return zone_to_region(aws_zone)
+
 
 @pytest.fixture
 def ec2_client(aws_region):
@@ -147,7 +147,9 @@ class TestAWSProvisionerBenchTest:
         Make sure that we can process spot price history to pick a zone.
         """
         zone_options = ["us-west-2a", "af-south-1c"]
-        zone_choice = get_aws_zone_from_spot_market(0.01, "t3.large", ec2_client, zone_options)
+        zone_choice = get_aws_zone_from_spot_market(
+            0.01, "t3.large", ec2_client, zone_options
+        )
         assert zone_choice in zone_options
 
 
@@ -208,7 +210,7 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         instances.sort(key=lambda x: x.get("LaunchTime"))
         leader: "InstanceTypeDef" = instances[0]  # assume leader was launched first
 
-        bdm: Optional[list["InstanceBlockDeviceMappingTypeDef"]] = leader.get(
+        bdm: list["InstanceBlockDeviceMappingTypeDef"] | None = leader.get(
             "BlockDeviceMappings"
         )
         assert bdm is not None
@@ -305,7 +307,7 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         self.cluster.destroyCluster()
         boto3_ec2: "EC2Client" = self.aws.client(region=self.region, service_name="ec2")
         volume_filter: "FilterTypeDef" = {"Name": "volume-id", "Values": [volumeID]}
-        volumes: Optional[list["VolumeTypeDef"]] = None
+        volumes: list["VolumeTypeDef"] | None = None
         for attempt in range(6):
             # https://github.com/BD2KGenomics/toil/issues/1567
             # retry this for up to 1 minute until the volume disappears
@@ -456,7 +458,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
 
         worker: "InstanceTypeDef" = next(wait_instances_running(boto3_ec2, [worker]))
 
-        bdm: Optional[list["InstanceBlockDeviceMappingTypeDef"]] = worker.get(
+        bdm: list["InstanceBlockDeviceMappingTypeDef"] | None = worker.get(
             "BlockDeviceMappings"
         )
         assert bdm is not None

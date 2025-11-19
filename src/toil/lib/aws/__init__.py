@@ -15,10 +15,9 @@ import json
 import logging
 import os
 import re
-import socket
 from collections.abc import MutableMapping
 from http.client import HTTPException
-from typing import TYPE_CHECKING, Literal, Optional, Union
+from typing import TYPE_CHECKING, Literal, Union
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -43,7 +42,7 @@ logger = logging.getLogger(__name__)
 # which may not be installed, because it has to be importable everywhere.
 
 
-def get_current_aws_region() -> Optional[str]:
+def get_current_aws_region() -> str | None:
     """
     Return the AWS region that the currently configured AWS zone (see
     get_current_aws_zone()) is in.
@@ -53,14 +52,14 @@ def get_current_aws_region() -> Optional[str]:
     return zone_to_region(aws_zone) if aws_zone else None
 
 
-def get_aws_zone_from_environment() -> Optional[str]:
+def get_aws_zone_from_environment() -> str | None:
     """
     Get the AWS zone from TOIL_AWS_ZONE if set.
     """
     return os.environ.get("TOIL_AWS_ZONE", None)
 
 
-def get_aws_zone_from_metadata() -> Optional[str]:
+def get_aws_zone_from_metadata() -> str | None:
     """
     Get the AWS zone from instance metadata, if on EC2 and the boto module is
     available. Otherwise, gets the AWS zone from ECS task metadata, if on ECS.
@@ -103,7 +102,7 @@ def get_aws_zone_from_metadata() -> Optional[str]:
     return None
 
 
-def get_aws_zone_from_boto() -> Optional[str]:
+def get_aws_zone_from_boto() -> str | None:
     """
     Get the AWS zone from the Boto3 config file or from AWS_DEFAULT_REGION, if it is configured and the
     boto3 module is available.
@@ -122,7 +121,7 @@ def get_aws_zone_from_boto() -> Optional[str]:
     return None
 
 
-def get_aws_zone_from_environment_region() -> Optional[str]:
+def get_aws_zone_from_environment_region() -> str | None:
     """
     Pick an AWS zone in the region defined by TOIL_AWS_REGION, if it is set.
     """
@@ -134,7 +133,7 @@ def get_aws_zone_from_environment_region() -> Optional[str]:
     return None
 
 
-def get_current_aws_zone() -> Optional[str]:
+def get_current_aws_zone() -> str | None:
     """
     Get the currently configured or occupied AWS zone to use.
 
@@ -191,7 +190,7 @@ def running_on_ec2() -> bool:
             timeout=1,
         )
         return True
-    except (URLError, socket.timeout, HTTPException):
+    except (URLError, TimeoutError, HTTPException):
         return False
 
 
@@ -204,7 +203,7 @@ def running_on_ecs() -> bool:
 
 
 def build_tag_dict_from_env(
-    environment: MutableMapping[str, str] = os.environ
+    environment: MutableMapping[str, str] = os.environ,
 ) -> dict[str, str]:
     tags = dict()
     owner_tag = environment.get("TOIL_OWNER_TAG")

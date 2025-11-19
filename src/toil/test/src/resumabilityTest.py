@@ -14,12 +14,12 @@
 
 from pathlib import Path
 
+import pytest
+
 from toil.exceptions import FailedJobsException
 from toil.job import Job, JobFunctionWrappingJob
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.test import pslow as slow
-
-import pytest
 
 
 class TestResumability:

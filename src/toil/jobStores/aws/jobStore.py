@@ -26,71 +26,57 @@ Reasons for this
 
 Variables defining part size, parallelization, and other constants should live in toil.lib.aws.config.
 """
-import os
+import datetime
 import json
 import logging
+import os
 import pickle
 import re
 import stat
 import uuid
-import datetime
-
-from io import BytesIO
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from io import BytesIO
+from typing import IO, Any, ContextManager, Literal, overload
 from urllib.parse import ParseResult, urlparse
-from typing import (
-    ContextManager,
-    IO,
-    TYPE_CHECKING,
-    Optional,
-    Union,
-    cast,
-    Tuple,
-    Callable,
-    Dict,
-    Any,
-    Iterator,
-    Literal,
-    overload
-)
 
 # This file can't be imported if the AWS modules are not available.
 from botocore.exceptions import ClientError
 
+from toil.common import Config
 from toil.fileStores import FileID
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             JobStoreExistsException,
-                                             NoSuchJobException,
-                                             NoSuchJobStoreException)
+from toil.job import JobDescription
+from toil.jobStores.abstractJobStore import (
+    AbstractJobStore,
+    JobStoreExistsException,
+    NoSuchFileException,
+    NoSuchJobException,
+    NoSuchJobStoreException,
+)
 from toil.lib.aws.s3 import (
-    create_s3_bucket,
-    delete_s3_bucket,
+    AWSKeyNotFoundError,
+    MultiPartPipe,
     bucket_exists,
-    copy_s3_to_s3,
     copy_local_to_s3,
     copy_s3_to_local,
-    parse_s3_uri,
-    MultiPartPipe,
-    list_s3_items,
-    upload_to_s3,
-    download_stream,
-    s3_key_exists,
-    head_s3_object,
-    get_s3_object,
-    put_s3_object,
+    copy_s3_to_s3,
     create_public_url,
-    AWSKeyNotFoundError,
+    create_s3_bucket,
+    delete_s3_bucket,
+    download_stream,
+    get_s3_object,
+    head_s3_object,
+    list_s3_items,
+    parse_s3_uri,
+    put_s3_object,
+    s3_key_exists,
+    upload_to_s3,
 )
+from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import get_object_for_url, list_objects_for_url
-from toil.common import Config
-from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.retry import get_error_status
-from toil.version import version
-from toil.lib.aws.session import establish_boto3_session
-from toil.job import JobDescription, Job
 from toil.lib.url import URLAccess
-
 
 DEFAULT_AWS_PART_SIZE = 52428800
 logger = logging.getLogger(__name__)
@@ -159,8 +145,9 @@ class AWSJobStore(AbstractJobStore, URLAccess):
        initialized with and warn the user if restarting with a different
        version.
     """
+
     def __init__(self, locator: str, partSize: int = DEFAULT_AWS_PART_SIZE) -> None:
-        super(AWSJobStore, self).__init__(locator)
+        super().__init__(locator)
         # TODO: parsing of user options seems like it should be done outside of this class;
         #  pass in only the bucket name and region?
         self.region, self.bucket_name = parse_jobstore_identifier(locator)
@@ -174,19 +161,19 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         self.bucket = None
 
         # pickled job files named with uuid4
-        self.job_key_prefix = 'jobs/'
+        self.job_key_prefix = "jobs/"
         # job-file associations; these are empty files mimicking a db w/naming convention: job_uuid4.file_uuid4
         #
         # TODO: a many-to-many system is implemented, but a simpler one-to-many
         # system could be used, because each file should belong to at most one
         # job. This should be changed to a hierarchical layout.
-        self.job_associations_key_prefix = 'job-associations/'
+        self.job_associations_key_prefix = "job-associations/"
         # input/output files named with uuid4
-        self.content_key_prefix = 'files/'
+        self.content_key_prefix = "files/"
         # these are special files, like 'environment.pickle'; place them in root
-        self.shared_key_prefix = ''
+        self.shared_key_prefix = ""
         # read and unread; named with uuid4
-        self.logs_key_prefix = 'logs/'
+        self.logs_key_prefix = "logs/"
 
         ###################################### CREATE/DESTROY JOBSTORE ######################################
 
@@ -197,11 +184,13 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         Create bucket, raise if it already exists.
         Set options from config.
         """
-        logger.debug(f"Instantiating {self.__class__} for region {self.region} with bucket: '{self.bucket_name}'")
+        logger.debug(
+            f"Instantiating {self.__class__} for region {self.region} with bucket: '{self.bucket_name}'"
+        )
         if bucket_exists(self.s3_resource, self.bucket_name):
-            raise JobStoreExistsException(self.locator, 'aws')
+            raise JobStoreExistsException(self.locator, "aws")
         self.bucket = create_s3_bucket(self.s3_resource, self.bucket_name, region=self.region)  # type: ignore
-        super(AWSJobStore, self).initialize(config)
+        super().initialize(config)
 
     def resume(self) -> None:
         """
@@ -210,11 +199,11 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         :raise NoSuchJobStoreException: if the bucket doesn't exist.
         """
         if not bucket_exists(self.s3_resource, self.bucket_name):
-            raise NoSuchJobStoreException(self.locator, 'aws')
+            raise NoSuchJobStoreException(self.locator, "aws")
         # This sets self.config to not be None and loads the encryption key
         # path from the unencrypted config. So it needs the bucket to exist to
         # read from.
-        super(AWSJobStore, self).resume()
+        super().resume()
 
     def destroy(self) -> None:
         delete_s3_bucket(self.s3_resource, self.bucket_name)
@@ -233,13 +222,13 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         pasting together of prefixes and identifiers, so it never ahs to be
         mixed with the identifier=/prefix= calling convention.
         """
-        return f'{prefix}{identifier}'
+        return f"{prefix}{identifier}"
 
     def is_in_bucket(
         self,
         identifier: str,
         prefix: str,
-        bucket: Optional[str] = None,
+        bucket: str | None = None,
     ) -> bool:
         """
         Check if the key for the given identifier and prefix is in the bucket.
@@ -250,17 +239,16 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             s3_resource=self.s3_resource,
             bucket=bucket,
             key=self._key_in_bucket(identifier=identifier, prefix=prefix),
-            extra_args=self._get_encryption_args()
+            extra_args=self._get_encryption_args(),
         )
 
-
     def write_to_bucket(
-            self,
-            identifier: str,
-            prefix: str,
-            data: Optional[Union[bytes, str, Dict[str, Any]]],
-            bucket: Optional[str] = None,
-            encrypted: Optional[bool] = None,
+        self,
+        identifier: str,
+        prefix: str,
+        data: bytes | str | dict[str, Any] | None,
+        bucket: str | None = None,
+        encrypted: bool | None = None,
     ) -> None:
         """
         Write something directly to a bucket.
@@ -274,11 +262,11 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         bucket = bucket or self.bucket_name
 
         if isinstance(data, dict):
-            data = json.dumps(data).encode('utf-8')
+            data = json.dumps(data).encode("utf-8")
         elif isinstance(data, str):
-            data = data.encode('utf-8')
+            data = data.encode("utf-8")
         elif data is None:
-            data = b''
+            data = b""
 
         assert isinstance(data, bytes)
         put_s3_object(
@@ -293,7 +281,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         self,
         identifier: str,
         prefix: str,
-        bucket: Optional[str] = None,
+        bucket: str | None = None,
     ) -> bytes:
         """
         Read something directly from a bucket.
@@ -315,7 +303,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 bucket=bucket,
                 key=self._key_in_bucket(identifier=identifier, prefix=prefix),
                 extra_args=self._get_encryption_args(),
-            )['Body'].read()
+            )["Body"].read()
         except self.s3_client.exceptions.NoSuchKey:
             if prefix == self.job_key_prefix:
                 raise NoSuchJobException(identifier)
@@ -324,7 +312,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             else:
                 raise
         except ClientError as e:
-            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 if prefix == self.job_key_prefix:
                     raise NoSuchJobException(identifier)
                 elif prefix == self.content_key_prefix:
@@ -350,9 +338,11 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
         jobDescription.pre_update_hook()
 
-        self.write_to_bucket(identifier=str(jobDescription.jobStoreID),
-                             prefix=self.job_key_prefix,
-                             data=pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
+        self.write_to_bucket(
+            identifier=str(jobDescription.jobStoreID),
+            prefix=self.job_key_prefix,
+            data=pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL),
+        )
         return jobDescription
 
     def job_exists(self, job_id: str, check: bool = False) -> bool:
@@ -369,11 +359,11 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                     identifier=job_id,
                     prefix=self.job_key_prefix,
                 ),
-                **self._get_encryption_args()
+                **self._get_encryption_args(),
             )
             return True
         except ClientError as e:
-            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 if check:
                     raise NoSuchJobException(job_id)
             else:
@@ -386,9 +376,13 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         return False
 
     def jobs(self) -> Iterator[JobDescription]:
-        for result in list_s3_items(self.s3_resource, bucket=self.bucket_name, prefix=self.job_key_prefix):
+        for result in list_s3_items(
+            self.s3_resource, bucket=self.bucket_name, prefix=self.job_key_prefix
+        ):
             try:
-                job_id = result['Key'][len(self.job_key_prefix):]  # strip self.job_key_prefix
+                job_id = result["Key"][
+                    len(self.job_key_prefix) :
+                ]  # strip self.job_key_prefix
                 yield self.load_job(job_id)
             except NoSuchJobException:
                 # job may have been deleted between showing up in the list and getting loaded
@@ -397,7 +391,9 @@ class AWSJobStore(AbstractJobStore, URLAccess):
     def load_job(self, job_id: str) -> JobDescription:
         """Use a job_id to get a job from the jobstore's s3 bucket, unpickle, and return it."""
         try:
-            job = pickle.loads(self.read_from_bucket(identifier=job_id, prefix=self.job_key_prefix))
+            job = pickle.loads(
+                self.read_from_bucket(identifier=job_id, prefix=self.job_key_prefix)
+            )
         except NoSuchJobException:
             raise
 
@@ -422,7 +418,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             Key=self._key_in_bucket(
                 identifier=job_id,
                 prefix=self.job_key_prefix,
-            )
+            ),
         )
 
         # delete any files marked as associated with the job
@@ -431,24 +427,32 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             identifier=job_id,
             prefix=self.job_associations_key_prefix,
         )
-        for associated_job_file in list_s3_items(self.s3_resource,
-                                                 bucket=self.bucket_name,
-                                                 prefix=root_key):
-            job_file_associations_to_delete.append(associated_job_file['Key'])
-            file_id = associated_job_file['Key'].split('.')[-1]
+        for associated_job_file in list_s3_items(
+            self.s3_resource, bucket=self.bucket_name, prefix=root_key
+        ):
+            job_file_associations_to_delete.append(associated_job_file["Key"])
+            file_id = associated_job_file["Key"].split(".")[-1]
             self.delete_file(file_id)
 
         # delete the job-file association references (these are empty files the simply connect jobs to files)
         for job_file_association in job_file_associations_to_delete:
-            self.s3_client.delete_object(Bucket=self.bucket_name, Key=f'{job_file_association}')
+            self.s3_client.delete_object(
+                Bucket=self.bucket_name, Key=f"{job_file_association}"
+            )
 
     def associate_job_with_file(self, job_id: str, file_id: str) -> None:
         # associate this job with this file; the file will be deleted when the job is
-        self.write_to_bucket(identifier=f'{job_id}.{file_id}', prefix=self.job_associations_key_prefix, data=None)
+        self.write_to_bucket(
+            identifier=f"{job_id}.{file_id}",
+            prefix=self.job_associations_key_prefix,
+            data=None,
+        )
 
         ###################################### FILES API ######################################
 
-    def write_file(self, local_path: str, job_id: Optional[str] = None, cleanup: bool = False) -> FileID:
+    def write_file(
+        self, local_path: str, job_id: str | None = None, cleanup: bool = False
+    ) -> FileID:
         """
         Write a local file into the jobstore and return a file_id referencing it.
 
@@ -473,67 +477,64 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
         # Each file gets a prefix under which we put exactly one key, to hide
         # metadata in the key.
-        prefix = self._key_in_bucket(
-            identifier=file_id,
-            prefix=self.content_key_prefix
-        )
+        prefix = self._key_in_bucket(identifier=file_id, prefix=self.content_key_prefix)
 
         copy_local_to_s3(
             s3_resource=self.s3_resource,
             local_file_path=local_path,
             dst_bucket=self.bucket_name,
-            dst_key=f'{prefix}/{os.path.basename(local_path)}',
-            extra_args=self._get_encryption_args()
+            dst_key=f"{prefix}/{os.path.basename(local_path)}",
+            extra_args=self._get_encryption_args(),
         )
         return FileID(file_id, size, executable)
 
     def find_s3_key_from_file_id(self, file_id: str) -> str:
         """This finds an s3 key for which file_id is the prefix, and which already exists."""
-        prefix = self._key_in_bucket(
-            identifier=file_id,
-            prefix=self.content_key_prefix
-        )
-        s3_keys = [s3_item for s3_item in list_s3_items(self.s3_resource, bucket=self.bucket_name, prefix=prefix)]
+        prefix = self._key_in_bucket(identifier=file_id, prefix=self.content_key_prefix)
+        s3_keys = [
+            s3_item
+            for s3_item in list_s3_items(
+                self.s3_resource, bucket=self.bucket_name, prefix=prefix
+            )
+        ]
         if len(s3_keys) == 0:
             raise NoSuchFileException(file_id)
         if len(s3_keys) > 1:
             # There can be only one.
-            raise RuntimeError(f'File ID: {file_id} should be unique, but includes: {s3_keys}')
-        return s3_keys[0]['Key']
+            raise RuntimeError(
+                f"File ID: {file_id} should be unique, but includes: {s3_keys}"
+            )
+        return s3_keys[0]["Key"]
 
     @contextmanager
     def write_file_stream(
         self,
-        job_id: Optional[str] = None,
+        job_id: str | None = None,
         cleanup: bool = False,
-        basename: Optional[str] = None,
-        encoding: Optional[str] = None,
-        errors: Optional[str] = None,
+        basename: str | None = None,
+        encoding: str | None = None,
+        errors: str | None = None,
     ) -> Iterator[tuple[IO[bytes], str]]:
         file_id = str(uuid.uuid4())
         if job_id and cleanup:
             self.associate_job_with_file(job_id, file_id)
-        prefix = self._key_in_bucket(
-            identifier=file_id,
-            prefix=self.content_key_prefix
-        )
+        prefix = self._key_in_bucket(identifier=file_id, prefix=self.content_key_prefix)
 
-        pipe = MultiPartPipe(part_size=self.part_size,
-                             s3_resource=self.s3_resource,
-                             bucket_name=self.bucket_name,
-                             file_id=f'{prefix}/{str(basename)}',
-                             encryption_args=self._get_encryption_args(),
-                             encoding=encoding,
-                             errors=errors)
+        pipe = MultiPartPipe(
+            part_size=self.part_size,
+            s3_resource=self.s3_resource,
+            bucket_name=self.bucket_name,
+            file_id=f"{prefix}/{str(basename)}",
+            encryption_args=self._get_encryption_args(),
+            encoding=encoding,
+            errors=errors,
+        )
         with pipe as writable:
             yield writable, file_id
 
     @contextmanager
     def update_file_stream(
-            self,
-            file_id: str,
-            encoding: Optional[str] = None,
-            errors: Optional[str] = None
+        self, file_id: str, encoding: str | None = None, errors: str | None = None
     ) -> Iterator[IO[Any]]:
         logger.debug("Replacing file %s via multipart upload", file_id)
         pipe = MultiPartPipe(
@@ -552,9 +553,9 @@ class AWSJobStore(AbstractJobStore, URLAccess):
     def write_shared_file_stream(
         self,
         shared_file_name: str,
-        encrypted: Optional[bool] = None,
-        encoding: Optional[str] = None,
-        errors: Optional[str] = None,
+        encrypted: bool | None = None,
+        encoding: str | None = None,
+        errors: str | None = None,
     ) -> Iterator[IO[bytes]]:
         encryption_args = {} if encrypted is False else self._get_encryption_args()
         pipe = MultiPartPipe(
@@ -578,7 +579,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             local_file_path=local_path,
             dst_bucket=self.bucket_name,
             dst_key=self.find_s3_key_from_file_id(file_id),
-            extra_args=self._get_encryption_args()
+            extra_args=self._get_encryption_args(),
         )
 
     def file_exists(self, file_id: str) -> bool:
@@ -593,10 +594,12 @@ class AWSJobStore(AbstractJobStore, URLAccess):
     def get_file_size(self, file_id: str) -> int:
         """Do we need both get_file_size and _get_size???"""
         full_s3_key = self.find_s3_key_from_file_id(file_id)
-        return self._get_size(url=urlparse(f's3://{self.bucket_name}/{full_s3_key}')) or 0
+        return (
+            self._get_size(url=urlparse(f"s3://{self.bucket_name}/{full_s3_key}")) or 0
+        )
 
     @classmethod
-    def _get_size(cls, url: ParseResult) -> Optional[int]:
+    def _get_size(cls, url: ParseResult) -> int | None:
         """Do we need both get_file_size and _get_size???"""
         try:
             return get_object_for_url(url, existing=True).content_length
@@ -612,14 +615,14 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 local_file_path=local_path,
                 src_bucket=self.bucket_name,
                 src_key=full_s3_key,
-                extra_args=self._get_encryption_args()
+                extra_args=self._get_encryption_args(),
             )
             if executable:
                 os.chmod(local_path, os.stat(local_path).st_mode | stat.S_IXUSR)
         except self.s3_client.exceptions.NoSuchKey:
             raise NoSuchFileException(file_id)
         except ClientError as e:
-            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 raise NoSuchFileException(file_id)
             else:
                 raise
@@ -627,23 +630,25 @@ class AWSJobStore(AbstractJobStore, URLAccess):
     @contextmanager  # type: ignore
     def read_file_stream(  # type: ignore
         self,
-        file_id: Union[FileID, str],
-        encoding: Optional[str] = None,
-        errors: Optional[str] = None,
-    ) -> Union[ContextManager[IO[bytes]], ContextManager[IO[str]]]:
+        file_id: FileID | str,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> ContextManager[IO[bytes]] | ContextManager[IO[str]]:
         full_s3_key = self.find_s3_key_from_file_id(file_id)
         try:
-            with download_stream(self.s3_resource,
-                                 bucket=self.bucket_name,
-                                 key=full_s3_key,
-                                 extra_args=self._get_encryption_args(),
-                                 encoding=encoding,
-                                 errors=errors) as readable:
+            with download_stream(
+                self.s3_resource,
+                bucket=self.bucket_name,
+                key=full_s3_key,
+                extra_args=self._get_encryption_args(),
+                encoding=encoding,
+                errors=errors,
+            ) as readable:
                 yield readable
         except self.s3_client.exceptions.NoSuchKey:
             raise NoSuchFileException(file_id)
         except ClientError as e:
-            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 raise NoSuchFileException(file_id)
             else:
                 raise
@@ -654,7 +659,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         self,
         shared_file_name: str,
         encoding: str,
-        errors: Optional[str] = None,
+        errors: str | None = None,
     ) -> Iterator[IO[str]]: ...
 
     @overload
@@ -663,38 +668,42 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         self,
         shared_file_name: str,
         encoding: Literal[None] = None,
-        errors: Optional[str] = None,
+        errors: str | None = None,
     ) -> Iterator[IO[bytes]]: ...
 
     @contextmanager
     def read_shared_file_stream(
         self,
         shared_file_name: str,
-        encoding: Optional[str] = None,
-        errors: Optional[str] = None,
-    ) -> Iterator[Union[IO[bytes], IO[str]]]:
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> Iterator[IO[bytes] | IO[str]]:
         self._requireValidSharedFileName(shared_file_name)
-        key = self._key_in_bucket(identifier=shared_file_name, prefix=self.shared_key_prefix)
+        key = self._key_in_bucket(
+            identifier=shared_file_name, prefix=self.shared_key_prefix
+        )
         if not self.is_in_bucket(
             identifier=shared_file_name,
             prefix=self.shared_key_prefix,
         ):
             # TRAVIS=true TOIL_OWNER_TAG="shared" /home/quokka/git/toil/v3nv/bin/python -m pytest --durations=0 --log-level DEBUG --log-cli-level INFO -r s /home/quokka/git/toil/src/toil/test/jobStores/jobStoreTest.py::EncryptedAWSJobStoreTest::testJobDeletions
             # throw NoSuchFileException in download_stream
-            raise NoSuchFileException(f's3://{self.bucket_name}/{key}')
+            raise NoSuchFileException(f"s3://{self.bucket_name}/{key}")
 
         try:
-            with download_stream(self.s3_resource,
-                                 bucket=self.bucket_name,
-                                 key=key,
-                                 encoding=encoding,
-                                 errors=errors,
-                                 extra_args=self._get_encryption_args()) as readable:
+            with download_stream(
+                self.s3_resource,
+                bucket=self.bucket_name,
+                key=key,
+                encoding=encoding,
+                errors=errors,
+                extra_args=self._get_encryption_args(),
+            ) as readable:
                 yield readable
         except self.s3_client.exceptions.NoSuchKey:
             raise NoSuchFileException(shared_file_name)
         except ClientError as e:
-            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 raise NoSuchFileException(shared_file_name)
             else:
                 raise
@@ -713,10 +722,10 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         self,
         otherCls: type[URLAccess],
         uri: ParseResult,
-        shared_file_name: Optional[str] = None,
+        shared_file_name: str | None = None,
         hardlink: bool = False,
         symlink: bool = True,
-    ) -> Optional[FileID]:
+    ) -> FileID | None:
         """
         Upload a file into the s3 bucket jobstore from the source uri.
 
@@ -726,18 +735,26 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         # we are copying from s3 to s3
         if isinstance(otherCls, AWSJobStore):
             src_bucket_name, src_key_name = parse_s3_uri(uri.geturl())
-            response = head_s3_object(self.s3_resource, bucket=src_bucket_name, key=src_key_name, check=True)
-            content_length = response['ContentLength']  # e.g. 65536
+            response = head_s3_object(
+                self.s3_resource, bucket=src_bucket_name, key=src_key_name, check=True
+            )
+            content_length = response["ContentLength"]  # e.g. 65536
 
             file_id = str(uuid.uuid4())
             if shared_file_name:
-                dst_key = self._key_in_bucket(identifier=shared_file_name, prefix=self.shared_key_prefix)
+                dst_key = self._key_in_bucket(
+                    identifier=shared_file_name, prefix=self.shared_key_prefix
+                )
             else:
                 # cannot determine exec bit from foreign s3 so default to False
-                dst_key = "/".join([
-                    self._key_in_bucket(identifier=file_id, prefix=self.content_key_prefix),
-                    src_key_name.split("/")[-1],
-                ])
+                dst_key = "/".join(
+                    [
+                        self._key_in_bucket(
+                            identifier=file_id, prefix=self.content_key_prefix
+                        ),
+                        src_key_name.split("/")[-1],
+                    ]
+                )
 
             copy_s3_to_s3(
                 s3_resource=self.s3_resource,
@@ -745,18 +762,18 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 src_key=src_key_name,
                 dst_bucket=self.bucket_name,
                 dst_key=dst_key,
-                extra_args=self._get_encryption_args()
+                extra_args=self._get_encryption_args(),
             )
             # TODO: verify etag after copying here?
 
             return FileID(file_id, content_length) if not shared_file_name else None
         else:
-            return super(AWSJobStore, self)._import_file(
+            return super()._import_file(
                 otherCls=otherCls,
                 uri=uri,
                 shared_file_name=shared_file_name,
                 hardlink=hardlink,
-                symlink=symlink
+                symlink=symlink,
             )
 
     def _export_file(
@@ -772,14 +789,14 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 src_key=src_full_s3_key,
                 dst_bucket=dst_bucket_name,
                 dst_key=dst_key_name,
-                extra_args=self._get_encryption_args()
+                extra_args=self._get_encryption_args(),
             )
         else:
-            super(AWSJobStore, self)._default_export_file(otherCls, jobStoreFileID, url)
+            super()._default_export_file(otherCls, jobStoreFileID, url)
 
     @classmethod
     def _read_from_url(
-        cls, url: ParseResult, writable: Union[IO[bytes], IO[str]]
+        cls, url: ParseResult, writable: IO[bytes] | IO[str]
     ) -> tuple[int, bool]:
         src_obj = get_object_for_url(url, existing=True)
         src_obj.download_fileobj(writable)
@@ -789,15 +806,17 @@ class AWSJobStore(AbstractJobStore, URLAccess):
     @classmethod
     def _write_to_url(
         cls,
-        readable: Union[IO[bytes], IO[str]],
+        readable: IO[bytes] | IO[str],
         url: ParseResult,
         executable: bool = False,
     ) -> None:
         dst_obj = get_object_for_url(url)
-        upload_to_s3(readable=readable,
-                     s3_resource=establish_boto3_session().resource("s3"),
-                     bucket=dst_obj.bucket_name,
-                     key=dst_obj.key)
+        upload_to_s3(
+            readable=readable,
+            s3_resource=establish_boto3_session().resource("s3"),
+            bucket=dst_obj.bucket_name,
+            key=dst_obj.key,
+        )
 
     @classmethod
     def _url_exists(cls, url: ParseResult) -> bool:
@@ -815,7 +834,9 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             src_obj = get_object_for_url(url, existing=True, anonymous=True)
             response = src_obj.get()
         except Exception as e:
-            if isinstance(e, PermissionError) or (isinstance(e, ClientError) and get_error_status(e) == 403):
+            if isinstance(e, PermissionError) or (
+                isinstance(e, ClientError) and get_error_status(e) == 403
+            ):
                 # The object setup or the download does not have permission. Try again with a login.
                 src_obj = get_object_for_url(url, existing=True)
                 response = src_obj.get()
@@ -833,9 +854,9 @@ class AWSJobStore(AbstractJobStore, URLAccess):
     @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
         # TODO: export seems unused
-        return url.scheme.lower() == 's3'
+        return url.scheme.lower() == "s3"
 
-    def get_public_url(self, file_id: str) -> str: 
+    def get_public_url(self, file_id: str) -> str:
         """Turn s3:// into http:// and put a public-read ACL on it."""
         try:
             return create_public_url(
@@ -849,7 +870,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         except self.s3_client.exceptions.NoSuchKey:
             raise NoSuchFileException(file_id)
         except ClientError as e:
-            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 raise NoSuchFileException(file_id)
             else:
                 raise
@@ -870,7 +891,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         except self.s3_client.exceptions.NoSuchKey:
             raise NoSuchFileException(file_id)
         except ClientError as e:
-            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 raise NoSuchFileException(file_id)
             else:
                 raise
@@ -883,17 +904,17 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
     def get_empty_file_store_id(
         self,
-        job_id: Optional[str] = None,
+        job_id: str | None = None,
         cleanup: bool = False,
-        basename: Optional[str] = None,
+        basename: str | None = None,
     ) -> str:
         """Create an empty file in s3 and return a bare string file ID."""
         file_id = str(uuid.uuid4())
         self.write_to_bucket(
-            identifier=f'{file_id}/0/{basename}',
+            identifier=f"{file_id}/0/{basename}",
             prefix=self.content_key_prefix,
             data=None,
-            bucket=self.bucket_name
+            bucket=self.bucket_name,
         )
         if job_id and cleanup:
             self.associate_job_with_file(job_id, file_id)
@@ -901,21 +922,23 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
         ###################################### LOGGING API ######################################
 
-    def write_logs(self, log_msg: Union[bytes, str]) -> None:
+    def write_logs(self, log_msg: bytes | str) -> None:
         if isinstance(log_msg, str):
-            log_msg = log_msg.encode('utf-8', errors='ignore')
+            log_msg = log_msg.encode("utf-8", errors="ignore")
         file_obj = BytesIO(log_msg)
 
         key_name = self._key_in_bucket(
-            identifier=f'{datetime.datetime.now()}{str(uuid.uuid4())}'.replace(
-                ' ', '_'
+            identifier=f"{datetime.datetime.now()}{str(uuid.uuid4())}".replace(
+                " ", "_"
             ),
             prefix=self.logs_key_prefix,
         )
-        self.s3_client.upload_fileobj(Bucket=self.bucket_name,
-                                      Key=key_name,
-                                      ExtraArgs=self._get_encryption_args(),
-                                      Fileobj=file_obj)
+        self.s3_client.upload_fileobj(
+            Bucket=self.bucket_name,
+            Key=key_name,
+            ExtraArgs=self._get_encryption_args(),
+            Fileobj=file_obj,
+        )
 
     def read_logs(self, callback: Callable[..., Any], read_all: bool = False) -> int:
         """
@@ -929,30 +952,38 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             # We want to pick up reading where we left off
             try:
                 read_log_marker = self.read_from_bucket(
-                    identifier=LOG_MARKER,
-                    prefix=self.shared_key_prefix
-                ).decode('utf-8')
+                    identifier=LOG_MARKER, prefix=self.shared_key_prefix
+                ).decode("utf-8")
             except self.s3_client.exceptions.NoSuchKey:
                 # We haven't recorded that we've read anything yet.
                 # Leave read_log_marker at "0"
                 pass
 
         startafter = None if read_log_marker == "0" else read_log_marker
-        for result in list_s3_items(self.s3_resource, bucket=self.bucket_name, prefix=self.logs_key_prefix, startafter=startafter):
-            if result['Key'] > read_log_marker or read_all:
-                read_log_marker = result['Key']
-                with download_stream(self.s3_resource,
-                                     bucket=self.bucket_name,
-                                     key=result['Key'],
-                                     extra_args=self._get_encryption_args()) as readable:
+        for result in list_s3_items(
+            self.s3_resource,
+            bucket=self.bucket_name,
+            prefix=self.logs_key_prefix,
+            startafter=startafter,
+        ):
+            if result["Key"] > read_log_marker or read_all:
+                read_log_marker = result["Key"]
+                with download_stream(
+                    self.s3_resource,
+                    bucket=self.bucket_name,
+                    key=result["Key"],
+                    extra_args=self._get_encryption_args(),
+                ) as readable:
                     callback(readable)
                 items_processed += 1
 
         if items_processed > 0:
             # We processed something, so we need to update the marker.
-            self.write_to_bucket(identifier=LOG_MARKER,
-                                 prefix=self.shared_key_prefix,
-                                 data=read_log_marker)
+            self.write_to_bucket(
+                identifier=LOG_MARKER,
+                prefix=self.shared_key_prefix,
+                data=read_log_marker,
+            )
         return items_processed
 
     def _get_encryption_args(self) -> dict[str, Any]:
@@ -976,34 +1007,39 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             return {}
 
         if config is not None and config.sseKey:
-            with open(config.sseKey, 'r') as f:
+            with open(config.sseKey) as f:
                 sse_key = f.read()
             if not len(sse_key) == 32:  # TODO: regex
                 raise ValueError(
-                    f'Check that {self.config.sseKey} '
-                    f'is the path to a real SSE key. '
-                    f'(Key length {len(sse_key)} != 32)'
+                    f"Check that {self.config.sseKey} "
+                    f"is the path to a real SSE key. "
+                    f"(Key length {len(sse_key)} != 32)"
                 )
-            return {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': sse_key}
+            return {"SSECustomerAlgorithm": "AES256", "SSECustomerKey": sse_key}
         else:
             return {}
 
-def parse_jobstore_identifier(jobstore_identifier: str) -> Tuple[str, str]:
-    region, jobstore_name = jobstore_identifier.split(':')
-    bucket_name = f'{jobstore_name}--toil'
+
+def parse_jobstore_identifier(jobstore_identifier: str) -> tuple[str, str]:
+    region, jobstore_name = jobstore_identifier.split(":")
+    bucket_name = f"{jobstore_name}--toil"
 
     regions = EC2Regions.keys()
     if region not in regions:
         raise ValueError(f'AWS Region "{region}" is not one of: {regions}')
 
     if not 3 <= len(jobstore_name) <= 56:
-        raise ValueError(f'AWS jobstore name must be between 3 and 56 chars: '
-                         f'{jobstore_name} (len: {len(jobstore_name)})')
+        raise ValueError(
+            f"AWS jobstore name must be between 3 and 56 chars: "
+            f"{jobstore_name} (len: {len(jobstore_name)})"
+        )
 
-    if not re.compile(r'^[a-z0-9][a-z0-9-]+[a-z0-9]$').match(jobstore_name):
-        raise ValueError(f"Invalid AWS jobstore name: '{jobstore_name}'.  Must contain only digits, "
-                         f"lower-case letters, and hyphens.  Must also not start or end in a hyphen.")
+    if not re.compile(r"^[a-z0-9][a-z0-9-]+[a-z0-9]$").match(jobstore_name):
+        raise ValueError(
+            f"Invalid AWS jobstore name: '{jobstore_name}'.  Must contain only digits, "
+            f"lower-case letters, and hyphens.  Must also not start or end in a hyphen."
+        )
 
-    if '--' in jobstore_name:
+    if "--" in jobstore_name:
         raise ValueError(f"AWS jobstore names may not contain '--': {jobstore_name}")
     return region, bucket_name

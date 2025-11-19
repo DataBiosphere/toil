@@ -17,8 +17,9 @@ import logging
 import math
 import sys
 from argparse import ArgumentParser, Namespace
+from collections.abc import Callable
 from functools import partial
-from typing import Any, Callable, Optional, TextIO, Union
+from typing import Any, TextIO
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.job import Job
@@ -98,7 +99,7 @@ class ColumnWidths:
                 print("%s %s %d" % (c, f, self.get_width(c, f)))
 
 
-def pad_str(s: str, field: Optional[int] = None) -> str:
+def pad_str(s: str, field: int | None = None) -> str:
     """Pad the beginning of a string with spaces, if necessary."""
     if field is None or len(s) >= field:
         return s
@@ -106,31 +107,27 @@ def pad_str(s: str, field: Optional[int] = None) -> str:
         return " " * (field - len(s)) + s
 
 
-def pretty_space(k: float, field: Optional[int] = None, alone: bool = False) -> str:
+def pretty_space(k: float, field: int | None = None, alone: bool = False) -> str:
     """Given input k as kibibytes, return a nicely formatted string."""
     # If we don't have a header to say bytes, include the B.
     trailer = "B" if alone else ""
     if k < 1024:
-        return pad_str("{:g}Ki{}".format(k, trailer), field)
+        return pad_str(f"{k:g}Ki{trailer}", field)
     if k < (1024 * 1024):
-        return pad_str("{:.1f}Mi{}".format(k / 1024.0, trailer), field)
+        return pad_str(f"{k / 1024.0:.1f}Mi{trailer}", field)
     if k < (1024 * 1024 * 1024):
-        return pad_str("{:.1f}Gi{}".format(k / 1024.0 / 1024.0, trailer), field)
+        return pad_str(f"{k / 1024.0 / 1024.0:.1f}Gi{trailer}", field)
     if k < (1024 * 1024 * 1024 * 1024):
-        return pad_str(
-            "{:.1f}Ti{}".format(k / 1024.0 / 1024.0 / 1024.0, trailer), field
-        )
+        return pad_str(f"{k / 1024.0 / 1024.0 / 1024.0:.1f}Ti{trailer}", field)
     if k < (1024 * 1024 * 1024 * 1024 * 1024):
-        return pad_str(
-            "{:.1f}Pi{}".format(k / 1024.0 / 1024.0 / 1024.0 / 1024.0, trailer), field
-        )
+        return pad_str(f"{k / 1024.0 / 1024.0 / 1024.0 / 1024.0:.1f}Pi{trailer}", field)
 
     # due to https://stackoverflow.com/questions/47149154
     assert False
 
 
 def pretty_time(
-    t: float, field: Optional[int] = None, unit: str = "s", alone: bool = False
+    t: float, field: int | None = None, unit: str = "s", alone: bool = False
 ) -> str:
     """
     Given input t as seconds, return a nicely formatted string.
@@ -194,7 +191,7 @@ def report_unit(unit: str) -> str:
 def report_time(
     t: float,
     options: Namespace,
-    field: Optional[int] = None,
+    field: int | None = None,
     unit: str = "s",
     alone: bool = False,
 ) -> str:
@@ -206,13 +203,13 @@ def report_time(
     if field is not None:
         assert field >= len(unit_text)
         return "%*.2f%s" % (field - len(unit_text), t, unit_text)
-    return "{:.2f}{}".format(t, unit_text)
+    return f"{t:.2f}{unit_text}"
 
 
 def report_space(
     k: float,
     options: Namespace,
-    field: Optional[int] = None,
+    field: int | None = None,
     unit: str = "KiB",
     alone: bool = False,
 ) -> str:
@@ -238,7 +235,7 @@ def report_space(
 
 
 def report_number(
-    n: Union[int, float, None], field: Optional[int] = None, nan_value: str = "NaN"
+    n: int | float | None, field: int | None = None, nan_value: str = "NaN"
 ) -> str:
     """
     Given a number, report back the correct format as string.
@@ -257,7 +254,7 @@ def report(
     v: float,
     category: str,
     options: Namespace,
-    field: Optional[int] = None,
+    field: int | None = None,
     alone=False,
 ) -> str:
     """
@@ -283,7 +280,7 @@ def sprint_tag(
     key: str,
     tag: Expando,
     options: Namespace,
-    columnWidths: Optional[ColumnWidths] = None,
+    columnWidths: ColumnWidths | None = None,
 ) -> str:
     """Generate a pretty-print ready string from a JTTag()."""
     if columnWidths is None:
@@ -404,9 +401,7 @@ def sort_jobs(jobTypes: list[Any], options: Namespace) -> list[Any]:
     if options.sortCategory in CATEGORIES:
         return sorted(
             jobTypes,
-            key=lambda tag: getattr(
-                tag, "{}_{}".format(sortField, options.sortCategory)
-            ),
+            key=lambda tag: getattr(tag, f"{sortField}_{options.sortCategory}"),
             reverse=options.sort == "decending",
         )
     elif options.sortCategory == "alpha":
@@ -491,7 +486,7 @@ def build_element(
 
     def assertNonnegative(i: float, name: str) -> float:
         if i < 0:
-            raise RuntimeError("Negative value {} reported for {}".format(i, name))
+            raise RuntimeError(f"Negative value {i} reported for {name}")
         else:
             return float(i)
 
@@ -509,7 +504,7 @@ def build_element(
                 float(item.get(category_key, defaults[category])), category
             )
             values.append(category_value)
-    
+
     excess_cpu_items = 0
     for index in range(0, len(item_values[CATEGORIES[0]])):
         # For each item, compute the computed categories

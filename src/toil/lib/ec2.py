@@ -1,19 +1,12 @@
+import binascii
 import logging
 import time
-from base64 import b64encode, b64decode
-import binascii
-from collections.abc import Generator, Iterable, Mapping
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Literal,
-    Optional,
-    Union,
-)
+from base64 import b64decode, b64encode
+from collections.abc import Callable, Generator, Iterable, Mapping
+from typing import TYPE_CHECKING, Any, Literal
 
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.utils import flatten_tags, boto3_pager
+from toil.lib.aws.utils import boto3_pager, flatten_tags
 from toil.lib.exceptions import panic
 from toil.lib.retry import (
     ErrorCondition,
@@ -37,15 +30,13 @@ a_short_time = 5
 a_long_time = 60 * 60
 logger = logging.getLogger(__name__)
 
+
 def is_base64(value: str) -> bool:
     """
     Return True if value is base64-decodeable, and False otherwise.
     """
     try:
-        b64decode(
-            value.encode("utf-8"),
-            validate=True
-        )
+        b64decode(value.encode("utf-8"), validate=True)
         return True
     except binascii.Error:
         return False
@@ -91,7 +82,9 @@ def retry_ec2(t=a_short_time, retry_for=10 * a_short_time, retry_while=not_found
 class UnexpectedResourceState(Exception):
     def __init__(self, resource, to_state, state):
         super().__init__(
-            "Expected state of %s to be '%s' but got '%s'" % (resource, to_state, state)
+            "Expected state of {} to be '{}' but got '{}'".format(
+                resource, to_state, state
+            )
         )
 
 
@@ -176,7 +169,7 @@ def wait_instances_running(
                 reservations = boto3_pager(
                     boto3_ec2.describe_instances,
                     "Reservations",
-                    InstanceIds=list(pending_ids)
+                    InstanceIds=list(pending_ids),
                 )
                 instances = [
                     instance
@@ -228,7 +221,9 @@ def wait_spot_requests_active(
             batch = []
             for r in requests:
                 r: "SpotInstanceRequestTypeDef"  # pycharm thinks it is a string
-                assert isinstance(r, dict), f"Found garbage posing as a spot request: {r}"
+                assert isinstance(
+                    r, dict
+                ), f"Found garbage posing as a spot request: {r}"
                 if r["State"] == "open":
                     open_ids.add(r["SpotInstanceRequestId"])
                     if r["Status"]["Code"] == "pending-evaluation":
@@ -320,7 +315,9 @@ def create_spot_instances(
     )  # boto3 image id is in the launch specification
 
     user_data = spec["LaunchSpecification"].get("UserData", "")
-    assert is_base64(user_data), f"Spot user data needs to be base64-encoded: {user_data}"
+    assert is_base64(
+        user_data
+    ), f"Spot user data needs to be base64-encoded: {user_data}"
 
     for attempt in retry_ec2(
         retry_for=a_long_time, retry_while=inconsistencies_detected
@@ -375,7 +372,9 @@ def create_spot_instances(
             page = boto3_ec2.describe_instances(InstanceIds=instance_ids)
             while page.get("NextToken") is not None:
                 yield page
-                page = boto3_ec2.describe_instances(InstanceIds=instance_ids, NextToken=page["NextToken"])
+                page = boto3_ec2.describe_instances(
+                    InstanceIds=instance_ids, NextToken=page["NextToken"]
+                )
             yield page
     if not num_active:
         message = "None of the spot requests entered the active state"
@@ -410,7 +409,9 @@ def create_ondemand_instances(
     user_data: str = spec.get("UserData", "")
     if user_data:
         # Hope any real user data contains some characters not allowed in base64
-        assert not is_base64(user_data), f"On-demand user data needs to not be base64-encoded: {user_data}"
+        assert not is_base64(
+            user_data
+        ), f"On-demand user data needs to not be base64-encoded: {user_data}"
 
     instance_type = spec["InstanceType"]
     logger.info("Creating %s instance(s) ... ", instance_type)
@@ -485,13 +486,13 @@ def create_instances(
     key_name: str,
     instance_type: str,
     num_instances: int = 1,
-    security_group_ids: Optional[list] = None,
-    user_data: Optional[Union[str, bytes]] = None,
-    block_device_map: Optional[list[dict]] = None,
-    instance_profile_arn: Optional[str] = None,
-    placement_az: Optional[str] = None,
+    security_group_ids: list | None = None,
+    user_data: str | bytes | None = None,
+    block_device_map: list[dict] | None = None,
+    instance_profile_arn: str | None = None,
+    placement_az: str | None = None,
     subnet_id: str = None,
-    tags: Optional[dict[str, str]] = None,
+    tags: dict[str, str] | None = None,
 ) -> list["Instance"]:
     """
     Replaces create_ondemand_instances.  Uses boto3 and returns a list of Boto3 instance dicts.
@@ -553,13 +554,13 @@ def create_launch_template(
     image_id: str,
     key_name: str,
     instance_type: str,
-    security_group_ids: Optional[list] = None,
-    user_data: Optional[Union[str, bytes]] = None,
-    block_device_map: Optional[list[dict]] = None,
-    instance_profile_arn: Optional[str] = None,
-    placement_az: Optional[str] = None,
-    subnet_id: Optional[str] = None,
-    tags: Optional[dict[str, str]] = None,
+    security_group_ids: list | None = None,
+    user_data: str | bytes | None = None,
+    block_device_map: list[dict] | None = None,
+    instance_profile_arn: str | None = None,
+    placement_az: str | None = None,
+    subnet_id: str | None = None,
+    tags: dict[str, str] | None = None,
 ) -> str:
     """
     Creates a launch template with the given name for launching instances with the given parameters.
@@ -640,10 +641,10 @@ def create_auto_scaling_group(
     vpc_subnets: list[str],
     min_size: int,
     max_size: int,
-    instance_types: Optional[Iterable[str]] = None,
-    spot_bid: Optional[float] = None,
+    instance_types: Iterable[str] | None = None,
+    spot_bid: float | None = None,
     spot_cheapest: bool = False,
-    tags: Optional[dict[str, str]] = None,
+    tags: dict[str, str] | None = None,
 ) -> None:
     """
     Create a new Auto Scaling Group with the given name (which is also its

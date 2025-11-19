@@ -13,14 +13,16 @@
 # limitations under the License.
 import logging
 import os
-from pathlib import Path
 import subprocess
-
-from toil.lib.resources import glob
-from toil.test import get_data, pneeds_wdl as needs_wdl, pslow as slow
-from toil.version import python
+from pathlib import Path
 
 import pytest
+
+from toil.lib.resources import glob
+from toil.test import get_data
+from toil.test import pneeds_wdl as needs_wdl
+from toil.test import pslow as slow
+from toil.version import python
 
 logger = logging.getLogger(__name__)
 

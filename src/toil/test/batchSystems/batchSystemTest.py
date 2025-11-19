@@ -11,22 +11,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from collections.abc import Iterable, Generator
 import argparse
 import fcntl
 import itertools
 import logging
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import textwrap
 import time
 from abc import ABCMeta, abstractmethod
+from collections.abc import Generator
 from fractions import Fraction
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from unittest import skipIf
-from typing import Optional, Any, TYPE_CHECKING
+
+import pytest
 
 from toil.batchSystems.abstractBatchSystem import (
     AbstractBatchSystem,
@@ -45,9 +47,9 @@ from toil.batchSystems.registry import (
 )
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config, Toil
-from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job, JobDescription, Requirer, ServiceHostJob
 from toil.lib.misc import StrPath
+from toil.lib.plugins import remove_plugin
 from toil.lib.retry import retry_flaky_test
 from toil.lib.threading import cpu_count
 from toil.test import (
@@ -63,13 +65,10 @@ from toil.test import (
     needs_mesos,
     needs_slurm,
     needs_torque,
-    slow,
-    pslow,
     pneeds_mesos,
+    pslow,
+    slow,
 )
-from toil.lib.plugins import remove_plugin
-
-import pytest
 
 if TYPE_CHECKING:
     from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
@@ -119,6 +118,7 @@ class hidden:
 
     http://stackoverflow.com/questions/1323455/python-unit-test-with-base-and-sub-class#answer-25695512
     """
+
     class AbstractBatchSystemTest(ToilTest, metaclass=ABCMeta):
         """
         A base test case with generic tests that every batch system should pass.
@@ -159,7 +159,7 @@ class hidden:
             return self.createConfig()
 
         def _mockJobDescription(
-            self, jobStoreID: Optional[str] = None, **kwargs: Any
+            self, jobStoreID: str | None = None, **kwargs: Any
         ) -> JobDescription:
             """
             Create a mock-up JobDescription with the given ID and other parameters.
@@ -818,7 +818,8 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
             import signal
             import sys
             import time
-            from typing import Any, Iterable
+            from collections.abc import Iterable
+            from typing import Any
 
             def handle_signal(sig: Any, frame: Any) -> None:
                 sys.stderr.write(f"{os.getpid()} ignoring signal {sig}\n")

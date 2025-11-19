@@ -23,28 +23,23 @@ import io
 import json
 import logging
 import multiprocessing
-import os
-import pathlib
-import subprocess
 import sys
 import textwrap
-from typing import Any, Literal, Optional, TypeVar, Union
+from typing import Literal, Optional, TypeVar, Union
 
 from toil.lib.dockstore import (
-    send_metrics,
-    get_metrics_url,
-    pack_workflow_metrics,
-    pack_single_task_metrics,
-    pack_workflow_task_set_metrics,
     RunExecution,
-    TaskExecutions
+    TaskExecutions,
+    pack_single_task_metrics,
+    pack_workflow_metrics,
+    pack_workflow_task_set_metrics,
+    send_metrics,
 )
-from toil.lib.history import HistoryManager, WorkflowAttemptSummary, JobAttemptSummary
-from toil.lib.misc import unix_seconds_to_local_time
+from toil.lib.history import HistoryManager, JobAttemptSummary, WorkflowAttemptSummary
 from toil.lib.trs import parse_trs_spec
-from toil.lib.io import get_toil_home
 
 logger = logging.getLogger(__name__)
+
 
 def workflow_execution_id(workflow_attempt: WorkflowAttemptSummary) -> str:
     """
@@ -55,7 +50,12 @@ def workflow_execution_id(workflow_attempt: WorkflowAttemptSummary) -> str:
     Deterministic.
     """
 
-    return workflow_attempt.workflow_id.replace("-", "_") + "_attempt_" + str(workflow_attempt.attempt_number)
+    return (
+        workflow_attempt.workflow_id.replace("-", "_")
+        + "_attempt_"
+        + str(workflow_attempt.attempt_number)
+    )
+
 
 def workflow_task_set_execution_id(workflow_attempt: WorkflowAttemptSummary) -> str:
     """
@@ -68,6 +68,7 @@ def workflow_task_set_execution_id(workflow_attempt: WorkflowAttemptSummary) -> 
 
     return workflow_execution_id(workflow_attempt) + "_tasks"
 
+
 def job_execution_id(job_attempt: JobAttemptSummary) -> str:
     """
     Get the execution ID for a job attempt.
@@ -78,6 +79,7 @@ def job_execution_id(job_attempt: JobAttemptSummary) -> str:
     """
 
     return job_attempt.id.replace("-", "_")
+
 
 def get_parsed_trs_spec(workflow_attempt: WorkflowAttemptSummary) -> tuple[str, str]:
     """
@@ -92,8 +94,11 @@ def get_parsed_trs_spec(workflow_attempt: WorkflowAttemptSummary) -> tuple[str, 
         raise ValueError("Workflow cannot be submitted without a TRS spec")
     trs_id, trs_version = parse_trs_spec(workflow_attempt.workflow_trs_spec)
     if trs_version is None:
-        raise ValueError("Workflow stored in history with TRS ID but without TRS version")
+        raise ValueError(
+            "Workflow stored in history with TRS ID but without TRS version"
+        )
     return trs_id, trs_version
+
 
 class Submission:
     """
@@ -111,8 +116,13 @@ class Submission:
 
         # This collects everything by TRS ID and version, and keeps separate lists for workflows and for task sets.
         # Each thing to be submitted comes along with the reference to what in the database to makr submitted when it goes in.
-        self.data: dict[tuple[str, str], tuple[list[tuple[RunExecution, str, int]], list[tuple[TaskExecutions, list[str]]]]] = collections.defaultdict(lambda: ([], []))
-
+        self.data: dict[
+            tuple[str, str],
+            tuple[
+                list[tuple[RunExecution, str, int]],
+                list[tuple[TaskExecutions, list[str]]],
+            ],
+        ] = collections.defaultdict(lambda: ([], []))
 
     def add_workflow_attempt(self, workflow_attempt: WorkflowAttemptSummary) -> None:
         """
@@ -123,9 +133,10 @@ class Submission:
         trs_id, trs_version = get_parsed_trs_spec(workflow_attempt)
 
         # Figure out what kind of job store was used.
-        job_store_type: Optional[str] = None
+        job_store_type: str | None = None
         try:
             from toil.common import Toil
+
             job_store_type = Toil.parseLocator(workflow_attempt.workflow_job_store)[0]
             if job_store_type not in Toil.JOB_STORE_TYPES:
                 # Make sure we don't send typo'd job store types in.
@@ -146,13 +157,23 @@ class Submission:
             python_version=workflow_attempt.python_version,
             platform_system=workflow_attempt.platform_system,
             platform_machine=workflow_attempt.platform_machine,
-            job_store_type=job_store_type
+            job_store_type=job_store_type,
         )
 
         # Add it to the package
-        self.data[(trs_id, trs_version)][0].append((workflow_metrics, workflow_attempt.workflow_id, workflow_attempt.attempt_number))
+        self.data[(trs_id, trs_version)][0].append(
+            (
+                workflow_metrics,
+                workflow_attempt.workflow_id,
+                workflow_attempt.attempt_number,
+            )
+        )
 
-    def add_job_attempts(self, workflow_attempt: WorkflowAttemptSummary, job_attempts: list[JobAttemptSummary]) -> None:
+    def add_job_attempts(
+        self,
+        workflow_attempt: WorkflowAttemptSummary,
+        job_attempts: list[JobAttemptSummary],
+    ) -> None:
         """
         Add the job attempts for a workflow attempt to the submission.
         """
@@ -170,13 +191,20 @@ class Submission:
                 cores=job_attempt.cores,
                 cpu_seconds=job_attempt.cpu_seconds,
                 memory_bytes=job_attempt.memory_bytes,
-                disk_bytes=job_attempt.disk_bytes
-            ) for job_attempt in job_attempts
+                disk_bytes=job_attempt.disk_bytes,
+            )
+            for job_attempt in job_attempts
         ]
-        task_set_metrics = pack_workflow_task_set_metrics(workflow_task_set_execution_id(workflow_attempt), workflow_attempt.start_time, per_task_metrics)
+        task_set_metrics = pack_workflow_task_set_metrics(
+            workflow_task_set_execution_id(workflow_attempt),
+            workflow_attempt.start_time,
+            per_task_metrics,
+        )
 
         # Add it to the package
-        self.data[(trs_id, trs_version)][1].append((task_set_metrics, [job_attempt.id for job_attempt in job_attempts]))
+        self.data[(trs_id, trs_version)][1].append(
+            (task_set_metrics, [job_attempt.id for job_attempt in job_attempts])
+        )
 
     def empty(self) -> bool:
         """
@@ -200,16 +228,23 @@ class Submission:
 
         stream = io.StringIO()
 
-        for (trs_id, trs_version), (workflow_metrics, task_metrics) in self.data.items():
+        for (trs_id, trs_version), (
+            workflow_metrics,
+            task_metrics,
+        ) in self.data.items():
             stream.write(f"For workflow {trs_id} version {trs_version}:\n")
             if len(workflow_metrics) > 0:
                 stream.write("  Workflow executions:\n")
                 for workflow_metric, _, _ in workflow_metrics:
-                    stream.write(textwrap.indent(json.dumps(workflow_metric, indent=2), '    '))
+                    stream.write(
+                        textwrap.indent(json.dumps(workflow_metric, indent=2), "    ")
+                    )
             if len(task_metrics) > 0:
                 stream.write("  Task execution sets:\n")
                 for tasks_metric, _ in task_metrics:
-                    stream.write(textwrap.indent(json.dumps(tasks_metric, indent=2), '    '))
+                    stream.write(
+                        textwrap.indent(json.dumps(tasks_metric, indent=2), "    ")
+                    )
 
         return stream.getvalue()
 
@@ -228,10 +263,18 @@ class Submission:
 
         all_submitted_and_marked = True
 
-        for (trs_id, trs_version), (workflow_metrics, task_metrics) in self.data.items():
+        for (trs_id, trs_version), (
+            workflow_metrics,
+            task_metrics,
+        ) in self.data.items():
             submitted = False
             try:
-                send_metrics(trs_id, trs_version, [item[0] for item in workflow_metrics], [item[0] for item in task_metrics])
+                send_metrics(
+                    trs_id,
+                    trs_version,
+                    [item[0] for item in workflow_metrics],
+                    [item[0] for item in task_metrics],
+                )
                 submitted = True
             except:
                 logger.exception("Could not submit to Dockstore")
@@ -242,7 +285,9 @@ class Submission:
                 for _, workflow_id, attempt_number in workflow_metrics:
                     # For each workflow attempt of this TRS ID/version that we successfully submitted, mark it
                     try:
-                        HistoryManager.mark_workflow_attempt_submitted(workflow_id, attempt_number)
+                        HistoryManager.mark_workflow_attempt_submitted(
+                            workflow_id, attempt_number
+                        )
                     except:
                         logger.exception("Could not mark workflow attempt submitted")
                         all_submitted_and_marked = False
@@ -259,7 +304,9 @@ class Submission:
         return all_submitted_and_marked
 
 
-def create_history_submission(batch_size: Optional[int] = None, desired_tasks: Optional[int] = None) -> Submission:
+def create_history_submission(
+    batch_size: int | None = None, desired_tasks: int | None = None
+) -> Submission:
     """
     Make a package of data about recent workflow runs to send in.
 
@@ -284,7 +331,9 @@ def create_history_submission(batch_size: Optional[int] = None, desired_tasks: O
     # count how many tasks we've colected so far.
     total_tasks = 0
 
-    for workflow_attempt in HistoryManager.get_submittable_workflow_attempts(limit=batch_size):
+    for workflow_attempt in HistoryManager.get_submittable_workflow_attempts(
+        limit=batch_size
+    ):
         try:
             submission.add_workflow_attempt(workflow_attempt)
         except:
@@ -303,8 +352,14 @@ def create_history_submission(batch_size: Optional[int] = None, desired_tasks: O
     # <https://ucsc-cgl.atlassian.net/browse/SEAB-6919>), set the default task
     # limit to submit to be nonzero.
 
-    for workflow_attempt in HistoryManager.get_workflow_attempts_with_submittable_job_attempts(limit=batch_size):
-        job_attempts = HistoryManager.get_unsubmitted_job_attempts(workflow_attempt.workflow_id, workflow_attempt.attempt_number)
+    for (
+        workflow_attempt
+    ) in HistoryManager.get_workflow_attempts_with_submittable_job_attempts(
+        limit=batch_size
+    ):
+        job_attempts = HistoryManager.get_unsubmitted_job_attempts(
+            workflow_attempt.workflow_id, workflow_attempt.attempt_number
+        )
 
         if desired_tasks == 0 or total_tasks + len(job_attempts) > desired_tasks:
             # Don't add any more task sets to the submission
@@ -321,6 +376,7 @@ def create_history_submission(batch_size: Optional[int] = None, desired_tasks: O
 
     return submission
 
+
 def create_current_submission(workflow_id: str, attempt_number: int) -> Submission:
     """
     Make a package of data about the current workflow attempt to send in.
@@ -330,16 +386,22 @@ def create_current_submission(workflow_id: str, attempt_number: int) -> Submissi
 
     submission = Submission()
     try:
-        workflow_attempt = HistoryManager.get_workflow_attempt(workflow_id, attempt_number)
+        workflow_attempt = HistoryManager.get_workflow_attempt(
+            workflow_id, attempt_number
+        )
         if workflow_attempt is not None and HistoryManager.enabled():
             if not workflow_attempt.submitted_to_dockstore:
                 submission.add_workflow_attempt(workflow_attempt)
             if HistoryManager.enabled_job():
                 try:
-                    job_attempts = HistoryManager.get_unsubmitted_job_attempts(workflow_attempt.workflow_id, workflow_attempt.attempt_number)
+                    job_attempts = HistoryManager.get_unsubmitted_job_attempts(
+                        workflow_attempt.workflow_id, workflow_attempt.attempt_number
+                    )
                     submission.add_job_attempts(workflow_attempt, job_attempts)
                 except:
-                    logger.exception("Could not compose metrics report for workflow task set")
+                    logger.exception(
+                        "Could not compose metrics report for workflow task set"
+                    )
                     # Keep going with just the workflow.
     except:
         logger.exception("Could not compose metrics report for workflow execution")
@@ -347,10 +409,14 @@ def create_current_submission(workflow_id: str, attempt_number: int) -> Submissi
 
     return submission
 
-# We have dialog functions that MyPy knows can return strings from a possibly restricted set
-KeyType = TypeVar('KeyType', bound=str)
 
-def dialog_tkinter(title: str, text: str, options: dict[KeyType, str], timeout: float) -> Optional[KeyType]:
+# We have dialog functions that MyPy knows can return strings from a possibly restricted set
+KeyType = TypeVar("KeyType", bound=str)
+
+
+def dialog_tkinter(
+    title: str, text: str, options: dict[KeyType, str], timeout: float
+) -> KeyType | None:
     """
     Display a dialog with tkinter.
 
@@ -366,8 +432,13 @@ def dialog_tkinter(title: str, text: str, options: dict[KeyType, str], timeout: 
     """
 
     # Multiprocessing queues aren't actually generic, but MyPy requires them to be.
-    result_queue: "multiprocessing.Queue[Union[Exception, Optional[KeyType]]]" = multiprocessing.Queue()
-    process = multiprocessing.Process(target=display_dialog_tkinter, args=(title, text, options, timeout, result_queue))
+    result_queue: "multiprocessing.Queue[Union[Exception, Optional[KeyType]]]" = (
+        multiprocessing.Queue()
+    )
+    process = multiprocessing.Process(
+        target=display_dialog_tkinter,
+        args=(title, text, options, timeout, result_queue),
+    )
     process.start()
     result = result_queue.get()
     process.join()
@@ -378,8 +449,13 @@ def dialog_tkinter(title: str, text: str, options: dict[KeyType, str], timeout: 
         return result
 
 
-
-def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], timeout: float, result_queue: "multiprocessing.Queue[Union[Exception, Optional[KeyType]]]") -> None:
+def display_dialog_tkinter(
+    title: str,
+    text: str,
+    options: dict[KeyType, str],
+    timeout: float,
+    result_queue: "multiprocessing.Queue[Union[Exception, Optional[KeyType]]]",
+) -> None:
     """
     Display a dialog with tkinter in the current process.
 
@@ -415,7 +491,6 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], t
             # So we schedule the root to go away.
             root.after(100, root.destroy)
 
-
         # Make a frame
         frame = ttk.Frame(root, padding=FRAME_PADDING)
         # Put it on a grid in the parent
@@ -441,7 +516,10 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], t
                 result.append(set_to)
                 # Close the window.
                 close_root()
-            ttk.Button(button_frame, text=v, command=setter).grid(column=button_column, row=0)
+
+            ttk.Button(button_frame, text=v, command=setter).grid(
+                column=button_column, row=0
+            )
             button_column += 1
 
         # Buttons do not grow as the window resizes.
@@ -465,7 +543,10 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], t
             # contents require. We can't use the required width exactly because
             # that would never let us shrink and rewrap the label, so we use the
             # button frame instead and add padding ourselves.
-            min_width = max(int(root.winfo_fpixels("2i")), button_frame.winfo_reqwidth() + BUTTON_FRAME_PADDING + FRAME_PADDING)
+            min_width = max(
+                int(root.winfo_fpixels("2i")),
+                button_frame.winfo_reqwidth() + BUTTON_FRAME_PADDING + FRAME_PADDING,
+            )
             min_height = max(int(root.winfo_fpixels("1i")), root.winfo_reqheight())
             root.minsize(min_width, min_height)
 
@@ -473,6 +554,7 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], t
 
         # Rewrap the text as the window size changes
         setattr(label, "last_width", 100)
+
         # MyPy demands a generic argument here but Python won't be able to handle
         # it until
         # <https://github.com/python/cpython/commit/42a818912bdb367c4ec2b7d58c18db35f55ebe3b>
@@ -491,7 +573,8 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], t
                 label.update_idletasks()
                 # Impose minimum height
                 force_fit()
-        label.bind('<Configure>', resize_label)
+
+        label.bind("<Configure>", resize_label)
 
         # Do root sizing
         force_fit()
@@ -503,8 +586,8 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], t
         # To make the dialog pop up over the terminal instead of behind it, we
         # lift it and temporarily make it topmost. We don't keep it topmost
         # because we want to let the user switch away from it.
-        root.attributes('-topmost', True)
-        root.after(10, lambda: root.attributes('-topmost', False))
+        root.attributes("-topmost", True)
+        root.after(10, lambda: root.attributes("-topmost", False))
         root.lift()
 
         # Run the window's main loop
@@ -519,7 +602,10 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], t
     except Exception as e:
         result_queue.put(e)
 
-def dialog_tui(title: str, text: str, options: dict[KeyType, str], timeout: float) -> Optional[KeyType]:
+
+def dialog_tui(
+    title: str, text: str, options: dict[KeyType, str], timeout: float
+) -> KeyType | None:
     """
     Display a dialog in the terminal.
 
@@ -538,7 +624,6 @@ def dialog_tui(title: str, text: str, options: dict[KeyType, str], timeout: floa
     # for how we run concurrently with it.
 
     from prompt_toolkit.shortcuts import button_dialog
-    from prompt_toolkit.eventloop.inputhook import set_eventloop_with_inputhook
 
     # We take button options in the reverse order from how prompt_toolkit does it.
     # TODO: This is not scrollable! What if there's more than 1 screen of text?
@@ -572,7 +657,9 @@ def dialog_tui(title: str, text: str, options: dict[KeyType, str], timeout: floa
     timeout_task = loop.create_task(timeout_coroutine)
 
     # This task finishes when the first task in the set finishes.
-    race_task = asyncio.wait({application_task, timeout_task}, return_when=asyncio.FIRST_COMPLETED)
+    race_task = asyncio.wait(
+        {application_task, timeout_task}, return_when=asyncio.FIRST_COMPLETED
+    )
     # Run it until then
     loop.run_until_complete(race_task)
     # Maybe the application needs to finish its exit?
@@ -584,6 +671,7 @@ def dialog_tui(title: str, text: str, options: dict[KeyType, str], timeout: floa
     # It is OK to cancel it if it is finished already.
 
     return application_task.result()
+
 
 # Define the dialog form in the abstract
 Decision = Union[Literal["all"], Literal["current"], Literal["no"], Literal["never"]]
@@ -614,20 +702,27 @@ DIALOG_OPTIONS: dict[Decision, str] = {
     "all": "All",
     "current": "Yes",
     "no": "No",
-    "never": "Never"
+    "never": "Never",
 }
 
 # Make sure the option texts are short enough; prompt_toolkit can only handle 10 characters.
 for k, v in DIALOG_OPTIONS.items():
-    assert len(v) <= 10, f"Label for \"{k}\" dialog option is too long to work on all backends!"
+    assert (
+        len(v) <= 10
+    ), f'Label for "{k}" dialog option is too long to work on all backends!'
 
 # Make sure the options all have unique labels
-assert len(set(DIALOG_OPTIONS.values())) == len(DIALOG_OPTIONS), "Labels for dialog options are not unique!"
+assert len(set(DIALOG_OPTIONS.values())) == len(
+    DIALOG_OPTIONS
+), "Labels for dialog options are not unique!"
 
 # How many seconds should we show the dialog for before assuming the user means "no"?
 DIALOG_TIMEOUT = 120
 
-def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["current"], Literal["no"]]:
+
+def ask_user_about_publishing_metrics() -> (
+    Literal["all"] | Literal["current"] | Literal["no"]
+):
     """
     Ask the user to set standing workflow submission consent.
 
@@ -636,13 +731,13 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
     :returns: The user's decision about when to publish metrics.
     """
 
-    from toil.common import update_config, get_default_config_path
+    from toil.common import get_default_config_path, update_config
 
     # Find the default config path to talk about or update
     default_config_path = get_default_config_path()
 
     # Actual chatting with the user will fill this in if possible
-    decision: Optional[Decision] = None
+    decision: Decision | None = None
 
     if sys.stdin.isatty() and sys.stderr.isatty():
         # IO is not redirected (except maybe JSON to a file). We might be able to raise the user.
@@ -656,10 +751,15 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
             # dialogs can't hold enough text. We don't really want to bring in
             # e.g. QT for this.
             try:
-                strategy_decision = strategy(DIALOG_TITLE, DIALOG_TEXT.format(default_config_path), DIALOG_OPTIONS, DIALOG_TIMEOUT)
+                strategy_decision = strategy(
+                    DIALOG_TITLE,
+                    DIALOG_TEXT.format(default_config_path),
+                    DIALOG_OPTIONS,
+                    DIALOG_TIMEOUT,
+                )
                 if strategy_decision is None:
                     # User declined to choose. Treat that as choosing "no".
-                    logger.warning("User did not make a selection. Assuming \"no\".")
+                    logger.warning('User did not make a selection. Assuming "no".')
                     strategy_decision = "no"
                 decision = strategy_decision
                 break
@@ -669,7 +769,9 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
         if decision is None:
             # If we think we should be able to reach the user, but we can't, fail and make them tell us via option
             # TODO: Provide a command (or a general toil config editing command) to manage this setting
-            logger.critical("Decide whether to publish workflow metrics and pass --publishWorkflowMetrics=[all|current|no]")
+            logger.critical(
+                "Decide whether to publish workflow metrics and pass --publishWorkflowMetrics=[all|current|no]"
+            )
             sys.exit(1)
 
     if decision is None:
@@ -682,14 +784,3 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
         update_config(default_config_path, "publishWorkflowMetrics", result)
 
     return result
-
-
-
-
-
-
-
-
-
-
-

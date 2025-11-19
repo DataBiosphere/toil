@@ -1,11 +1,11 @@
 import logging
 import multiprocessing
 import os
-from pathlib import Path
 import random
 import time
 import traceback
 from functools import partial
+from pathlib import Path
 
 from toil.lib.threading import LastProcessStandingArena, cpu_count, global_mutex
 

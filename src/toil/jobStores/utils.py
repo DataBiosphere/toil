@@ -1,14 +1,10 @@
-import errno
 import logging
 import os
 import tempfile
 import uuid
-from abc import ABC, abstractmethod
-from typing import Optional
-
-from toil.lib.threading import ExceptionalThread
 
 log = logging.getLogger(__name__)
+
 
 class JobStoreUnavailableException(RuntimeError):
     """
@@ -18,8 +14,8 @@ class JobStoreUnavailableException(RuntimeError):
 
 def generate_locator(
     job_store_type: str,
-    local_suggestion: Optional[str] = None,
-    decoration: Optional[str] = None,
+    local_suggestion: str | None = None,
+    decoration: str | None = None,
 ) -> str:
     """
     Generate a random locator for a job store of the given type. Raises an

@@ -17,9 +17,9 @@ import os
 import shutil
 import uuid
 from collections import Counter
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from typing import Any, Callable, Optional, TextIO, Union, overload
+from typing import Any, TextIO, overload
 
 from flask import send_from_directory
 from werkzeug.utils import redirect
@@ -83,9 +83,9 @@ class ToilWorkflow:
     @overload
     def fetch_state(self, key: str, default: str) -> str: ...
     @overload
-    def fetch_state(self, key: str, default: None = None) -> Optional[str]: ...
+    def fetch_state(self, key: str, default: None = None) -> str | None: ...
 
-    def fetch_state(self, key: str, default: Optional[str] = None) -> Optional[str]:
+    def fetch_state(self, key: str, default: str | None = None) -> str | None:
         """
         Return the contents of the given key in the workflow's state
         store. If the key does not exist, the default value is returned.
@@ -96,7 +96,7 @@ class ToilWorkflow:
         return value
 
     @contextmanager
-    def fetch_scratch(self, filename: str) -> Generator[Optional[TextIO], None, None]:
+    def fetch_scratch(self, filename: str) -> Generator[TextIO | None, None, None]:
         """
         Get a context manager for either a stream for the given file from the
         workflow's scratch directory, or None if it isn't there.
@@ -181,7 +181,7 @@ class ToilWorkflow:
                 # Stream in the file
                 return json.load(f)
 
-    def _get_scratch_file_path(self, path: str) -> Optional[str]:
+    def _get_scratch_file_path(self, path: str) -> str | None:
         """
         Return the given relative path from self.scratch_dir, if it is a file,
         and None otherwise.
@@ -190,21 +190,21 @@ class ToilWorkflow:
             return None
         return path
 
-    def get_stdout_path(self) -> Optional[str]:
+    def get_stdout_path(self) -> str | None:
         """
         Return the path to the standard output log, relative to the run's
         scratch_dir, or None if it doesn't exist.
         """
         return self._get_scratch_file_path("stdout")
 
-    def get_stderr_path(self) -> Optional[str]:
+    def get_stderr_path(self) -> str | None:
         """
         Return the path to the standard output log, relative to the run's
         scratch_dir, or None if it doesn't exist.
         """
         return self._get_scratch_file_path("stderr")
 
-    def get_messages_path(self) -> Optional[str]:
+    def get_messages_path(self) -> str | None:
         """
         Return the path to the bus message log, relative to the run's
         scratch_dir, or None if it doesn't exist.
@@ -213,10 +213,8 @@ class ToilWorkflow:
 
     def get_task_logs(
         self,
-        filter_function: Optional[
-            Callable[[TaskLog, JobStatus], Optional[TaskLog]]
-        ] = None,
-    ) -> list[dict[str, Union[str, int, None]]]:
+        filter_function: None | (Callable[[TaskLog, JobStatus], TaskLog | None]) = None,
+    ) -> list[dict[str, str | int | None]]:
         """
         Return all the task log objects for the individual tasks in the workflow.
 
@@ -243,7 +241,7 @@ class ToilWorkflow:
             # Compose log objects from recovered job info.
             logs: list[TaskLog] = []
             for job_status in job_statuses.values():
-                task: Optional[TaskLog] = {
+                task: TaskLog | None = {
                     "name": job_status.name,
                     "exit_code": job_status.exit_code,
                 }
@@ -268,9 +266,9 @@ class ToilBackend(WESBackend):
     def __init__(
         self,
         work_dir: str,
-        state_store: Optional[str],
+        state_store: str | None,
         options: list[str],
-        dest_bucket_base: Optional[str],
+        dest_bucket_base: str | None,
         bypass_celery: bool = False,
         wes_dialect: str = "standard",
     ) -> None:
@@ -389,9 +387,7 @@ class ToilBackend(WESBackend):
             "wdl": ["draft-2", "1.0"],
         }
 
-    def _get_run(
-        self, run_id: str, should_exists: Optional[bool] = None
-    ) -> ToilWorkflow:
+    def _get_run(self, run_id: str, should_exists: bool | None = None) -> ToilWorkflow:
         """
         Helper method to instantiate a ToilWorkflow object.
 
@@ -490,7 +486,7 @@ class ToilBackend(WESBackend):
 
     @handle_errors
     def list_runs(
-        self, page_size: Optional[int] = None, page_token: Optional[str] = None
+        self, page_size: int | None = None, page_token: str | None = None
     ) -> dict[str, Any]:
         """List the workflow runs."""
         # TODO: implement pagination

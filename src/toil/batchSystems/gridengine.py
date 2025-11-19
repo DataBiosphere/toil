@@ -17,7 +17,6 @@ import os
 import shlex
 import time
 from shlex import quote
-from typing import Optional
 
 from toil.batchSystems.abstractGridEngineBatchSystem import (
     AbstractGridEngineBatchSystem,
@@ -62,8 +61,8 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             jobID: int,
             command: str,
             jobName: str,
-            job_environment: Optional[dict[str, str]] = None,
-            gpus: Optional[int] = None,
+            job_environment: dict[str, str] | None = None,
+            gpus: int | None = None,
         ):
             # POSIX qsub
             # <https://pubs.opengroup.org/onlinepubs/9699919799.2008edition/utilities/qsub.html>
@@ -126,7 +125,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             cpu: int,
             mem: int,
             jobID: int,
-            job_environment: Optional[dict[str, str]] = None,
+            job_environment: dict[str, str] | None = None,
         ) -> list[str]:
             qsubline = [
                 "qsub",

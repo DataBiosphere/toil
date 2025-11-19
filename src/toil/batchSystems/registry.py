@@ -13,13 +13,9 @@
 # limitations under the License.
 
 import logging
-import pkgutil
-import warnings
-from collections.abc import Sequence
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING
 
-from toil.lib.compatibility import deprecated
-from toil.lib.memoize import memoize
 import toil.lib.plugins
 
 if TYPE_CHECKING:

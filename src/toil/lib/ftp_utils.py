@@ -20,7 +20,7 @@ import logging
 import netrc
 import os
 from contextlib import closing
-from typing import Optional, Any, cast, IO
+from typing import IO, Any, cast
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
@@ -33,11 +33,10 @@ class FtpFsAccess:
 
     Taken and modified from https://github.com/ohsu-comp-bio/cwl-tes/blob/03f0096f9fae8acd527687d3460a726e09190c3a/cwl_tes/ftp.py#L37-L251
     """
+
     # TODO: Properly support FTP over SSL
 
-    def __init__(
-        self, cache: Optional[dict[Any, ftplib.FTP]] = None
-    ):
+    def __init__(self, cache: dict[Any, ftplib.FTP] | None = None):
         """
         FTP object to handle FTP connections. By default, connect over FTP with TLS.
 
@@ -107,14 +106,12 @@ class FtpFsAccess:
         """
         if "r" in mode:
             host, port, user, passwd, path = self._parse_url(fn)
-            handle = urlopen("ftp://{}:{}@{}:{}/{}".format(user, passwd, host, port, path))
+            handle = urlopen(f"ftp://{user}:{passwd}@{host}:{port}/{path}")
             return cast(IO[bytes], closing(handle))
         # TODO: support write mode
         raise Exception("Write mode FTP not implemented")
 
-    def _parse_url(
-        self, url: str
-    ) -> tuple[str, int, Optional[str], Optional[str], str]:
+    def _parse_url(self, url: str) -> tuple[str, int, str | None, str | None, str]:
         """
         Parse an FTP url into hostname, username, password, and path
         :param url:
@@ -147,7 +144,7 @@ class FtpFsAccess:
                         user = "anonymous"
         return host, port, user, passwd, path
 
-    def _connect(self, url: str) -> Optional[ftplib.FTP]:
+    def _connect(self, url: str) -> ftplib.FTP | None:
         """
         Connect to an FTP server. Handles authentication.
         :param url: FTP url
@@ -177,9 +174,7 @@ class FtpFsAccess:
             return ftp
         return None
 
-    def _recall_credentials(
-        self, desired_host: str
-    ) -> tuple[Optional[str], Optional[str]]:
+    def _recall_credentials(self, desired_host: str) -> tuple[str | None, str | None]:
         """
         Grab the cached credentials
         :param desired_host: FTP hostname
@@ -190,7 +185,7 @@ class FtpFsAccess:
                 return user, passwd
         return None, None
 
-    def size(self, fn: str) -> Optional[int]:
+    def size(self, fn: str) -> int | None:
         """
         Get the size of an FTP object
         :param fn: FTP url
@@ -207,7 +202,7 @@ class FtpFsAccess:
                     # https://stackoverflow.com/questions/22090001/get-folder-size-using-ftplib/22093848#22093848
                     ftp.voidcmd("TYPE I")
                     return ftp.size(path)
-                handle = urlopen("ftp://{}:{}@{}:{}/{}".format(user, passwd, host, port, path))
+                handle = urlopen(f"ftp://{user}:{passwd}@{host}:{port}/{path}")
                 info = handle.info()
                 handle.close()
                 if "Content-length" in info:

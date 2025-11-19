@@ -21,7 +21,6 @@ from argparse import Namespace
 from collections import defaultdict
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Optional
 from unittest.mock import MagicMock
 
 from toil.batchSystems.abstractBatchSystem import (
@@ -975,9 +974,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         pass
 
     # AbstractProvisioner methods
-    def setAutoscaledNodeTypes(
-        self, node_types: list[tuple[set[Shape], Optional[float]]]
-    ):
+    def setAutoscaledNodeTypes(self, node_types: list[tuple[set[Shape], float | None]]):
         self.node_shapes_for_testing = sorted(it for t in node_types for it in t[0])
         super().setAutoscaledNodeTypes(node_types)
 
@@ -1040,7 +1037,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         return dict(self.jobBatchSystemIDToIssuedJob).values()
 
     # AbstractScalableBatchSystem functionality
-    def getNodes(self, preemptible: Optional[bool] = False, timeout: int = 600):
+    def getNodes(self, preemptible: bool | None = False, timeout: int = 600):
         nodes = dict()
         for node in self.nodesToWorker:
             if node.preemptible == preemptible:

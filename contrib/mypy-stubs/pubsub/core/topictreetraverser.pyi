@@ -1,6 +1,7 @@
-from .topicobj import Topic as Topic
 from enum import IntEnum
 from typing import Optional
+
+from .topicobj import Topic as Topic
 
 class ITopicTreeVisitor: ...
 
@@ -12,4 +13,6 @@ class TreeTraversal(IntEnum):
 class TopicTreeTraverser:
     def __init__(self, visitor: Optional[ITopicTreeVisitor] = None) -> None: ...
     def setVisitor(self, visitor: ITopicTreeVisitor) -> None: ...
-    def traverse(self, topicObj: Topic, how: TreeTraversal = ..., onlyFiltered: bool = True) -> None: ...
+    def traverse(
+        self, topicObj: Topic, how: TreeTraversal = ..., onlyFiltered: bool = True
+    ) -> None: ...

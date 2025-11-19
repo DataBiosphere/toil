@@ -15,16 +15,15 @@
 
 import logging
 import os
-from pathlib import Path
 import signal
-from typing import Optional
+from pathlib import Path
+
+import pytest
 
 from toil.common import Toil
 from toil.exceptions import FailedJobsException
 from toil.job import Job
 from toil.test import pslow as slow
-
-import pytest
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +88,7 @@ class TestRestartDAG:
 
         assert not childFile.exists()
 
-        errorRaised: Optional[BaseException] = None
+        errorRaised: BaseException | None = None
         # Run the test
         for runMode in "start", "restart":
             errorRaised = None
@@ -142,7 +141,7 @@ class TestRestartDAG:
             )
 
 
-def passingFn(job: Job, file: Optional[Path] = None) -> None:
+def passingFn(job: Job, file: Path | None = None) -> None:
     """
     This function is guaranteed to pass as it does nothing out of the ordinary.
 

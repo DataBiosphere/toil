@@ -4,6 +4,7 @@ from toil.common import Toil
 from toil.job import Job
 from toil.lib.io import mkdtemp
 
+
 class HelloWorld(Job):
     def __init__(self, id):
         Job.__init__(self)

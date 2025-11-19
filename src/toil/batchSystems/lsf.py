@@ -25,7 +25,6 @@ import re
 import subprocess
 from datetime import datetime
 from random import randint
-from typing import Optional, Union
 
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
@@ -101,8 +100,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             jobID: int,
             command: str,
             jobName: str,
-            job_environment: Optional[dict[str, str]] = None,
-            gpus: Optional[int] = None,
+            job_environment: dict[str, str] | None = None,
+            gpus: int | None = None,
         ):
             return (
                 self.prepareBsub(cpu, memory, jobID) + [command],
@@ -184,7 +183,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
         def getJobExitCode(
             self, lsfJobID
-        ) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
+        ) -> int | tuple[int, BatchJobExitReason | None] | None:
             # the task is set as part of the job ID if using getBatchSystemID()
             if "NOT_SUBMITTED" in lsfJobID:
                 logger.error("bjobs detected job failed to submit")
@@ -217,7 +216,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
         def parse_bjobs_record(
             self, bjobs_record: dict, job: int
-        ) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
+        ) -> int | tuple[int, BatchJobExitReason | None] | None:
             """
             Helper functions for getJobExitCode and  to parse the bjobs status record
             """
@@ -279,7 +278,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
         def getJobExitCodeBACCT(
             self, job
-        ) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
+        ) -> int | tuple[int, BatchJobExitReason | None] | None:
             # if not found in bjobs, then try bacct (slower than bjobs)
             logger.debug("bjobs failed to detect job - trying bacct: " "{}".format(job))
 
@@ -301,7 +300,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
         def fallbackGetJobExitCode(
             self, job
-        ) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
+        ) -> int | tuple[int, BatchJobExitReason | None] | None:
             args = ["bjobs", "-l", str(job)]
             logger.debug(f"Checking job exit code for job via bjobs (fallback): {job}")
             stdout = call_command(args)

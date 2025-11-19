@@ -2,28 +2,55 @@
 Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa.
 Also contains general conversion functions
 """
+
 import math
 import urllib.parse
-
-from typing import Optional, SupportsInt, Union, List
+from typing import SupportsInt
 
 KIB = 1024
-MIB = 1024 ** 2
-GIB = 1024 ** 3
-TIB = 1024 ** 4
-PIB = 1024 ** 5
-EIB = 1024 ** 6
+MIB = 1024**2
+GIB = 1024**3
+TIB = 1024**4
+PIB = 1024**5
+EIB = 1024**6
 
 KB = 1000
-MB = 1000 ** 2
-GB = 1000 ** 3
-TB = 1000 ** 4
-PB = 1000 ** 5
-EB = 1000 ** 6
+MB = 1000**2
+GB = 1000**3
+TB = 1000**4
+PB = 1000**5
+EB = 1000**6
 
 # See https://en.wikipedia.org/wiki/Binary_prefix
-BINARY_PREFIXES = ['ki', 'mi', 'gi', 'ti', 'pi', 'ei', 'kib', 'mib', 'gib', 'tib', 'pib', 'eib']
-DECIMAL_PREFIXES = ['b', 'k', 'm', 'g', 't', 'p', 'e', 'kb', 'mb', 'gb', 'tb', 'pb', 'eb']
+BINARY_PREFIXES = [
+    "ki",
+    "mi",
+    "gi",
+    "ti",
+    "pi",
+    "ei",
+    "kib",
+    "mib",
+    "gib",
+    "tib",
+    "pib",
+    "eib",
+]
+DECIMAL_PREFIXES = [
+    "b",
+    "k",
+    "m",
+    "g",
+    "t",
+    "p",
+    "e",
+    "kb",
+    "mb",
+    "gb",
+    "tb",
+    "pb",
+    "eb",
+]
 VALID_PREFIXES = BINARY_PREFIXES + DECIMAL_PREFIXES
 
 
@@ -113,14 +140,14 @@ def bytes2human(n: SupportsInt) -> str:
     return f"{value:.1f} {unit}"
 
 
-def b_to_mib(n: Union[int, float]) -> float:
+def b_to_mib(n: int | float) -> float:
     """
     Convert a number from bytes to mibibytes.
     """
     return convert_units(n, "b", "mib")
 
 
-def mib_to_b(n: Union[int, float]) -> float:
+def mib_to_b(n: int | float) -> float:
     """
     Convert a number from mibibytes to bytes.
     """
@@ -170,12 +197,12 @@ def strtobool(val: str) -> bool:
     raise ValueError(f'Cannot convert "{val}" to a bool')
 
 
-def opt_strtobool(b: Optional[str]) -> Optional[bool]:
+def opt_strtobool(b: str | None) -> bool | None:
     """Convert an optional string representation of bool to None or bool"""
     return b if b is None else strtobool(b)
 
 
-def modify_url(url: str, remove: List[str]) -> str:
+def modify_url(url: str, remove: list[str]) -> str:
     """
     Given a valid URL string, split out the params, remove any offending
     params in 'remove', and return the cleaned URL.
