@@ -384,7 +384,7 @@ class ToilBackend(WESBackend):
         logger.info("Using server ID: %s", self.server_id)
 
         self.supported_versions = {
-            "py": ["3.7", "3.8", "3.9"],
+            "py": ["3.10", "3.11", "3.12", "3.13", "3.14"],
             "cwl": ["v1.0", "v1.1", "v1.2"],
             "wdl": ["draft-2", "1.0"],
         }
