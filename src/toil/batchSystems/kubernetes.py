@@ -39,10 +39,7 @@ from typing import Any, Callable, Literal, Optional, TypeVar, Union, cast, overl
 from toil.lib.conversions import opt_strtobool
 from toil.lib.throttle import LocalThrottle
 
-if sys.version_info < (3, 10):
-    from typing_extensions import ParamSpec
-else:
-    from typing import ParamSpec
+from typing import ParamSpec
 
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired

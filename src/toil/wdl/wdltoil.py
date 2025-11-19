@@ -52,15 +52,11 @@ from typing import (
     Union,
     cast,
     TypedDict,
+    TypeGuard,
     IO,
     Protocol,
     overload,
 )
-
-if sys.version_info < (3, 10):
-    from typing_extensions import TypeGuard
-else:
-    from typing import TypeGuard
 
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
