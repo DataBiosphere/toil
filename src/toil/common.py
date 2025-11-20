@@ -1288,21 +1288,22 @@ class Toil(ContextManager["Toil"]):
 
         :return: an instance of a concrete subclass of AbstractJobStore
         """
-        name, rest = cls.parseLocator(locator)
-        if name == "file":
-            from toil.jobStores.fileJobStore import FileJobStore
+        match cls.parseLocator(locator):
+            case ("file", rest):
+                from toil.jobStores.fileJobStore import FileJobStore
 
-            return FileJobStore(rest)
-        elif name == "aws":
-            from toil.jobStores.aws.jobStore import AWSJobStore
+                return FileJobStore(rest)
+            case ("aws", rest):
+                from toil.jobStores.aws.jobStore import AWSJobStore
 
-            return AWSJobStore(rest)
-        elif name == "google":
-            from toil.jobStores.googleJobStore import GoogleJobStore
+                return AWSJobStore(rest)
+            case ("google", rest):
+                from toil.jobStores.googleJobStore import GoogleJobStore
 
-            return GoogleJobStore(rest)
-        else:
-            raise RuntimeError("Unknown job store implementation '%s'" % name)
+                return GoogleJobStore(rest)
+        raise RuntimeError(
+            "Unknown job store implementation " "{cls.parseLocator(locator)[0]!r}"
+        )
 
     @staticmethod
     def parseLocator(locator: str) -> tuple[str, str]:

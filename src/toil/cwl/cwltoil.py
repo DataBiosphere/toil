@@ -210,13 +210,14 @@ def _filter_skip_null(value: Any, err_flag: list[bool]) -> Any:
                      allows us to flag, at any level of recursion, that we have
                      encountered a SkipNull.
     """
-    if isinstance(value, SkipNull):
-        err_flag[0] = True
-        value = None
-    elif isinstance(value, list):
-        return [_filter_skip_null(v, err_flag) for v in value]
-    elif isinstance(value, dict):
-        return {k: _filter_skip_null(v, err_flag) for k, v in value.items()}
+    match value:
+        case SkipNull():
+            err_flag[0] = True
+            value = None
+        case list(val_list):
+            return [_filter_skip_null(v, err_flag) for v in val_list]
+        case dict(val_dict):
+            return {k: _filter_skip_null(v, err_flag) for k, v in val_dict.items()}
     return value
 
 
@@ -479,40 +480,39 @@ class ResolveSource:
 
         result = [v for v in values if not isinstance(v, SkipNull) and v is not None]
 
-        if pick_value_type == "first_non_null":
-            if len(result) < 1:
-                logger.error(
-                    "Could not find non-null entry for %s:\n%s",
-                    self.name,
-                    pprint.pformat(self.promise_tuples),
-                )
+        match pick_value_type:
+            case "first_non_null":
+                if len(result) < 1:
+                    logger.error(
+                        "Could not find non-null entry for %s:\n%s",
+                        self.name,
+                        pprint.pformat(self.promise_tuples),
+                    )
+                    raise cwl_utils.errors.WorkflowException(
+                        "%s: first_non_null operator found no non-null values"
+                        % self.name
+                    )
+                else:
+                    return result[0]
+            case "the_only_non_null":
+                if len(result) == 0:
+                    raise cwl_utils.errors.WorkflowException(
+                        "%s: the_only_non_null operator found no non-null values"
+                        % self.name
+                    )
+                elif len(result) > 1:
+                    raise cwl_utils.errors.WorkflowException(
+                        "%s: the_only_non_null operator found more than one non-null values"
+                        % self.name
+                    )
+                else:
+                    return result[0]
+            case "all_non_null":
+                return result
+            case _:
                 raise cwl_utils.errors.WorkflowException(
-                    "%s: first_non_null operator found no non-null values" % self.name
+                    f"Unsupported pickValue '{pick_value_type}' on {self.name}"
                 )
-            else:
-                return result[0]
-
-        elif pick_value_type == "the_only_non_null":
-            if len(result) == 0:
-                raise cwl_utils.errors.WorkflowException(
-                    "%s: the_only_non_null operator found no non-null values"
-                    % self.name
-                )
-            elif len(result) > 1:
-                raise cwl_utils.errors.WorkflowException(
-                    "%s: the_only_non_null operator found more than one non-null values"
-                    % self.name
-                )
-            else:
-                return result[0]
-
-        elif pick_value_type == "all_non_null":
-            return result
-
-        else:
-            raise cwl_utils.errors.WorkflowException(
-                f"Unsupported pickValue '{pick_value_type}' on {self.name}"
-            )
 
 
 class StepValueFrom:
@@ -858,179 +858,182 @@ class ToilPathMapper(PathMapper):
                 )
                 tgt = new_tgt
 
-        if obj["class"] == "Directory":
-            # Whether or not we've already mapped this path, we need to map all
-            # children recursively.
+        match obj:
+            case {"class": "Directory"}:
+                # Whether or not we've already mapped this path, we need to map all
+                # children recursively.
 
-            logger.debug("ToilPathMapper visiting directory %s", location)
+                logger.debug("ToilPathMapper visiting directory %s", location)
 
-            # We want to check the directory to make sure it is not
-            # self-contradictory in its immediate children and their names.
-            ensure_no_collisions(cast(DirectoryType, obj))
+                # We want to check the directory to make sure it is not
+                # self-contradictory in its immediate children and their names.
+                ensure_no_collisions(cast(DirectoryType, obj))
 
-            # We may need to copy this directory even if we don't copy things inside it.
-            copy_here = False
+                # We may need to copy this directory even if we don't copy things inside it.
+                copy_here = False
 
-            # Try and resolve the location to a local path
-            if location.startswith("file://"):
-                # This is still from the local machine, so go find where it is
-                resolved = schema_salad.ref_resolver.uri_file_path(location)
-            elif location.startswith("toildir:"):
-                # We need to download this directory (or subdirectory)
-                if self.get_file:
-                    # We can actually go get it and its contents
-                    resolved = schema_salad.ref_resolver.uri_file_path(
-                        self.get_file(location)
-                    )
-                else:
-                    # We are probably staging final outputs on the leader. We
-                    # can't go get the directory. Just pass it through.
-                    resolved = location
-            elif location.startswith("_:"):
-                # cwltool made this up for an empty/synthetic directory it
-                # wants to make.
-
-                # If we let cwltool make the directory and stage it, and then
-                # stage files inside it, we can end up with Docker creating
-                # root-owned files in whatever we mounted for the Docker work
-                # directory, somehow. So make a directory ourselves instead.
-                if self.get_file:
-                    # Ask for an empty directory
-                    new_dir_uri = self.get_file("_:")
-                    # And get a path for it
-                    resolved = schema_salad.ref_resolver.uri_file_path(new_dir_uri)
-
-                    if "listing" in obj and obj["listing"] != []:
-                        # If there's stuff inside here to stage, we need to copy
-                        # this directory here, because we can't Docker mount things
-                        # over top of immutable directories.
-                        copy_here = True
-                else:
-                    # We can't really make the directory. Maybe we are
-                    # exporting from the leader and it doesn't matter.
-                    resolved = location
-            elif location.startswith("/"):
-                # Test if path is an absolute local path
-                # Does not check if the path is relative
-                # While Toil encodes paths into a URL with ToilPathMapper,
-                # something called internally in cwltool may return an absolute path
-                # ex: if cwltool calls itself internally in command_line_tool.py,
-                # it collects outputs with collect_output, and revmap_file will use its own internal pathmapper
-                resolved = location
-            else:
-                raise RuntimeError("Unsupported location: " + location)
-
-            if location in self._pathmap:
-                # Don't map the same directory twice
-                logger.debug(
-                    "ToilPathMapper stopping recursion because we have already "
-                    "mapped directory: %s",
-                    location,
-                )
-                return
-
-            logger.debug(
-                "ToilPathMapper adding directory mapping %s -> %s", resolved, tgt
-            )
-            self._pathmap[location] = MapperEnt(
-                resolved,
-                tgt,
-                "WritableDirectory" if (copy or copy_here) else "Directory",
-                staged,
-            )
-
-            if not location.startswith("_:") and not self.stage_listing:
-                # Don't stage anything below here separately, since we are able
-                # to copy the whole directory from somewhere and and we can't
-                # stage files over themselves.
-                staged = False
-
-            # Keep recursing
-            self.visitlisting(
-                cast(list[CWLObjectType], obj.get("listing", [])),
-                tgt,
-                basedir,
-                copy=copy,
-                staged=staged,
-            )
-
-        elif obj["class"] == "File":
-            logger.debug("ToilPathMapper visiting file %s", location)
-
-            if location in self._pathmap:
-                # Don't map the same file twice
-                logger.debug(
-                    "ToilPathMapper stopping recursion because we have already "
-                    "mapped file: %s",
-                    location,
-                )
-                return
-
-            ab = abspath(location, basedir)
-            if "contents" in obj and location.startswith("_:"):
-                # We are supposed to create this file
-                self._pathmap[location] = MapperEnt(
-                    cast(str, obj["contents"]),
-                    tgt,
-                    "CreateWritableFile" if copy else "CreateFile",
-                    staged,
-                )
-            else:
-                with SourceLine(
-                    obj,
-                    "location",
-                    ValidationException,
-                    logger.isEnabledFor(logging.DEBUG),
-                ):
-                    # If we have access to the Toil file store, we will have a
-                    # get_file set, and it will convert this path to a file:
-                    # URI for a local file it downloaded.
+                # Try and resolve the location to a local path
+                if location.startswith("file://"):
+                    # This is still from the local machine, so go find where it is
+                    resolved = schema_salad.ref_resolver.uri_file_path(location)
+                elif location.startswith("toildir:"):
+                    # We need to download this directory (or subdirectory)
                     if self.get_file:
-                        deref = self.get_file(
-                            location,
-                            obj.get("streamable", False),
-                            self.streaming_allowed,
+                        # We can actually go get it and its contents
+                        resolved = schema_salad.ref_resolver.uri_file_path(
+                            self.get_file(location)
                         )
                     else:
-                        deref = ab
-                    if deref.startswith("file:"):
-                        deref = schema_salad.ref_resolver.uri_file_path(deref)
-                    if urlsplit(deref).scheme in ["http", "https"]:
-                        deref = downloadHttpFile(location)
-                    elif urlsplit(deref).scheme != "toilfile":
-                        # Dereference symbolic links
-                        st = os.lstat(deref)
-                        while stat.S_ISLNK(st.st_mode):
-                            logger.debug("ToilPathMapper following symlink %s", deref)
-                            rl = os.readlink(deref)
-                            deref = (
-                                rl
-                                if os.path.isabs(rl)
-                                else os.path.join(os.path.dirname(deref), rl)
-                            )
-                            st = os.lstat(deref)
+                        # We are probably staging final outputs on the leader. We
+                        # can't go get the directory. Just pass it through.
+                        resolved = location
+                elif location.startswith("_:"):
+                    # cwltool made this up for an empty/synthetic directory it
+                    # wants to make.
 
-                    # If we didn't download something that is a toilfile:
-                    # reference, we just pass that along.
+                    # If we let cwltool make the directory and stage it, and then
+                    # stage files inside it, we can end up with Docker creating
+                    # root-owned files in whatever we mounted for the Docker work
+                    # directory, somehow. So make a directory ourselves instead.
+                    if self.get_file:
+                        # Ask for an empty directory
+                        new_dir_uri = self.get_file("_:")
+                        # And get a path for it
+                        resolved = schema_salad.ref_resolver.uri_file_path(new_dir_uri)
 
-                    """Link or copy files to their targets. Create them as needed."""
+                        if "listing" in obj and obj["listing"] != []:
+                            # If there's stuff inside here to stage, we need to copy
+                            # this directory here, because we can't Docker mount things
+                            # over top of immutable directories.
+                            copy_here = True
+                    else:
+                        # We can't really make the directory. Maybe we are
+                        # exporting from the leader and it doesn't matter.
+                        resolved = location
+                elif location.startswith("/"):
+                    # Test if path is an absolute local path
+                    # Does not check if the path is relative
+                    # While Toil encodes paths into a URL with ToilPathMapper,
+                    # something called internally in cwltool may return an absolute path
+                    # ex: if cwltool calls itself internally in command_line_tool.py,
+                    # it collects outputs with collect_output, and revmap_file will use its own internal pathmapper
+                    resolved = location
+                else:
+                    raise RuntimeError("Unsupported location: " + location)
 
+                if location in self._pathmap:
+                    # Don't map the same directory twice
                     logger.debug(
-                        "ToilPathMapper adding file mapping %s -> %s", deref, tgt
+                        "ToilPathMapper stopping recursion because we have already "
+                        "mapped directory: %s",
+                        location,
                     )
+                    return
 
+                logger.debug(
+                    "ToilPathMapper adding directory mapping %s -> %s", resolved, tgt
+                )
+                self._pathmap[location] = MapperEnt(
+                    resolved,
+                    tgt,
+                    "WritableDirectory" if (copy or copy_here) else "Directory",
+                    staged,
+                )
+
+                if not location.startswith("_:") and not self.stage_listing:
+                    # Don't stage anything below here separately, since we are able
+                    # to copy the whole directory from somewhere and and we can't
+                    # stage files over themselves.
+                    staged = False
+
+                # Keep recursing
+                self.visitlisting(
+                    cast(list[CWLObjectType], obj.get("listing", [])),
+                    tgt,
+                    basedir,
+                    copy=copy,
+                    staged=staged,
+                )
+
+            case {"class": "File"}:
+                logger.debug("ToilPathMapper visiting file %s", location)
+
+                if location in self._pathmap:
+                    # Don't map the same file twice
+                    logger.debug(
+                        "ToilPathMapper stopping recursion because we have already "
+                        "mapped file: %s",
+                        location,
+                    )
+                    return
+
+                ab = abspath(location, basedir)
+                if "contents" in obj and location.startswith("_:"):
+                    # We are supposed to create this file
                     self._pathmap[location] = MapperEnt(
-                        deref, tgt, "WritableFile" if copy else "File", staged
+                        cast(str, obj["contents"]),
+                        tgt,
+                        "CreateWritableFile" if copy else "CreateFile",
+                        staged,
                     )
+                else:
+                    with SourceLine(
+                        obj,
+                        "location",
+                        ValidationException,
+                        logger.isEnabledFor(logging.DEBUG),
+                    ):
+                        # If we have access to the Toil file store, we will have a
+                        # get_file set, and it will convert this path to a file:
+                        # URI for a local file it downloaded.
+                        if self.get_file:
+                            deref = self.get_file(
+                                location,
+                                obj.get("streamable", False),
+                                self.streaming_allowed,
+                            )
+                        else:
+                            deref = ab
+                        if deref.startswith("file:"):
+                            deref = schema_salad.ref_resolver.uri_file_path(deref)
+                        if urlsplit(deref).scheme in ["http", "https"]:
+                            deref = downloadHttpFile(location)
+                        elif urlsplit(deref).scheme != "toilfile":
+                            # Dereference symbolic links
+                            st = os.lstat(deref)
+                            while stat.S_ISLNK(st.st_mode):
+                                logger.debug(
+                                    "ToilPathMapper following symlink %s", deref
+                                )
+                                rl = os.readlink(deref)
+                                deref = (
+                                    rl
+                                    if os.path.isabs(rl)
+                                    else os.path.join(os.path.dirname(deref), rl)
+                                )
+                                st = os.lstat(deref)
 
-            # Handle all secondary files that need to be next to this one.
-            self.visitlisting(
-                cast(list[CWLObjectType], obj.get("secondaryFiles", [])),
-                stagedir,
-                basedir,
-                copy=copy,
-                staged=staged,
-            )
+                        # If we didn't download something that is a toilfile:
+                        # reference, we just pass that along.
+
+                        """Link or copy files to their targets. Create them as needed."""
+
+                        logger.debug(
+                            "ToilPathMapper adding file mapping %s -> %s", deref, tgt
+                        )
+
+                        self._pathmap[location] = MapperEnt(
+                            deref, tgt, "WritableFile" if copy else "File", staged
+                        )
+
+                # Handle all secondary files that need to be next to this one.
+                self.visitlisting(
+                    cast(list[CWLObjectType], obj.get("secondaryFiles", [])),
+                    stagedir,
+                    basedir,
+                    copy=copy,
+                    staged=staged,
+                )
 
 
 class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
@@ -1249,103 +1252,104 @@ class ToilFsAccess(StdFsAccess):
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43  # noqa B950
 
         parse = urlparse(path)
-        if parse.scheme == "toilfile":
-            # Is a Toil file
+        match parse.scheme:
+            case "toilfile":  # Is a Toil file
+                if self.file_store is None:
+                    raise RuntimeError("URL requires a file store: " + path)
 
-            if self.file_store is None:
-                raise RuntimeError("URL requires a file store: " + path)
-
-            destination = self.file_store.readGlobalFile(
-                FileID.unpack(path[len("toilfile:") :]), symlink=True
-            )
-            logger.debug("Downloaded %s to %s", path, destination)
-            if not os.path.exists(destination):
-                raise RuntimeError(
-                    f"{destination} does not exist after filestore read."
+                destination = self.file_store.readGlobalFile(
+                    FileID.unpack(path[len("toilfile:") :]), symlink=True
                 )
-        elif parse.scheme == "toildir":
-            # Is a directory or relative to it
-
-            if self.file_store is None:
-                raise RuntimeError("URL requires a file store: " + path)
-
-            # We will download the whole directory and then look inside it
-
-            # Decode its contents, the path inside it to the file (if any), and
-            # the key to use for caching the directory.
-            contents, subpath, cache_key, _, _ = decode_directory(path)
-            logger.debug("Decoded directory contents: %s", contents)
-
-            if cache_key not in self.dir_to_download:
-                # Download to a temp directory.
-                temp_dir = self.file_store.getLocalTempDir()
-                temp_dir += "/toildownload"
-                os.makedirs(temp_dir)
-
-                logger.debug("ToilFsAccess downloading %s to %s", cache_key, temp_dir)
-
-                # Save it all into this new temp directory.
-                # Guaranteed to fill it with real files and not symlinks.
-                download_structure(self.file_store, {}, {}, contents, temp_dir)
-
-                # Make sure we use the same temp directory if we go traversing
-                # around this thing.
-                self.dir_to_download[cache_key] = temp_dir
-            else:
-                logger.debug("ToilFsAccess already has %s", cache_key)
-
-            if subpath is None:
-                # We didn't have any subdirectory, so just give back
-                # the path to the root
-                destination = self.dir_to_download[cache_key]
-            else:
-                # Navigate to the right subdirectory
-                destination = self.dir_to_download[cache_key] + "/" + subpath
-        elif parse.scheme == "file":
-            # This is a File URL. Decode it to an actual path.
-            destination = unquote(parse.path)
-        elif parse.scheme == "":
-            # This is just a local file and not a URL
-            destination = path
-        else:
-            # The destination is something else.
-            if URLAccess.get_is_directory(path):
-                # Treat this as a directory
-                if path not in self.dir_to_download:
-                    logger.debug(
-                        "ToilFsAccess fetching directory %s from a JobStore", path
+                logger.debug("Downloaded %s to %s", path, destination)
+                if not os.path.exists(destination):
+                    raise RuntimeError(
+                        f"{destination} does not exist after filestore read."
                     )
-                    dest_dir = mkdtemp()
+            case "toildir":  # Is a directory or relative to it
+                if self.file_store is None:
+                    raise RuntimeError("URL requires a file store: " + path)
 
-                    # Recursively fetch all the files in the directory.
-                    def download_to(url: str, dest: str) -> None:
-                        if URLAccess.get_is_directory(url):
-                            os.mkdir(dest)
-                            for part in URLAccess.list_url(url):
-                                download_to(
-                                    os.path.join(url, part), os.path.join(dest, part)
-                                )
-                        else:
-                            URLAccess.read_from_url(url, open(dest, "wb"))
+                # We will download the whole directory and then look inside it
 
-                    download_to(path, dest_dir)
-                    self.dir_to_download[path] = dest_dir
+                # Decode its contents, the path inside it to the file (if any), and
+                # the key to use for caching the directory.
+                contents, subpath, cache_key, _, _ = decode_directory(path)
+                logger.debug("Decoded directory contents: %s", contents)
 
-                destination = self.dir_to_download[path]
-            else:
-                # Treat this as a file.
-                if path not in self.dir_to_download:
-                    logger.debug("ToilFsAccess fetching file %s from a JobStore", path)
-                    # Try to grab it with a jobstore implementation, and save it
-                    # somewhere arbitrary.
-                    dest_file = NamedTemporaryFile(delete=False)
-                    URLAccess.read_from_url(path, dest_file)
-                    dest_file.close()
-                    self.dir_to_download[path] = dest_file.name
-                destination = self.dir_to_download[path]
-            logger.debug(
-                "ToilFsAccess has JobStore-supported URL %s at %s", path, destination
-            )
+                if cache_key not in self.dir_to_download:
+                    # Download to a temp directory.
+                    temp_dir = self.file_store.getLocalTempDir()
+                    temp_dir += "/toildownload"
+                    os.makedirs(temp_dir)
+
+                    logger.debug(
+                        "ToilFsAccess downloading %s to %s", cache_key, temp_dir
+                    )
+
+                    # Save it all into this new temp directory.
+                    # Guaranteed to fill it with real files and not symlinks.
+                    download_structure(self.file_store, {}, {}, contents, temp_dir)
+
+                    # Make sure we use the same temp directory if we go traversing
+                    # around this thing.
+                    self.dir_to_download[cache_key] = temp_dir
+                else:
+                    logger.debug("ToilFsAccess already has %s", cache_key)
+
+                if subpath is None:
+                    # We didn't have any subdirectory, so just give back
+                    # the path to the root
+                    destination = self.dir_to_download[cache_key]
+                else:
+                    # Navigate to the right subdirectory
+                    destination = self.dir_to_download[cache_key] + "/" + subpath
+            case "file":  # This is a File URL. Decode it to an actual path.
+                destination = unquote(parse.path)
+            case "":  # This is just a local file and not a URL
+                destination = path
+            case _:  # The destination is something else.
+                if URLAccess.get_is_directory(path):
+                    # Treat this as a directory
+                    if path not in self.dir_to_download:
+                        logger.debug(
+                            "ToilFsAccess fetching directory %s from a JobStore", path
+                        )
+                        dest_dir = mkdtemp()
+
+                        # Recursively fetch all the files in the directory.
+                        def download_to(url: str, dest: str) -> None:
+                            if URLAccess.get_is_directory(url):
+                                os.mkdir(dest)
+                                for part in URLAccess.list_url(url):
+                                    download_to(
+                                        os.path.join(url, part),
+                                        os.path.join(dest, part),
+                                    )
+                            else:
+                                URLAccess.read_from_url(url, open(dest, "wb"))
+
+                        download_to(path, dest_dir)
+                        self.dir_to_download[path] = dest_dir
+
+                    destination = self.dir_to_download[path]
+                else:
+                    # Treat this as a file.
+                    if path not in self.dir_to_download:
+                        logger.debug(
+                            "ToilFsAccess fetching file %s from a JobStore", path
+                        )
+                        # Try to grab it with a jobstore implementation, and save it
+                        # somewhere arbitrary.
+                        dest_file = NamedTemporaryFile(delete=False)
+                        URLAccess.read_from_url(path, dest_file)
+                        dest_file.close()
+                        self.dir_to_download[path] = dest_file.name
+                    destination = self.dir_to_download[path]
+                logger.debug(
+                    "ToilFsAccess has JobStore-supported URL %s at %s",
+                    path,
+                    destination,
+                )
 
         # Now destination is a local file, so make sure we really do have an
         # absolute path
@@ -1354,14 +1358,15 @@ class ToilFsAccess(StdFsAccess):
 
     def glob(self, pattern: str) -> list[str]:
         parse = urlparse(pattern)
-        if parse.scheme == "file":
-            pattern = os.path.abspath(unquote(parse.path))
-        elif parse.scheme == "":
-            pattern = os.path.abspath(pattern)
-        else:
-            raise RuntimeError(
-                f"Cannot efficiently support globbing on {parse.scheme} URIs"
-            )
+        match parse.scheme:
+            case "file":
+                pattern = os.path.abspath(unquote(parse.path))
+            case "":
+                pattern = os.path.abspath(pattern)
+            case _:
+                raise RuntimeError(
+                    f"Cannot efficiently support globbing on {parse.scheme} URIs"
+                )
 
         # Actually do the glob
         return [schema_salad.ref_resolver.file_uri(f) for f in glob.glob(pattern)]
@@ -1371,144 +1376,142 @@ class ToilFsAccess(StdFsAccess):
             raise RuntimeError(f"Mode {mode} for opening {fn} involves writing")
 
         parse = urlparse(fn)
-        if parse.scheme in ["", "file"]:
-            # Handle local files
-            return open(self._abs(fn), mode)
-        elif parse.scheme == "toildir":
-            contents, subpath, cache_key, _, _ = decode_directory(fn)
-            if cache_key in self.dir_to_download:
-                # This is already available locally, so fall back on the local copy
+        match parse.scheme:
+            case "" | "file":
+                # Handle local files
                 return open(self._abs(fn), mode)
-            else:
-                # We need to get the URI out of the virtual directory
-                if subpath is None:
-                    raise RuntimeError(f"{fn} is a toildir directory")
-                uri = get_from_structure(contents, subpath)
-                if not isinstance(uri, str):
-                    raise RuntimeError(f"{fn} does not point to a file")
-                # Recurse on that URI
-                return self.open(uri, mode)
-        elif parse.scheme == "toilfile":
-            if self.file_store is None:
-                raise RuntimeError("URL requires a file store: " + fn)
-            # Streaming access to Toil file store files requires being inside a
-            # context manager, which we can't require. So we need to download
-            # the file.
-            return open(self._abs(fn), mode)
+            case "toildir":
+                contents, subpath, cache_key, _, _ = decode_directory(fn)
+                if cache_key in self.dir_to_download:
+                    # This is already available locally, so fall back on the local copy
+                    return open(self._abs(fn), mode)
+                else:
+                    # We need to get the URI out of the virtual directory
+                    if subpath is None:
+                        raise RuntimeError(f"{fn} is a toildir directory")
+                    uri = get_from_structure(contents, subpath)
+                    if not isinstance(uri, str):
+                        raise RuntimeError(f"{fn} does not point to a file")
+                    # Recurse on that URI
+                    return self.open(uri, mode)
+            case "toilfile":
+                if self.file_store is None:
+                    raise RuntimeError("URL requires a file store: " + fn)
+                # Streaming access to Toil file store files requires being inside a
+                # context manager, which we can't require. So we need to download
+                # the file.
+                return open(self._abs(fn), mode)
+        # This should be supported by a job store.
+        byte_stream = URLAccess.open_url(fn)
+        if "b" in mode:
+            # Pass stream along in binary
+            return byte_stream
         else:
-            # This should be supported by a job store.
-            byte_stream = URLAccess.open_url(fn)
-            if "b" in mode:
-                # Pass stream along in binary
-                return byte_stream
-            else:
-                # Wrap it in a text decoder
-                return io.TextIOWrapper(byte_stream, encoding="utf-8")
+            # Wrap it in a text decoder
+            return io.TextIOWrapper(byte_stream, encoding="utf-8")
 
     def exists(self, path: str) -> bool:
         """Test for file existence."""
         parse = urlparse(path)
-        if parse.scheme in ["", "file"]:
-            # Handle local files
-            # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
-            try:
-                return os.path.exists(self._abs(path))
-            except NoSuchFileException:
-                return False
-        elif parse.scheme == "toildir":
-            contents, subpath, cache_key, _, _ = decode_directory(path)
-            if subpath is None:
-                # The toildir directory itself exists
+        match parse.scheme:
+            case "" | "file":  # Handle local files
+                # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
+                try:
+                    return os.path.exists(self._abs(path))
+                except NoSuchFileException:
+                    return False
+            case "toildir":
+                contents, subpath, cache_key, _, _ = decode_directory(path)
+                if subpath is None:
+                    # The toildir directory itself exists
+                    return True
+                uri = get_from_structure(contents, subpath)
+                if uri is None:
+                    # It's not in the virtual directory, so it doesn't exist
+                    return False
+                if isinstance(uri, dict):
+                    # Actually it's a subdirectory, so it exists.
+                    return True
+                # We recurse and poll the URI directly to make sure it really exists
+                return self.exists(uri)
+            case "toilfile":
+                # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
                 return True
-            uri = get_from_structure(contents, subpath)
-            if uri is None:
-                # It's not in the virtual directory, so it doesn't exist
-                return False
-            if isinstance(uri, dict):
-                # Actually it's a subdirectory, so it exists.
-                return True
-            # We recurse and poll the URI directly to make sure it really exists
-            return self.exists(uri)
-        elif parse.scheme == "toilfile":
-            # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
-            return True
-        else:
-            # This should be supported by a job store.
-            return URLAccess.url_exists(path)
+        return URLAccess.url_exists(path)  # This should be supported by a job store.
 
     def size(self, path: str) -> int:
         parse = urlparse(path)
-        if parse.scheme in ["", "file"]:
-            return os.stat(self._abs(path)).st_size
-        elif parse.scheme == "toildir":
-            # Decode its contents, the path inside it to the file (if any), and
-            # the key to use for caching the directory.
-            contents, subpath, cache_key, _, _ = decode_directory(path)
+        match parse.scheme:
+            case "" | "file":
+                return os.stat(self._abs(path)).st_size
+            case "toildir":
+                # Decode its contents, the path inside it to the file (if any), and
+                # the key to use for caching the directory.
+                contents, subpath, cache_key, _, _ = decode_directory(path)
 
-            # We can't get the size of just a directory.
-            if subpath is None:
-                raise RuntimeError(f"Attempted to check size of directory {path}")
+                # We can't get the size of just a directory.
+                if subpath is None:
+                    raise RuntimeError(f"Attempted to check size of directory {path}")
 
-            uri = get_from_structure(contents, subpath)
+                uri = get_from_structure(contents, subpath)
 
-            # We ought to end up with a URI.
-            if not isinstance(uri, str):
-                raise RuntimeError(f"Did not find a file at {path}")
-            return self.size(uri)
-        elif parse.scheme == "toilfile":
-            if self.file_store is None:
-                raise RuntimeError("URL requires a file store: " + path)
-            return self.file_store.getGlobalFileSize(
-                FileID.unpack(path[len("toilfile:") :])
-            )
-        else:
-            # This should be supported by a job store.
-            size = URLAccess.get_size(path)
-            if size is None:
-                # get_size can be unimplemented or unavailable
-                raise RuntimeError(f"Could not get size of {path}")
-            return size
+                # We ought to end up with a URI.
+                if not isinstance(uri, str):
+                    raise RuntimeError(f"Did not find a file at {path}")
+                return self.size(uri)
+            case "toilfile":
+                if self.file_store is None:
+                    raise RuntimeError("URL requires a file store: " + path)
+                return self.file_store.getGlobalFileSize(
+                    FileID.unpack(path[len("toilfile:") :])
+                )
+        # This should be supported by a job store.
+        size = URLAccess.get_size(path)
+        if size is None:
+            # get_size can be unimplemented or unavailable
+            raise RuntimeError(f"Could not get size of {path}")
+        return size
 
     def isfile(self, fn: str) -> bool:
         parse = urlparse(fn)
-        if parse.scheme in ["file", ""]:
-            return os.path.isfile(self._abs(fn))
-        elif parse.scheme == "toilfile":
-            # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
-            return True
-        elif parse.scheme == "toildir":
-            contents, subpath, cache_key, _, _ = decode_directory(fn)
-            if subpath is None:
-                # This is the toildir directory itself
-                return False
-            found = get_from_structure(contents, subpath)
-            # If we find a string, that's a file
-            # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
-            return isinstance(found, str)
-        else:
-            return self.exists(fn) and not URLAccess.get_is_directory(fn)
+        match parse.scheme:
+            case "file" | "":
+                return os.path.isfile(self._abs(fn))
+            case "toilfile":
+                # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
+                return True
+            case "toildir":
+                contents, subpath, cache_key, _, _ = decode_directory(fn)
+                if subpath is None:
+                    # This is the toildir directory itself
+                    return False
+                found = get_from_structure(contents, subpath)
+                # If we find a string, that's a file
+                # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
+                return isinstance(found, str)
+        return self.exists(fn) and not URLAccess.get_is_directory(fn)
 
     def isdir(self, fn: str) -> bool:
         logger.debug("ToilFsAccess checking type of %s", fn)
         parse = urlparse(fn)
-        if parse.scheme in ["file", ""]:
-            return os.path.isdir(self._abs(fn))
-        elif parse.scheme == "toilfile":
-            return False
-        elif parse.scheme == "toildir":
-            contents, subpath, cache_key, _, _ = decode_directory(fn)
-            if subpath is None:
-                # This is the toildir directory itself.
+        match parse.scheme:
+            case "file" | "":
+                return os.path.isdir(self._abs(fn))
+            case "toilfile":
+                return False
+            case "toildir":
+                contents, subpath, cache_key, _, _ = decode_directory(fn)
+                if subpath is None:
+                    # This is the toildir directory itself.
+                    # TODO: We assume directories can't be deleted.
+                    return True
+                found = get_from_structure(contents, subpath)
+                # If we find a dict, that's a directory.
                 # TODO: We assume directories can't be deleted.
-                return True
-            found = get_from_structure(contents, subpath)
-            # If we find a dict, that's a directory.
-            # TODO: We assume directories can't be deleted.
-            return isinstance(found, dict)
-        else:
-            status = URLAccess.get_is_directory(fn)
-            logger.debug("AbstractJobStore said: %s", status)
-            return status
+                return isinstance(found, dict)
+        status = URLAccess.get_is_directory(fn)
+        logger.debug("AbstractJobStore said: %s", status)
+        return status
 
     def listdir(self, fn: str) -> list[str]:
         # This needs to return full URLs for everything in the directory.
@@ -1516,31 +1519,29 @@ class ToilFsAccess(StdFsAccess):
         logger.debug("ToilFsAccess listing %s", fn)
 
         parse = urlparse(fn)
-        if parse.scheme in ["file", ""]:
-            # Find the local path
-            directory = self._abs(fn)
-            # Now list it (it is probably a directory)
-            return [abspath(quote(entry), fn) for entry in os.listdir(directory)]
-        elif parse.scheme == "toilfile":
-            raise RuntimeError(f"Cannot list a file: {fn}")
-        elif parse.scheme == "toildir":
-            contents, subpath, cache_key, _, _ = decode_directory(fn)
-            here = contents
-            if subpath is not None:
-                got = get_from_structure(contents, subpath)
-                if got is None:
-                    raise RuntimeError(f"Cannot list nonexistent directory: {fn}")
-                if isinstance(got, str):
-                    raise RuntimeError(
-                        f"Cannot list file or dubdirectory of a file: {fn}"
-                    )
-                here = got
-            # List all the things in here and make full URIs to them
-            return [os.path.join(fn, k) for k in here.keys()]
-        else:
-            return [
-                os.path.join(fn, entry.rstrip("/")) for entry in URLAccess.list_url(fn)
-            ]
+        match parse.scheme:
+            case "file" | "":
+                # Find the local path
+                directory = self._abs(fn)
+                # Now list it (it is probably a directory)
+                return [abspath(quote(entry), fn) for entry in os.listdir(directory)]
+            case "toilfile":
+                raise RuntimeError(f"Cannot list a file: {fn}")
+            case "toildir":
+                contents, subpath, cache_key, _, _ = decode_directory(fn)
+                here = contents
+                if subpath is not None:
+                    got = get_from_structure(contents, subpath)
+                    if got is None:
+                        raise RuntimeError(f"Cannot list nonexistent directory: {fn}")
+                    if isinstance(got, str):
+                        raise RuntimeError(
+                            f"Cannot list file or dubdirectory of a file: {fn}"
+                        )
+                    here = got
+                # List all the things in here and make full URIs to them
+                return [os.path.join(fn, k) for k in here.keys()]
+        return [os.path.join(fn, entry.rstrip("/")) for entry in URLAccess.list_url(fn)]
 
     def join(self, path: str, *paths: str) -> str:
         # This falls back on os.path.join
