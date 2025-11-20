@@ -23,14 +23,14 @@ from typing import TYPE_CHECKING, Any, Literal, NoReturn, Union, cast, overload
 import requests
 
 import docker
-from docker.errors import (
-    ContainerError,  # type: ignore[import-not-found]
+from docker.errors import (  # type: ignore[import-not-found]
+    ContainerError,
     ImageNotFound,
     NotFound,
     create_api_error_from_http_exception,
 )
-from docker.utils.socket import (
-    consume_socket_output,  # type: ignore[import-not-found]
+from docker.utils.socket import (  # type: ignore[import-not-found]
+    consume_socket_output,
     demux_adaptor,
 )
 from toil.lib.accelerators import get_host_accelerator_numbers

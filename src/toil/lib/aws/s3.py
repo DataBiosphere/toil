@@ -16,7 +16,7 @@ import hashlib
 import itertools
 import logging
 import urllib.parse
-from collections.abc import Iterator
+from collections.abc import Iterator, MutableSequence
 from contextlib import contextmanager
 from datetime import timedelta
 from io import BytesIO
@@ -31,6 +31,7 @@ from mypy_boto3_s3 import S3ServiceResource
 from mypy_boto3_s3.literals import BucketLocationConstraintType
 from mypy_boto3_s3.service_resource import Bucket
 from mypy_boto3_s3.type_defs import (
+    CompletedPartTypeDef,
     GetObjectOutputTypeDef,
     HeadObjectOutputTypeDef,
     ListMultipartUploadsOutputTypeDef,
@@ -291,7 +292,7 @@ class MultiPartPipe(WritablePipe):
             Bucket=self.bucket_name, Key=self.file_id, **self.encryption_args
         )
         upload_id = response["UploadId"]
-        parts = []
+        parts: MutableSequence[CompletedPartTypeDef] = []
         try:
             for part_num in itertools.count():
                 logger.debug(
@@ -327,7 +328,7 @@ class MultiPartPipe(WritablePipe):
             # Encryption information is not needed here because the upload was
             # not started with a checksum.
             response = self.s3_client.complete_multipart_upload(
-                Bucket=self.bucket_name,  # type: ignore
+                Bucket=self.bucket_name,
                 Key=self.file_id,
                 UploadId=upload_id,
                 MultipartUpload={"Parts": parts},
