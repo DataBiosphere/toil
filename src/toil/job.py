@@ -3178,7 +3178,7 @@ class Job:
             # Change dir back to cwd dir, if changed by job (this is a safety issue)
             if os.getcwd() != baseDir:
                 os.chdir(baseDir)
-            
+
             totalCpuTime, total_memory_kib = (
                 ResourceMonitor.get_total_cpu_time_and_memory_usage()
             )
@@ -3985,7 +3985,7 @@ def get_file_sizes(
                 # We need to make sure file URIs and local paths that point to
                 # the same place are treated the same.
                 parsed = urlsplit(candidate_uri)
-                if parsed.scheme == "file:":
+                if parsed.scheme == "file":
                     # This is a local file URI. Convert to a path for source directory tracking.
                     parent_dir = os.path.dirname(unquote(parsed.path))
                 else:
@@ -3995,7 +3995,7 @@ def get_file_sizes(
                 # Must be a local path
                 parent_dir = os.path.dirname(candidate_uri)
 
-            return cast(FileMetadata, (candidate_uri, parent_dir, filesize))
+            return FileMetadata(candidate_uri, parent_dir, filesize)
         # Not found
         raise RuntimeError(
             f"Could not find {filename} at any of: {list(potential_absolute_uris(filename, search_paths if search_paths is not None else []))}"
@@ -4006,7 +4006,7 @@ def get_file_sizes(
 
 class CombineImportsJob(Job):
     """
-    Combine the outputs of multiple WorkerImportsJob into one promise
+    Combine the outputs of multiple WorkerImportJobs into one promise
     """
 
     def __init__(self, d: Sequence[Promised[Dict[str, FileID]]], **kwargs):
@@ -4047,23 +4047,29 @@ class WorkerImportJob(Job):
 
     @staticmethod
     def import_files(
-        files: List[str], file_source: "AbstractJobStore"
+        files: List[str], file_source: "AbstractJobStore", symlink: bool = True
     ) -> Dict[str, FileID]:
         """
         Import a list of files into the jobstore. Returns a mapping of the filename to the associated FileIDs
 
         When stream is true but the import is not streamable, the worker will run out of
         disk space and run a new import job with enough disk space instead.
+
         :param files: list of files to import
+
         :param file_source: AbstractJobStore
-        :return: Dictionary mapping filenames to associated jobstore FileID
+
+        :param symlink: whether to allow symlinking the imported files
+
+        :return: Dictionary mapping filenames from files to associated jobstore
+            FileID.
         """
         # todo: make the import ensure streaming is done instead of relying on running out of disk space
         path_to_fileid = {}
 
         @memoize
         def import_filename(filename: str) -> Optional[FileID]:
-            return file_source.import_file(filename, symlink=True)
+            return file_source.import_file(filename, symlink=symlink)
 
         for file in files:
             imported = import_filename(file)
@@ -4111,7 +4117,16 @@ class ImportsJob(Job):
     ) -> Tuple[Promised[Dict[str, FileID]], Dict[str, FileMetadata]]:
         """
         Import the workflow inputs and then create and run the workflow.
-        :return: Tuple of a mapping from the candidate uri to the file id and a mapping of the source filenames to its metadata. The candidate uri is a field in the file metadata
+
+        The two parts of the return value must be used together and cannot be
+        safely split apart. To look up a FileID from an original filename, you
+        must first look up the FileMetadata in the second dict, extract its
+        .source (the normalized candidate URI), and then look that up in the
+        first dict.
+
+        :return: Tuple of (candidate URI to FileID mapping, original filename
+            to FileMetadata mapping). The candidate URI is stored in
+            FileMetadata.source.
         """
         max_batch_size = self._max_batch_size
         file_to_data = self._file_to_data

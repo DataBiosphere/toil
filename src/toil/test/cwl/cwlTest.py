@@ -225,6 +225,9 @@ def run_conformance_tests(
         log.info("Unsuccessful return code is OK")
 
 
+# This is a type for a function that runs toil-cwl-runner and checks the
+# result. See TestCWLWorkflow._tester and TestCWLWorkflow._debug_worker_tester
+# for implementations.
 TesterFuncType = Callable[[Path, Path, "CWLObjectType", Path], None]
 
 
@@ -258,6 +261,28 @@ class TestCWLWorkflow:
         out_name: str = "output",
         main_args: Optional[list[str]] = None,
     ) -> None:
+        """
+        Helper function that runs a CWL workflow and checks the result.
+
+        Implements TesterFuncType, plus a few additional parameters.
+
+        :param cwlfile: CWL workflow file path to run.
+        :param jobfile: Path to the input definition for the workflow run.
+        :param expect: Expected result of the workflow as a deserialized CWL
+            object. Should have one key per workflow output field. If output
+            files are expected from the workflow, they need to have their
+            absolute paths on disk under outdir already filled in.
+        :param outdir: Path to a directory to put the workflow's output files
+            in.
+        :param out_name: Name of the JSON key where the workflow's outputs can
+            be found in the output JSON from Toil.
+        :param main_args: Additional arguments to pass to toil-cwl-runner. This
+            is not part of TesterFuncType; you can use partial() to fill this
+            in and stamp out a TesterFuncType that runs toil-cwl-runner with
+            various closed-over arguments.
+        """
+    
+
         from toil.cwl import cwltoil
 
         st = StringIO()
@@ -293,6 +318,21 @@ class TestCWLWorkflow:
     def _debug_worker_tester(
         self, cwlfile: Path, jobfile: Path, expect: "CWLObjectType", outdir: Path
     ) -> None:
+        """
+        Helper function that runs a CWL workflow with --debugWorker and checks
+        the result.
+
+        Implements TesterFuncType directly.
+
+        :param cwlfile: CWL workflow file path to run.
+        :param jobfile: Path to the input definition for the workflow run.
+        :param expect: Expected result of the workflow as a deserialized CWL
+            object. Should have one key per workflow output field. If output
+            files are expected from the workflow, they need to have their
+            absolute paths on disk under outdir already filled in.
+        :param outdir: Path to a directory to put the workflow's output files
+            in.
+        """
         from toil.cwl import cwltoil
 
         st = StringIO()
@@ -334,6 +374,21 @@ class TestCWLWorkflow:
                 )
 
     def download(self, inputs: str, tester_fn: TesterFuncType, out_dir: Path) -> None:
+        """
+        Run a generic download test with a tester function and check the result.
+
+        Ther test is the download.cwl workflow.
+
+        The result has to match _expected_download_output on the output
+        directory, so it must contain an empty "output.txt" file.
+
+        :param inputs: Relative path to the inputs file within the Toil source
+            tree's src/toil/test/cwl directory.
+        :param tester_fn: The tester function to use to run the workflow and
+            check the result.
+        :param out_dir: Path to the output directory to save the workflow
+            output in.
+        """
         with get_data(f"test/cwl/{inputs}") as input_location:
             with get_data("test/cwl/download.cwl") as cwl_file:
                 tester_fn(
@@ -595,6 +650,45 @@ class TestCWLWorkflow:
 
     def test_download_file(self, tmp_path: Path) -> None:
         self.download("download_file.json", self._tester, tmp_path)
+
+    def test_download_file_worker_import(self, tmp_path: Path) -> None:
+        self.download(
+            "download_file.json",
+            partial(self._tester, main_args=["--run-imports-on-workers"]),
+            tmp_path
+        )
+
+    def test_download_file_uri(self, tmp_path: Path) -> None:
+        self.download("download_file_uri.json", self._tester, tmp_path)
+
+    def test_download_file_uri_worker_import(self, tmp_path: Path) -> None:
+        self.download(
+            "download_file_uri.json",
+            partial(self._tester, main_args=["--run-imports-on-workers"]),
+            tmp_path
+        )
+
+    def test_download_file_uri_no_hostname(self, tmp_path: Path) -> None:
+        """
+        Test if CWL handles file: URIs without even empty hostnames.
+        """
+        # We can in fact ship an absolute file URI to an empty file if we
+        # assume /dev/null is available. So we can still use the helpers.
+        self.download(
+            "download_file_uri_no_hostname.json",
+            self._tester,
+            tmp_path
+        )
+
+    def test_download_file_uri_no_hostname_worker_import(self, tmp_path: Path) -> None:
+        """
+        Test if CWL handles file: URIs without even empty hostnames, with worker import.
+        """
+        self.download(
+            "download_file_uri_no_hostname.json",
+            partial(self._tester, main_args=["--run-imports-on-workers"]),
+            tmp_path
+        )
 
     @needs_aws_s3
     @pytest.mark.aws_s3
