@@ -352,11 +352,11 @@ def parseDockerAppliance(appliance: str) -> tuple[str, str, str]:
 def checkDockerSchema(appliance):
     if not appliance:
         raise ImageNotFound("No docker image specified.")
-    elif "://" in appliance:
+    if "://" in appliance:
         raise ImageNotFound(
             "Docker images cannot contain a schema (such as '://'): %s" "" % appliance
         )
-    elif len(appliance) > 256:
+    if len(appliance) > 256:
         raise ImageNotFound(
             "Docker image must be less than 256 chars: %s" "" % appliance
         )
