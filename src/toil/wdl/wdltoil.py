@@ -235,18 +235,19 @@ else:  # Polyfill file_digest from 3.11+
     file_digest = file_digest_fallback_impl
 
 
-# WDL options to pass into the WDL jobs and standard libraries
-#   task_path: Dotted WDL name of the part of the workflow this library is working for.
-#   namespace: namespace of the WDL that the current job is in
-#   execution_dir: Directory to use as the working directory for workflow code.
-#   container: The type of container to use when executing a WDL task. Carries through the value of the commandline --container option
-#   all_call_outputs: whether a job should include all calls outputs
 class WDLContext(TypedDict):
+    """WDL options to pass into the WDL jobs and standard libraries"""
+
     execution_dir: NotRequired[str]
+    """Directory to use as the working directory for workflow code"""
     container: NotRequired[str]
+    """The type of container to use when executing a WDL task. Carries through the value of the commandline --container option."""
     task_path: str
+    """Dotted WDL name of the part of the workflow this library is working for"""
     namespace: str
+    """Namespace of the WDL that the current job is in"""
     all_call_outputs: bool
+    """Whether a job should include all calls outputs"""
 
 
 class InsufficientMountDiskSpace(Exception):
