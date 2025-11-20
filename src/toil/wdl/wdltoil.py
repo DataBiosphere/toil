@@ -217,24 +217,12 @@ class FileDigester(Protocol):
     def __call__(self, __f: ReadableFileObj, __alg_name: str) -> hashlib._Hash: ...
 
 
-try:
-    # Don't do a direct conditional import to the final name here because then
-    # the polyfill needs *exactly* the signature of file_digest, and not just
-    # one that can accept all calls we make in the file, or MyPy will complain.
-    #
-    # We need to tell MyPy we expect this import to fail, when typechecking on
-    # pythons that don't have it. But we also need to tell it that it is fine
-    # if it succeeds, for Pythons that do have it.
-    #
-    # TODO: Change to checking sys.version_info because MyPy understands that
-    # better?
-    from hashlib import (
-        file_digest as file_digest_impl,
-    )  # type: ignore[attr-defined,unused-ignore]
+if sys.version_info >= (3, 11):
+    from hashlib import file_digest as file_digest_impl
 
     file_digest: FileDigester = file_digest_impl
-except ImportError:
-    # Polyfill file_digest from 3.11+
+else:  # Polyfill file_digest from 3.11+
+
     def file_digest_fallback_impl(f: ReadableFileObj, alg_name: str) -> hashlib._Hash:
         BUFFER_SIZE = 1024 * 1024
         hasher = hashlib.new(alg_name)
