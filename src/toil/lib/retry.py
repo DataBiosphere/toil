@@ -332,17 +332,14 @@ def return_status_code(e):
     if botocore:
         if isinstance(e, botocore.exceptions.ClientError):
             return e.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-
-    if isinstance(e, requests.exceptions.HTTPError):
-        return e.response.status_code
-    elif isinstance(e, http.client.HTTPException) or isinstance(
-        e, urllib3.exceptions.HTTPError
-    ):
-        return e.status
-    elif isinstance(e, urllib.error.HTTPError):
-        return e.code
-    else:
-        raise ValueError(f"Unsupported error type; cannot grok status code: {e}.")
+    match e:
+        case requests.exceptions.HTTPError():
+            return e.response.status_code
+        case http.client.HTTPException() | urllib3.exceptions.HTTPError():
+            return e.status
+        case urllib.error.HTTPError():
+            return e.code
+    raise ValueError(f"Unsupported error type; cannot grok status code: {e}.")
 
 
 def get_error_code(e: Exception) -> str:
@@ -450,21 +447,20 @@ def meets_error_message_condition(e: Exception, error_message: str | None):
         if botocore:
             if isinstance(e, botocore.exceptions.ClientError):
                 return error_message in str(e)
-
-        if isinstance(e, http.client.HTTPException) or isinstance(
-            e, urllib3.exceptions.HTTPError
-        ):
-            return error_message in e.reason
-        elif isinstance(e, sqlite3.OperationalError):
-            return error_message in str(e)
-        elif isinstance(e, urllib.error.HTTPError):
-            return error_message in e.msg
-        elif isinstance(e, requests.exceptions.HTTPError):
-            return error_message in e.raw
-        elif hasattr(e, "msg"):
-            return error_message in e.msg
-        else:
-            return error_message in traceback.format_exc()
+        match e:
+            case (
+                http.client.HTTPException() | urllib3.exceptions.HTTPError()
+            ) as c_exc:
+                return error_message in c_exc.reason
+            case sqlite3.OperationalError():
+                return error_message in str(e)
+            case urllib.error.HTTPError() as u_err:
+                return error_message in u_err.msg
+            case requests.exceptions.HTTPError() as r_err:
+                return error_message in r_err.raw
+            case Exception() as exc if hasattr(exc, "msg"):
+                return error_message in exc.msg
+        return error_message in traceback.format_exc()
     else:  # there is no error message, so the user is not expecting it to be present
         return True
 
