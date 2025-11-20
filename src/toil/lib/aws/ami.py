@@ -175,20 +175,20 @@ def feed_flatcar_ami_release(
 
     region = ec2_client._client_config.region_name  # type: ignore
 
-    ami = flatcar_release_feed_ami(region, architecture, source)
-    # verify it exists on AWS
-    try:
-        response = ec2_client.describe_images(Filters=[{"Name": "image-id", "Values": [ami]}])  # type: ignore
-        if (len(response["Images"]) == 1 and response["Images"][0]["State"] == "available"):
+    if ami := flatcar_release_feed_ami(region, architecture, source):
+        # verify it exists on AWS
+        try:
+            response = ec2_client.describe_images(Filters=[{"Name": "image-id", "Values": [ami]}])  # type: ignore
+            if (len(response["Images"]) == 1 and response["Images"][0]["State"] == "available"):
+                return ami
+            else:
+                logger.warning(f"Flatcar release feed suggests image {ami} which does not exist on AWS in {region}")
+        except (ClientError, EndpointConnectionError):
+            # Sometimes we get back nonsense like:
+            # botocore.exceptions.ClientError: An error occurred (AuthFailure) when calling the DescribeImages operation: AWS was not able to validate the provided access credentials
+            # Don't hold that against the AMI.
+            logger.exception(f"Unable to check if AMI {ami} exists on AWS in {region}; assuming it does")
             return ami
-        else:
-            logger.warning(f"Flatcar release feed suggests image {ami} which does not exist on AWS in {region}")
-    except (ClientError, EndpointConnectionError):
-        # Sometimes we get back nonsense like:
-        # botocore.exceptions.ClientError: An error occurred (AuthFailure) when calling the DescribeImages operation: AWS was not able to validate the provided access credentials
-        # Don't hold that against the AMI.
-        logger.exception(f"Unable to check if AMI {ami} exists on AWS in {region}; assuming it does")
-        return ami
     # We didn't find it
     logger.warning(f"Flatcar release feed does not have an image for region {region} that exists on AWS")
 
