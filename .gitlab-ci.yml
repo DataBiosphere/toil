@@ -118,7 +118,7 @@ cwl_dependency_is_stand_alone:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
   cache:
-    key: cache-$MAIN_PYTHON_PKG
+    key: cache-$MAIN_PYTHON_PKG-cwl
     paths:
       - .cache/pip
   script: |
@@ -135,7 +135,7 @@ wdl_dependency_is_stand_alone:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
   cache:
-    key: cache-$MAIN_PYTHON_PKG
+    key: cache-$MAIN_PYTHON_PKG-wdl
     paths:
       - .cache/pip
   script: |
