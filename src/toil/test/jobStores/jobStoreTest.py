@@ -24,7 +24,6 @@ import urllib.parse as urlparse
 import uuid
 from abc import ABCMeta, abstractmethod
 from io import BytesIO
-from itertools import chain, islice
 from queue import Queue
 from tempfile import mkstemp
 from threading import Thread
@@ -34,9 +33,9 @@ from urllib.request import Request, urlopen
 import pytest
 from stubserver import FTPStubServer
 
-from toil.common import Config, Toil
+from toil.common import Config
 from toil.fileStores import FileID
-from toil.job import Job, JobDescription, TemporaryID
+from toil.job import JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.io import mkdtemp
@@ -1195,12 +1194,15 @@ class AbstractEncryptedJobStoreTest:
                 with self.jobstore_initialized.read_shared_file_stream(fileName) as f:
                     # If the read goes through, we should fail the assert because
                     # we read the cyphertext
-                    assert f.read() != phrase, (
-                        "Managed to read plaintext content with encryption off."
-                    )
+                    assert (
+                        f.read() != phrase
+                    ), "Managed to read plaintext content with encryption off."
             except AWSBadEncryptionKeyError as e:
                 # If the read doesn't go through, we get this.
-                assert "Your AWS encryption key is most likely configured incorrectly" in str(e)
+                assert (
+                    "Your AWS encryption key is most likely configured incorrectly"
+                    in str(e)
+                )
 
 
 class FileJobStoreTest(AbstractJobStoreTest.Test):

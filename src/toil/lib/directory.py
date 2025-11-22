@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 import base64
-
+import json
+from collections.abc import Iterator
+from typing import Union
 from urllib.parse import quote, unquote
-
-from typing import Iterator, Optional, Union
 
 TOIL_DIR_URI_SCHEME = "toildir:"
 
@@ -44,7 +43,7 @@ def check_directory_dict_invariants(contents: DirectoryContents) -> None:
 
 def decode_directory(
     dir_path: str,
-) -> tuple[DirectoryContents, Optional[str], str, Optional[str], Optional[str]]:
+) -> tuple[DirectoryContents, str | None, str, str | None, str | None]:
     """
     Decode a directory from a "toildir:" path to a directory (or a file in it).
 
@@ -69,9 +68,9 @@ def decode_directory(
     # Before the first slash is the encoded data describing the directory contents
     encoded_name, encoded_source, dir_data = parts[0].split(":")
     # Decode the name and source, replacing empty string with None again.
-    name: Optional[str] = unquote(encoded_name) or None
-    source: Optional[str] = unquote(encoded_source) or None
-    
+    name: str | None = unquote(encoded_name) or None
+    source: str | None = unquote(encoded_source) or None
+
     # We need the unique key identifying this directory, which is where it came
     # from if stored, or the encoded data itself otherwise.
     # TODO: Is this too complicated?
@@ -91,7 +90,12 @@ def decode_directory(
         # We have a path below this
         return contents, parts[1], directory_identifier, name, source
 
-def encode_directory(contents: DirectoryContents, name: Optional[str] = None, source: Optional[str] = None) -> str:
+
+def encode_directory(
+    contents: DirectoryContents,
+    name: str | None = None,
+    source: str | None = None,
+) -> str:
     """
     Encode a directory from a "toildir:" path to a directory (or a file in it).
 
@@ -109,9 +113,7 @@ def encode_directory(contents: DirectoryContents, name: Optional[str] = None, so
         TOIL_DIR_URI_SCHEME[:-1],
         quote(name or "", safe=""),
         quote(source or "", safe=""),
-        base64.urlsafe_b64encode(
-            json.dumps(contents).encode("utf-8")
-        ).decode("utf-8"),
+        base64.urlsafe_b64encode(json.dumps(contents).encode("utf-8")).decode("utf-8"),
     ]
 
     return ":".join(parts)
@@ -131,15 +133,18 @@ def directory_item_exists(dir_path: str) -> bool:
         return False
     return True
 
-def get_directory_contents_item(contents: DirectoryContents, remaining_path: Optional[str]) -> Union[DirectoryContents, str]:
+
+def get_directory_contents_item(
+    contents: DirectoryContents, remaining_path: str | None
+) -> DirectoryContents | str:
     """
     Get a subdirectory or file from a decoded directory and remaining path.
     """
 
     if remaining_path is None:
         return contents
-    
-    here: Union[str, DirectoryContents] = contents
+
+    here: str | DirectoryContents = contents
     for part in remaining_path.split("/"):
         if not isinstance(here, dict):
             # We're trying to go inside a file
@@ -151,20 +156,24 @@ def get_directory_contents_item(contents: DirectoryContents, remaining_path: Opt
     # If we get here we successfully looked up the thing in the structure
     return here
 
-def get_directory_item(dir_path: str) -> Union[DirectoryContents, str]:
+
+def get_directory_item(dir_path: str) -> DirectoryContents | str:
     """
     Get a subdirectory or file from a URL pointing to or into a toildir: directory.
     """
 
     contents, remaining_path, _, _, _ = decode_directory(dir_path)
-    
+
     try:
         return get_directory_contents_item(contents, remaining_path)
     except FileNotFoundError:
         # Rewrite file not found to be about the full thing we went to look up.
         raise FileNotFoundError(dir_path)
 
-def directory_contents_items(contents: DirectoryContents) -> Iterator[tuple[str, Union[str, None]]]:
+
+def directory_contents_items(
+    contents: DirectoryContents,
+) -> Iterator[tuple[str, str | None]]:
     """
     Yield each file or directory under the given contents, including itself.
 
@@ -188,7 +197,8 @@ def directory_contents_items(contents: DirectoryContents) -> Iterator[tuple[str,
             for child_path, child_value in directory_contents_items(v):
                 yield (f"{k}/{child_path}", child_value)
 
-def directory_items(dir_path: str) -> Iterator[tuple[str, Union[str, None]]]:
+
+def directory_items(dir_path: str) -> Iterator[tuple[str, str | None]]:
     """
     Yield each file or directory under the given path, including itself.
 
@@ -208,10 +218,3 @@ def directory_items(dir_path: str) -> Iterator[tuple[str, Union[str, None]]]:
     else:
         # It's a directory in there.
         yield from directory_contents_items(item)
-
-        
-
-
-
-
-

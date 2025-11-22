@@ -18,7 +18,6 @@ import time
 from collections.abc import Iterable
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Optional
 
 from toil.job import ServiceJobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
@@ -112,7 +111,7 @@ class ServiceManager:
         # Asynchronously schedule the services
         self.__clients_in.put(client_id)
 
-    def get_ready_client(self, maxWait: float) -> Optional[str]:
+    def get_ready_client(self, maxWait: float) -> str | None:
         """
         Fetch a ready client, waiting as needed.
 
@@ -132,7 +131,7 @@ class ServiceManager:
         except Empty:
             return None
 
-    def get_unservable_client(self, maxWait: float) -> Optional[str]:
+    def get_unservable_client(self, maxWait: float) -> str | None:
         """
         Fetch a client whos services failed to start.
 
@@ -152,7 +151,7 @@ class ServiceManager:
         except Empty:
             return None
 
-    def get_startable_service(self, maxWait: float) -> Optional[str]:
+    def get_startable_service(self, maxWait: float) -> str | None:
         """
         Fetch a service job that is ready to start.
 

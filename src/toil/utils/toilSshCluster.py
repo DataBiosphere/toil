@@ -23,6 +23,7 @@ from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
+
 def have_ipv6() -> bool:
     """
     Return True if the IPv6 loopback interface is useable.
@@ -39,6 +40,7 @@ def have_ipv6() -> bool:
         except Exception:
             pass
     return False
+
 
 def main() -> None:
     parser = parser_with_common_options(

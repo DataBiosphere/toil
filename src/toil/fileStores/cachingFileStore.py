@@ -22,10 +22,10 @@ import sqlite3
 import stat
 import threading
 import time
-from collections.abc import Generator, Iterator, Sequence
+from collections.abc import Callable, Generator, Iterator, Sequence
 from contextlib import contextmanager
 from tempfile import mkstemp
-from typing import Any, Callable, Optional
+from typing import Any
 
 from toil.common import cacheDirName, getFileSystemSize
 from toil.fileStores import FileID
@@ -221,7 +221,7 @@ class CachingFileStore(AbstractFileStore):
         logger.debug("Starting job (%s) with ID (%s).", self.jobName, self.jobID)
 
         # When the job actually starts, we will fill this in with the job's disk requirement.
-        self.jobDiskBytes: Optional[float] = None
+        self.jobDiskBytes: float | None = None
 
         # We need to track what attempt of the workflow we are, to prevent crosstalk between attempts' caches.
         self.workflowAttemptNumber = self.jobStore.config.workflowAttemptNumber
@@ -386,7 +386,7 @@ class CachingFileStore(AbstractFileStore):
         ],
     )
     def _static_read(
-        cur: sqlite3.Cursor, query: str, args: Optional[Sequence[Any]] = ()
+        cur: sqlite3.Cursor, query: str, args: Sequence[Any] | None = ()
     ) -> Iterator[Any]:
         """
         Read from the database.
@@ -398,7 +398,7 @@ class CachingFileStore(AbstractFileStore):
         # All the real work is the decorators
         return cur.execute(query, args)
 
-    def _read(self, query: str, args: Optional[Sequence[Any]] = ()) -> Iterator[Any]:
+    def _read(self, query: str, args: Sequence[Any] | None = ()) -> Iterator[Any]:
         """
         Read from the database using the instance's connection.
 
@@ -2010,7 +2010,7 @@ class CachingFileStore(AbstractFileStore):
         self,
         file_store_id: FileID,
         reader_id: str,
-        local_file_path: Optional[str] = None,
+        local_file_path: str | None = None,
     ) -> Generator:
         """
         Get a context manager that gives you either the local file path for a
@@ -2275,7 +2275,7 @@ class CachingFileStore(AbstractFileStore):
         if len(self.jobDesc.filesToDelete) > 0:
             raise RuntimeError("Job is already in the process of being committed!")
 
-        state_to_commit: Optional[JobDescription] = None
+        state_to_commit: JobDescription | None = None
 
         if jobState:
             # Clone the current job description, so that further updates to it
@@ -2308,7 +2308,7 @@ class CachingFileStore(AbstractFileStore):
         )
         self.commitThread.start()
 
-    def startCommitThread(self, state_to_commit: Optional[JobDescription]):
+    def startCommitThread(self, state_to_commit: JobDescription | None):
         """
         Run in a thread to actually commit the current job.
         """

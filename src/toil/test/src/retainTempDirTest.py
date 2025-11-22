@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import argparse
-from collections.abc import Callable
 import os
+from collections.abc import Callable
 from pathlib import Path
+
+import pytest
 
 from toil.exceptions import FailedJobsException
 from toil.job import Job, JobFunctionWrappingJob
-
-import pytest
 
 
 class TestCleanWorkDir:

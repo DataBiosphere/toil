@@ -11,28 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import logging
-from typing import IO, Optional, Union
-
-from configargparse import ArgParser, ArgumentParser
-
-from toil.batchSystems.abstractBatchSystem import (
-    AbstractBatchSystem,
-    UpdatedBatchJobInfo,
-)
-from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
-from toil.batchSystems.options import OptionSetter
-from toil.batchSystems.registry import add_batch_system_factory
-from toil.common import Toil, addOptions
-from toil.job import JobDescription
-
 import io
+import logging
+from typing import IO
 from urllib.parse import ParseResult
-from toil.test import ToilTest
-from toil.lib.url import URLAccess
+
 from toil.lib.plugins import register_plugin, remove_plugin
+from toil.lib.url import URLAccess
+from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)
+
 
 class FakeURLPlugin(URLAccess):
     @classmethod
@@ -66,7 +55,12 @@ class FakeURLPlugin(URLAccess):
         return io.BytesIO(b"hello world")
 
     @classmethod
-    def _write_to_url(cls, readable: Union[IO[bytes], IO[str]], url: ParseResult, executable: bool = False) -> None:
+    def _write_to_url(
+        cls,
+        readable: IO[bytes] | IO[str],
+        url: ParseResult,
+        executable: bool = False,
+    ) -> None:
         pass
 
 

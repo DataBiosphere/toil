@@ -16,7 +16,6 @@ import argparse
 import logging
 import os.path
 import sys
-from typing import Optional
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.jobStores.fileJobStore import FileJobStore
@@ -51,16 +50,12 @@ def fetchJobStoreFiles(jobStore: FileJobStore, options: argparse.Namespace) -> N
             )
             jobStore.read_file(
                 jobStoreFileID,
-                os.path.join(
-                    options.localFilePath, os.path.basename(jobStoreFileID)
-                ),
+                os.path.join(options.localFilePath, os.path.basename(jobStoreFileID)),
                 symlink=options.useSymlinks,
             )
 
 
-def printContentsOfJobStore(
-    job_store: FileJobStore, job_id: Optional[str] = None
-) -> None:
+def printContentsOfJobStore(job_store: FileJobStore, job_id: str | None = None) -> None:
     """
     Fetch a list of all files contained in the job store if nameOfJob is not
     declared, otherwise it only prints out the names of files for that specific
@@ -100,7 +95,7 @@ def main() -> None:
         "--localFilePath",
         type=str,
         default=".",
-        help="Location to which to copy job store files."
+        help="Location to which to copy job store files.",
     )
     parser.add_argument(
         "--fetch",

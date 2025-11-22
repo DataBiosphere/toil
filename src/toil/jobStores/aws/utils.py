@@ -11,33 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import base64
-import bz2
 import logging
 import os
-import types
 from ssl import SSLError
-from typing import TYPE_CHECKING, IO, Optional, cast, Any
+from typing import IO, TYPE_CHECKING, Any
 
 from boto3.s3.transfer import TransferConfig
 from botocore.client import Config
 from botocore.exceptions import ClientError
 
 from toil.lib.aws import AWSServerErrors, session
-from toil.lib.aws.utils import connection_error, get_bucket_region
+from toil.lib.aws.utils import get_bucket_region
 from toil.lib.compatibility import compat_bytes
-from toil.lib.retry import (
-    DEFAULT_DELAYS,
-    DEFAULT_TIMEOUT,
-    get_error_code,
-    get_error_message,
-    get_error_status,
-    old_retry,
-    retry,
-)
+from toil.lib.retry import get_error_code, get_error_message, retry
 
 if TYPE_CHECKING:
-    from mypy_boto3_s3 import S3Client, S3ServiceResource
+    from mypy_boto3_s3 import S3ServiceResource
     from mypy_boto3_s3.type_defs import CopySourceTypeDef
 
 logger = logging.getLogger(__name__)
@@ -66,9 +55,9 @@ def uploadFromPath(
     resource: "S3ServiceResource",
     bucketName: str,
     fileID: str,
-    headerArgs: Optional[dict[str, Any]] = None,
+    headerArgs: dict[str, Any] | None = None,
     partSize: int = 50 << 20,
-) -> Optional[str]:
+) -> str | None:
     """
     Uploads a file to s3, using multipart uploading if applicable
 
@@ -112,9 +101,9 @@ def uploadFile(
     resource: "S3ServiceResource",
     bucketName: str,
     fileID: str,
-    headerArgs: Optional[dict[str, Any]] = None,
+    headerArgs: dict[str, Any] | None = None,
     partSize: int = 50 << 20,
-) -> Optional[str]:
+) -> str | None:
     """
     Upload a readable object to s3, using multipart uploading if applicable.
     :param readable: a readable stream or a file path to upload to s3
@@ -172,11 +161,11 @@ def copyKeyMultipart(
     srcKeyVersion: str,
     dstBucketName: str,
     dstKeyName: str,
-    sseAlgorithm: Optional[str] = None,
-    sseKey: Optional[str] = None,
-    copySourceSseAlgorithm: Optional[str] = None,
-    copySourceSseKey: Optional[str] = None,
-) -> Optional[str]:
+    sseAlgorithm: str | None = None,
+    sseKey: str | None = None,
+    copySourceSseAlgorithm: str | None = None,
+    copySourceSseKey: str | None = None,
+) -> str | None:
     """
     Copies a key from a source key to a destination key in multiple parts. Note that if the
     destination key exists it will be overwritten implicitly, and if it does not exist a new

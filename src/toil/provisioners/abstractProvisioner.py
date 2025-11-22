@@ -20,7 +20,7 @@ import tempfile
 import textwrap
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import Any, Optional, Union
+from typing import Any
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -58,9 +58,9 @@ class Shape:
 
     def __init__(
         self,
-        wallTime: Union[int, float],
+        wallTime: int | float,
         memory: int,
-        cores: Union[int, float],
+        cores: int | float,
         disk: int,
         preemptible: bool,
     ) -> None:
@@ -107,12 +107,14 @@ class Shape:
         return self.greater_than(other)
 
     def __repr__(self) -> str:
-        return "Shape(wallTime=%s, memory=%s, cores=%s, disk=%s, preemptible=%s)" % (
-            self.wallTime,
-            self.memory,
-            self.cores,
-            self.disk,
-            self.preemptible,
+        return (
+            "Shape(wallTime={}, memory={}, cores={}, disk={}, preemptible={})".format(
+                self.wallTime,
+                self.memory,
+                self.cores,
+                self.disk,
+                self.preemptible,
+            )
         )
 
     def __str__(self) -> str:
@@ -133,11 +135,11 @@ class AbstractProvisioner(ABC):
 
     def __init__(
         self,
-        clusterName: Optional[str] = None,
-        clusterType: Optional[str] = "mesos",
-        zone: Optional[str] = None,
+        clusterName: str | None = None,
+        clusterType: str | None = "mesos",
+        zone: str | None = None,
         nodeStorage: int = 50,
-        nodeStorageOverrides: Optional[list[str]] = None,
+        nodeStorageOverrides: list[str] | None = None,
         enable_fuse: bool = False,
     ) -> None:
         """
@@ -164,7 +166,7 @@ class AbstractProvisioner(ABC):
         for override in nodeStorageOverrides or []:
             nodeShape, storageOverride = override.split(":")
             self._nodeStorageOverrides[nodeShape] = int(storageOverride)
-        self._leaderPrivateIP: Optional[str] = None
+        self._leaderPrivateIP: str | None = None
         # This will hold an SSH public key for Mesos clusters, or the
         # Kubernetes joining information as a dict for Kubernetes clusters.
         self._leaderWorkerAuthentication = None
@@ -353,7 +355,7 @@ class AbstractProvisioner(ABC):
         # it.
         return dict(config["DEFAULT"])
 
-    def setAutoscaledNodeTypes(self, nodeTypes: list[tuple[set[str], Optional[float]]]):
+    def setAutoscaledNodeTypes(self, nodeTypes: list[tuple[set[str], float | None]]):
         """
         Set node types, shapes and spot bids for Toil-managed autoscaling.
         :param nodeTypes: A list of node types, as parsed with parse_node_types.
@@ -432,7 +434,7 @@ class AbstractProvisioner(ABC):
         nodeTypes: set[str],
         numNodes: int,
         preemptible: bool,
-        spotBid: Optional[float] = None,
+        spotBid: float | None = None,
     ) -> int:
         """
         Used to add worker nodes to the cluster
@@ -483,7 +485,7 @@ class AbstractProvisioner(ABC):
 
     @abstractmethod
     def getProvisionedWorkers(
-        self, instance_type: Optional[str] = None, preemptible: Optional[bool] = None
+        self, instance_type: str | None = None, preemptible: bool | None = None
     ) -> list[Node]:
         """
         Gets all nodes, optionally of the given instance type or
@@ -535,7 +537,7 @@ class AbstractProvisioner(ABC):
             self,
             path: str,
             filesystem: str = "root",
-            mode: Union[str, int] = "0755",
+            mode: str | int = "0755",
             contents: str = "",
             append: bool = False,
         ):
@@ -1060,7 +1062,7 @@ class AbstractProvisioner(ABC):
         """
         raise NotImplementedError()
 
-    def getKubernetesCloudProvider(self) -> Optional[str]:
+    def getKubernetesCloudProvider(self) -> str | None:
         """
         Return the Kubernetes cloud provider (for example, 'aws'), to pass to
         the kubelets in a Kubernetes cluster provisioned using this provisioner.
@@ -1390,7 +1392,7 @@ class AbstractProvisioner(ABC):
     def _getIgnitionUserData(
         self,
         role: str,
-        keyPath: Optional[str] = None,
+        keyPath: str | None = None,
         preemptible: bool = False,
         architecture: str = "amd64",
     ) -> str:

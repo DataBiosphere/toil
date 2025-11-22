@@ -19,6 +19,7 @@ import sys
 
 from toil.lib.misc import StrPath
 
+
 class ResourceMonitor:
     """
     Global resource monitoring widget.

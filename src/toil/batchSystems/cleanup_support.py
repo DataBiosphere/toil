@@ -13,7 +13,7 @@
 # limitations under the License.
 import logging
 from types import TracebackType
-from typing import Any, ContextManager, Optional
+from typing import Any, ContextManager
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, WorkerCleanupInfo
 from toil.batchSystems.local_support import BatchSystemLocalSupport
@@ -89,9 +89,9 @@ class WorkerCleanupContext:
     # that is always falsey but claims to return a bool is an error.
     def __exit__(
         self,
-        type: Optional[type[BaseException]],
-        value: Optional[BaseException],
-        traceback: Optional[TracebackType],
+        type: type[BaseException] | None,
+        value: BaseException | None,
+        traceback: TracebackType | None,
     ) -> None:
         logger.debug("Leaving cleanup arena")
         for _ in self.arena.leave():

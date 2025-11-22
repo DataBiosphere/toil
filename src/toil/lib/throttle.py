@@ -15,7 +15,6 @@
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 import threading
 import time
-from typing import Union
 
 
 class LocalThrottle:
@@ -143,7 +142,7 @@ class throttle:
     True
     """
 
-    def __init__(self, min_interval: Union[int, float]) -> None:
+    def __init__(self, min_interval: int | float) -> None:
         self.min_interval = min_interval
 
     def __enter__(self):

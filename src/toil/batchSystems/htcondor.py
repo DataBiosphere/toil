@@ -18,7 +18,7 @@ import os
 import time
 from contextlib import contextmanager
 from threading import Lock
-from typing import Any, Optional
+from typing import Any
 
 import htcondor
 
@@ -355,7 +355,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             schedd.xquery(limit=0)
 
         @retry(errors=[htcondor.HTCondorIOError])
-        def _get_schedd_address(self) -> Optional[str]:
+        def _get_schedd_address(self) -> str | None:
             """
             Get the HTCondor scheduler to connect to, or None for the local machine.
 
@@ -367,7 +367,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             schedd_name = os.getenv("TOIL_HTCONDOR_SCHEDD")
 
             # Get the scheduler's address, if not local
-            schedd_ad: Optional[str] = None
+            schedd_ad: str | None = None
 
             # If TOIL_HTCONDOR_ variables are set, use them to find the Schedd
             if condor_host and schedd_name:
@@ -397,7 +397,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             return schedd_ad
 
         @retry(errors=[htcondor.HTCondorIOError])
-        def _open_schedd_connection(self, schedd_ad: Optional[str] = None) -> Any:
+        def _open_schedd_connection(self, schedd_ad: str | None = None) -> Any:
             """
             Open a connection to the htcondor schedd.
 
@@ -451,7 +451,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
     # Override the issueBatchJob method so HTCondor can be given the disk request
     def issueBatchJob(
-        self, command: str, jobNode, job_environment: Optional[dict[str, str]] = None
+        self, command: str, jobNode, job_environment: dict[str, str] | None = None
     ):
         # Avoid submitting internal jobs to the batch queue, handle locally
         localID = self.handleLocalJob(command, jobNode)

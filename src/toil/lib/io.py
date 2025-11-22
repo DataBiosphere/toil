@@ -6,15 +6,15 @@ import stat
 import sys
 import tempfile
 import uuid
-from collections.abc import Iterator, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from io import BytesIO
-from typing import IO, Any, Callable, Optional, Protocol, Union
+from typing import IO, Any, Protocol
 
-from toil.lib.directory import get_directory_item, TOIL_DIR_URI_SCHEME
-from toil.lib.url import URLAccess
+from toil.lib.directory import TOIL_DIR_URI_SCHEME, get_directory_item
 from toil.lib.memoize import memoize
 from toil.lib.misc import StrPath
+from toil.lib.url import URLAccess
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def get_toil_home() -> str:
     Raises an error if it does not exist and cannot be created. Safe to run
     simultaneously in multiple processes.
     """
-   
+
     # TODO: should this use an XDG config directory or ~/.config to not clutter the
     # base home directory?
     toil_home_dir = os.path.join(os.path.expanduser("~"), ".toil")
@@ -39,11 +39,13 @@ def get_toil_home() -> str:
         )
     return dir_path
 
+
 TOIL_URI_SCHEME = "toilfile:"
 
 STANDARD_SCHEMES = ["http:", "https:", "s3:", "gs:", "ftp:"]
 REMOTE_SCHEMES = STANDARD_SCHEMES + [TOIL_URI_SCHEME, TOIL_DIR_URI_SCHEME]
 ALL_SCHEMES = REMOTE_SCHEMES + ["file:"]
+
 
 def is_standard_url(filename: str) -> bool:
     """
@@ -51,11 +53,13 @@ def is_standard_url(filename: str) -> bool:
     """
     return is_url_with_scheme(filename, STANDARD_SCHEMES)
 
+
 def is_remote_url(filename: str) -> bool:
     """
     Decide if a filename is a known, non-file kind of URL
     """
     return is_url_with_scheme(filename, REMOTE_SCHEMES)
+
 
 def is_any_url(filename: str) -> bool:
     """
@@ -64,6 +68,7 @@ def is_any_url(filename: str) -> bool:
     Otherwise it might be a bare path.
     """
     return is_url_with_scheme(filename, ALL_SCHEMES)
+
 
 def is_url_with_scheme(filename: str, schemes: list[str]) -> bool:
     """
@@ -75,17 +80,20 @@ def is_url_with_scheme(filename: str, schemes: list[str]) -> bool:
             return True
     return False
 
+
 def is_toil_url(filename: str) -> bool:
     """
     Return True if a URL is a toilfile: or toildir: URL.
     """
     return is_url_with_scheme(filename, [TOIL_URI_SCHEME, TOIL_DIR_URI_SCHEME])
 
+
 def is_toil_file_url(filename: str) -> bool:
     """
     Return True if a URL is a toilfile: URL.
     """
     return is_url_with_scheme(filename, [TOIL_URI_SCHEME])
+
 
 def is_toil_dir_url(filename: str) -> bool:
     """
@@ -95,6 +103,7 @@ def is_toil_dir_url(filename: str) -> bool:
     """
     return is_url_with_scheme(filename, [TOIL_DIR_URI_SCHEME])
 
+
 def is_file_url(filename: str) -> bool:
     """
     Return True if a URL is a file: URL.
@@ -102,6 +111,7 @@ def is_file_url(filename: str) -> bool:
     Will return False for bare paths.
     """
     return is_url_with_scheme(filename, ["file:"])
+
 
 def is_directory_url(filename: str) -> bool:
     """
@@ -119,10 +129,11 @@ def is_directory_url(filename: str) -> bool:
         return not isinstance(get_directory_item(filename), str)
     return URLAccess.get_is_directory(filename)
 
+
 def mkdtemp(
-    suffix: Optional[str] = None,
-    prefix: Optional[str] = None,
-    dir: Optional[StrPath] = None,
+    suffix: str | None = None,
+    prefix: str | None = None,
+    dir: StrPath | None = None,
 ) -> str:
     """
     Make a temporary directory like tempfile.mkdtemp, but with relaxed permissions.
@@ -147,7 +158,7 @@ def mkdtemp(
     return result
 
 
-def robust_rmtree(path: Union[str, bytes]) -> None:
+def robust_rmtree(path: str | bytes) -> None:
     """
     Robustly tries to delete paths.
 
@@ -257,9 +268,7 @@ def AtomicFileCreate(final_path: StrPath, keep: bool = False) -> Iterator[str]:
         raise
 
 
-def atomic_copy(
-    src_path: str, dest_path: str, executable: Optional[bool] = None
-) -> None:
+def atomic_copy(src_path: str, dest_path: str, executable: bool | None = None) -> None:
     """Copy a file using posix atomic creations semantics."""
     if executable is None:
         executable = os.stat(src_path).st_mode & stat.S_IXUSR != 0
@@ -280,7 +289,7 @@ def atomic_copyobj(
             os.chmod(dest_path_tmp, os.stat(dest_path_tmp).st_mode | stat.S_IXUSR)
 
 
-def make_public_dir(in_directory: str, suggested_name: Optional[str] = None) -> str:
+def make_public_dir(in_directory: str, suggested_name: str | None = None) -> str:
     """
     Make a publicly-accessible directory in the given directory.
 
@@ -318,7 +327,7 @@ def make_public_dir(in_directory: str, suggested_name: Optional[str] = None) -> 
     return this_should_never_happen
 
 
-def try_path(path: str, min_size: int = 100 * 1024 * 1024) -> Optional[str]:
+def try_path(path: str, min_size: int = 100 * 1024 * 1024) -> str | None:
     """
     Try to use the given path. Return it if it exists or can be made,
     and we can make things within it, or None otherwise.
@@ -416,6 +425,7 @@ class WriteWatchingStream:
 
         self.backingStream.close()
 
+
 class ReadableFileObj(Protocol):
     """
     Protocol that is more specific than what file_digest takes as an argument.
@@ -423,9 +433,11 @@ class ReadableFileObj(Protocol):
     Would extend the protocol from Typeshed for hashlib but those are only
     declared for 3.11+.
     """
+
     def readinto(self, buf: bytearray, /) -> int: ...
     def readable(self) -> bool: ...
     def read(self, number: int) -> bytes: ...
+
 
 # hashlib._Hash seems to not appear at runtime
 def file_digest(f: ReadableFileObj, alg_name: str) -> "hashlib._Hash":
@@ -441,5 +453,3 @@ def file_digest(f: ReadableFileObj, alg_name: str) -> "hashlib._Hash":
         hasher.update(buffer)
         buffer = f.read(BUFFER_SIZE)
     return hasher
-
-

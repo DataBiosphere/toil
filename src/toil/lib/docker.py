@@ -11,23 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from collections.abc import Generator
 import base64
 import logging
 import os
 import re
 import struct
+from collections.abc import Generator
 from shlex import quote
-from typing import (
-    cast,
-    overload,
-    Any,
-    Literal,
-    NoReturn,
-    Optional,
-    Union,
-    TYPE_CHECKING,
-)
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, Union, cast, overload
 
 import requests
 
@@ -38,7 +29,10 @@ from docker.errors import (  # type: ignore[import-not-found]
     NotFound,
     create_api_error_from_http_exception,
 )
-from docker.utils.socket import consume_socket_output, demux_adaptor  # type: ignore[import-not-found]
+from docker.utils.socket import (  # type: ignore[import-not-found]
+    consume_socket_output,
+    demux_adaptor,
+)
 from toil.lib.accelerators import get_host_accelerator_numbers
 
 if TYPE_CHECKING:
@@ -76,24 +70,24 @@ def subprocessDockerCall(*args: Any, **kwargs: Any) -> NoReturn:
 def apiDockerCall(
     job: "Job",
     image: str,
-    parameters: Optional[Union[list[str], list[list[str]]]] = None,
-    deferParam: Optional[int] = None,
-    volumes: Optional[dict[str, dict[str, str]]] = None,
-    working_dir: Optional[str] = None,
-    containerName: Optional[str] = None,
-    entrypoint: Optional[Union[str, list[str]]] = None,
+    parameters: list[str] | list[list[str]] | None = None,
+    deferParam: int | None = None,
+    volumes: dict[str, dict[str, str]] | None = None,
+    working_dir: str | None = None,
+    containerName: str | None = None,
+    entrypoint: str | list[str] | None = None,
     detach: Literal[False] = False,
-    log_config: Optional[dict[str, str]] = None,
-    auto_remove: Optional[bool] = None,
-    remove: Optional[bool] = False,
-    user: Optional[str] = None,
-    environment: Optional[dict[str, str]] = None,
-    stdout: Optional[bool] = None,
+    log_config: dict[str, str] | None = None,
+    auto_remove: bool | None = None,
+    remove: bool | None = False,
+    user: str | None = None,
+    environment: dict[str, str] | None = None,
+    stdout: bool | None = None,
     stderr: bool = False,
     stream: bool = False,
     demux: Literal[False] = False,
-    streamfile: Optional[str] = None,
-    accelerators: Optional[list[int]] = None,
+    streamfile: str | None = None,
+    accelerators: list[int] | None = None,
     timeout: int = 365 * 24 * 60 * 60,
     **kwargs: Any,
 ) -> str:
@@ -104,24 +98,24 @@ def apiDockerCall(
 def apiDockerCall(
     job: "Job",
     image: str,
-    parameters: Optional[Union[list[str], list[list[str]]]] = None,
-    deferParam: Optional[int] = None,
-    volumes: Optional[dict[str, dict[str, str]]] = None,
-    working_dir: Optional[str] = None,
-    containerName: Optional[str] = None,
-    entrypoint: Optional[Union[str, list[str]]] = None,
+    parameters: list[str] | list[list[str]] | None = None,
+    deferParam: int | None = None,
+    volumes: dict[str, dict[str, str]] | None = None,
+    working_dir: str | None = None,
+    containerName: str | None = None,
+    entrypoint: str | list[str] | None = None,
     detach: Literal[False] = False,
-    log_config: Optional[dict[str, str]] = None,
-    auto_remove: Optional[bool] = None,
-    remove: Optional[bool] = False,
-    user: Optional[str] = None,
-    environment: Optional[dict[str, str]] = None,
-    stdout: Optional[bool] = None,
+    log_config: dict[str, str] | None = None,
+    auto_remove: bool | None = None,
+    remove: bool | None = False,
+    user: str | None = None,
+    environment: dict[str, str] | None = None,
+    stdout: bool | None = None,
     stderr: bool = False,
     stream: Literal[True] = True,
     demux: Literal[True] = True,
-    streamfile: Optional[str] = None,
-    accelerators: Optional[list[int]] = None,
+    streamfile: str | None = None,
+    accelerators: list[int] | None = None,
     timeout: int = 365 * 24 * 60 * 60,
     **kwargs: Any,
 ) -> Generator[tuple[str, str]]:
@@ -132,24 +126,24 @@ def apiDockerCall(
 def apiDockerCall(
     job: "Job",
     image: str,
-    parameters: Optional[Union[list[str], list[list[str]]]] = None,
-    deferParam: Optional[int] = None,
-    volumes: Optional[dict[str, dict[str, str]]] = None,
-    working_dir: Optional[str] = None,
-    containerName: Optional[str] = None,
-    entrypoint: Optional[Union[str, list[str]]] = None,
+    parameters: list[str] | list[list[str]] | None = None,
+    deferParam: int | None = None,
+    volumes: dict[str, dict[str, str]] | None = None,
+    working_dir: str | None = None,
+    containerName: str | None = None,
+    entrypoint: str | list[str] | None = None,
     detach: Literal[False] = False,
-    log_config: Optional[dict[str, str]] = None,
-    auto_remove: Optional[bool] = None,
-    remove: Optional[bool] = False,
-    user: Optional[str] = None,
-    environment: Optional[dict[str, str]] = None,
-    stdout: Optional[bool] = None,
+    log_config: dict[str, str] | None = None,
+    auto_remove: bool | None = None,
+    remove: bool | None = False,
+    user: str | None = None,
+    environment: dict[str, str] | None = None,
+    stdout: bool | None = None,
     stderr: bool = False,
     stream: Literal[False] = False,
     demux: Literal[True] = True,
-    streamfile: Optional[str] = None,
-    accelerators: Optional[list[int]] = None,
+    streamfile: str | None = None,
+    accelerators: list[int] | None = None,
     timeout: int = 365 * 24 * 60 * 60,
     **kwargs: Any,
 ) -> tuple[str, str]:
@@ -160,24 +154,24 @@ def apiDockerCall(
 def apiDockerCall(
     job: "Job",
     image: str,
-    parameters: Optional[Union[list[str], list[list[str]]]] = None,
-    deferParam: Optional[int] = None,
-    volumes: Optional[dict[str, dict[str, str]]] = None,
-    working_dir: Optional[str] = None,
-    containerName: Optional[str] = None,
-    entrypoint: Optional[Union[str, list[str]]] = None,
+    parameters: list[str] | list[list[str]] | None = None,
+    deferParam: int | None = None,
+    volumes: dict[str, dict[str, str]] | None = None,
+    working_dir: str | None = None,
+    containerName: str | None = None,
+    entrypoint: str | list[str] | None = None,
     detach: Literal[True] = True,
-    log_config: Optional[dict[str, str]] = None,
-    auto_remove: Optional[bool] = None,
-    remove: Optional[bool] = False,
-    user: Optional[str] = None,
-    environment: Optional[dict[str, str]] = None,
-    stdout: Optional[bool] = None,
+    log_config: dict[str, str] | None = None,
+    auto_remove: bool | None = None,
+    remove: bool | None = False,
+    user: str | None = None,
+    environment: dict[str, str] | None = None,
+    stdout: bool | None = None,
     stderr: bool = False,
     stream: bool = False,
     demux: bool = False,
-    streamfile: Optional[str] = None,
-    accelerators: Optional[list[int]] = None,
+    streamfile: str | None = None,
+    accelerators: list[int] | None = None,
     timeout: int = 365 * 24 * 60 * 60,
     **kwargs: Any,
 ) -> "Container":
@@ -188,24 +182,24 @@ def apiDockerCall(
 def apiDockerCall(
     job: "Job",
     image: str,
-    parameters: Optional[Union[list[str], list[list[str]]]] = None,
-    deferParam: Optional[int] = None,
-    volumes: Optional[dict[str, dict[str, str]]] = None,
-    working_dir: Optional[str] = None,
-    containerName: Optional[str] = None,
-    entrypoint: Optional[Union[str, list[str]]] = None,
+    parameters: list[str] | list[list[str]] | None = None,
+    deferParam: int | None = None,
+    volumes: dict[str, dict[str, str]] | None = None,
+    working_dir: str | None = None,
+    containerName: str | None = None,
+    entrypoint: str | list[str] | None = None,
     detach: bool = False,
-    log_config: Optional[dict[str, str]] = None,
-    auto_remove: Optional[bool] = None,
-    remove: Optional[bool] = False,
-    user: Optional[str] = None,
-    environment: Optional[dict[str, str]] = None,
-    stdout: Optional[bool] = None,
+    log_config: dict[str, str] | None = None,
+    auto_remove: bool | None = None,
+    remove: bool | None = False,
+    user: str | None = None,
+    environment: dict[str, str] | None = None,
+    stdout: bool | None = None,
     stderr: bool = False,
     stream: bool = False,
     demux: bool = False,
-    streamfile: Optional[str] = None,
-    accelerators: Optional[list[int]] = None,
+    streamfile: str | None = None,
+    accelerators: list[int] | None = None,
     timeout: int = 365 * 24 * 60 * 60,
     **kwargs: Any,
 ) -> Union[
@@ -216,24 +210,24 @@ def apiDockerCall(
 def apiDockerCall(
     job: "Job",
     image: str,
-    parameters: Optional[Union[list[str], list[list[str]]]] = None,
-    deferParam: Optional[int] = None,
-    volumes: Optional[dict[str, dict[str, str]]] = None,
-    working_dir: Optional[str] = None,
-    containerName: Optional[str] = None,
-    entrypoint: Optional[Union[str, list[str]]] = None,
+    parameters: list[str] | list[list[str]] | None = None,
+    deferParam: int | None = None,
+    volumes: dict[str, dict[str, str]] | None = None,
+    working_dir: str | None = None,
+    containerName: str | None = None,
+    entrypoint: str | list[str] | None = None,
     detach: bool = False,
-    log_config: Optional[dict[str, str]] = None,
-    auto_remove: Optional[bool] = None,
-    remove: Optional[bool] = False,
-    user: Optional[str] = None,
-    environment: Optional[dict[str, str]] = None,
-    stdout: Optional[bool] = None,
+    log_config: dict[str, str] | None = None,
+    auto_remove: bool | None = None,
+    remove: bool | None = False,
+    user: str | None = None,
+    environment: dict[str, str] | None = None,
+    stdout: bool | None = None,
     stderr: bool = False,
     stream: bool = False,
     demux: bool = False,
-    streamfile: Optional[str] = None,
-    accelerators: Optional[list[int]] = None,
+    streamfile: str | None = None,
+    accelerators: list[int] | None = None,
     timeout: int = 365 * 24 * 60 * 60,
     **kwargs: Any,
 ) -> Union[
@@ -369,7 +363,7 @@ def apiDockerCall(
             " ".join(quote(arg) for arg in command) for command in parameters
         ]
         pipe_prefix = "set -eo pipefail && "
-        command: Union[None, str, list[str]] = [pipe_prefix + " | ".join(chain_params)]
+        command: None | str | list[str] = [pipe_prefix + " | ".join(chain_params)]
         logger.debug("Calling docker with: " + repr(command))
 
     # If 'parameters' is a normal list, join all elements into a single string
@@ -592,7 +586,7 @@ def dockerStop(container_name: str, remove: bool = False) -> None:
 
 def containerIsRunning(
     container_name: str, timeout: int = 365 * 24 * 60 * 60
-) -> Optional[bool]:
+) -> bool | None:
     """
     Checks whether the container is running or not.
 
@@ -635,7 +629,7 @@ def getContainerName(job: "Job") -> str:
 
 def _multiplexed_response_stream_helper(
     response: requests.Response,
-) -> Generator[tuple[Any, Union[bytes, Any]]]:
+) -> Generator[tuple[Any, bytes | Any]]:
     """
     A generator of multiplexed data blocks coming from a response stream modified from:
     https://github.com/docker/docker-py/blob/4.3.1-release/docker/api/client.py#L370

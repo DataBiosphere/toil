@@ -16,7 +16,7 @@ import logging
 from collections import namedtuple
 from operator import attrgetter
 from statistics import mean, stdev
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from botocore.client import BaseClient
 
@@ -37,11 +37,11 @@ if TYPE_CHECKING:
 
 
 def get_aws_zone_from_spot_market(
-    spotBid: Optional[float],
-    nodeType: Optional[str],
-    boto3_ec2: Optional[BaseClient],
-    zone_options: Optional[list[str]],
-) -> Optional[str]:
+    spotBid: float | None,
+    nodeType: str | None,
+    boto3_ec2: BaseClient | None,
+    zone_options: list[str] | None,
+) -> str | None:
     """
     If a spot bid, node type, and Boto2 EC2 connection are specified, picks a
     zone where instances are easy to buy from the zones in the region of the
@@ -72,11 +72,11 @@ def get_aws_zone_from_spot_market(
 
 
 def get_best_aws_zone(
-    spotBid: Optional[float] = None,
-    nodeType: Optional[str] = None,
-    boto3_ec2: Optional[BaseClient] = None,
-    zone_options: Optional[list[str]] = None,
-) -> Optional[str]:
+    spotBid: float | None = None,
+    nodeType: str | None = None,
+    boto3_ec2: BaseClient | None = None,
+    zone_options: list[str] | None = None,
+) -> str | None:
     """
     Get the right AWS zone to use.
 
@@ -158,7 +158,9 @@ def choose_spot_zone(
             if zone_history["AvailabilityZone"] == zone
         ]
         if zone_histories:
-            price_deviation = stdev([float(history["SpotPrice"]) for history in zone_histories])
+            price_deviation = stdev(
+                [float(history["SpotPrice"]) for history in zone_histories]
+            )
             recent_price = float(zone_histories[0]["SpotPrice"])
         else:
             price_deviation, recent_price = 0.0, bid
@@ -188,7 +190,9 @@ def optimize_spot_bid(
     return most_stable_zone
 
 
-def _check_spot_bid(spot_bid: float, spot_history: list["SpotPriceTypeDef"], name: Optional[str] = None) -> None:
+def _check_spot_bid(
+    spot_bid: float, spot_history: list["SpotPriceTypeDef"], name: str | None = None
+) -> None:
     """
     Prevents users from potentially over-paying for instances
 
@@ -228,7 +232,9 @@ def _check_spot_bid(spot_bid: float, spot_history: list["SpotPriceTypeDef"], nam
         )
 
 
-def _get_spot_history(boto3_ec2: BaseClient, instance_type: str) -> list["SpotPriceTypeDef"]:
+def _get_spot_history(
+    boto3_ec2: BaseClient, instance_type: str
+) -> list["SpotPriceTypeDef"]:
     """
     Returns list of 1,000 most recent spot market data points represented as SpotPriceHistory
     objects. Note: The most recent object/data point will be first in the list.

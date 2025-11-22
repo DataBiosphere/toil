@@ -16,8 +16,8 @@ import logging
 import os
 
 import connexion  # type: ignore
-from connexion.options import SwaggerUIOptions  # type: ignore[import-untyped]
 from configargparse import ArgumentParser
+from connexion.options import SwaggerUIOptions  # type: ignore[import-untyped]
 
 from toil.lib.aws import get_current_aws_region, running_on_ec2, running_on_ecs
 from toil.server.wes.toil_backend import ToilBackend
@@ -210,6 +210,6 @@ def start_server(args: argparse.Namespace) -> None:
                 "workers": args.workers,
                 # The uvicorn worker class must be specified for gunicorn to work on connexion 3
                 # https://github.com/spec-first/connexion/issues/1755#issuecomment-1778522142
-                "worker_class": "uvicorn.workers.UvicornWorker"
+                "worker_class": "uvicorn.workers.UvicornWorker",
             },
         )

@@ -20,7 +20,7 @@ import os.path
 import socketserver as SocketServer
 import threading
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from toil.lib.misc import get_public_ip
 from toil.statsAndLogging import set_log_level
@@ -246,8 +246,8 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
     # noinspection PyUnusedLocal
     def __exit__(
         self,
-        exc_type: Optional[type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> None:
         RealtimeLogger._stopLeader()

@@ -23,7 +23,7 @@ import time
 import uuid
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from typing import IO, Literal, Optional, Union, overload
+from typing import IO, Literal, overload
 from urllib.parse import ParseResult, quote, unquote
 
 from toil.fileStores import FileID
@@ -327,7 +327,7 @@ class FileJobStore(AbstractJobStore, URLAccess):
         # linking is not done be default because of issue #1755
         # TODO: is hardlinking ever actually done?
         src_path = self._extract_path_from_url(src_path)
-        if self.linkImports and not hardlink and symlink and src_path != '/dev/null':
+        if self.linkImports and not hardlink and symlink and src_path != "/dev/null":
             os.symlink(os.path.realpath(src_path), dst_path)
         else:
             atomic_copy(src_path, dst_path)
@@ -703,33 +703,33 @@ class FileJobStore(AbstractJobStore, URLAccess):
     @overload
     def read_file_stream(
         self,
-        file_id: Union[str, FileID],
+        file_id: str | FileID,
         encoding: Literal[None] = None,
-        errors: Optional[str] = None,
+        errors: str | None = None,
     ) -> Iterator[IO[bytes]]: ...
 
     @contextmanager
     @overload
     def read_file_stream(
-        self, file_id: Union[str, FileID], encoding: str, errors: Optional[str] = None
+        self, file_id: str | FileID, encoding: str, errors: str | None = None
     ) -> Iterator[IO[str]]: ...
 
     @contextmanager
     @overload
     def read_file_stream(
         self,
-        file_id: Union[str, FileID],
-        encoding: Optional[str] = None,
-        errors: Optional[str] = None,
-    ) -> Union[Iterator[IO[bytes]], Iterator[IO[str]]]: ...
+        file_id: str | FileID,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> Iterator[IO[bytes]] | Iterator[IO[str]]: ...
 
     @contextmanager
     def read_file_stream(
         self,
-        file_id: Union[str, FileID],
-        encoding: Optional[str] = None,
-        errors: Optional[str] = None,
-    ) -> Union[Iterator[IO[bytes]], Iterator[IO[str]]]:
+        file_id: str | FileID,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> Iterator[IO[bytes]] | Iterator[IO[str]]:
         self._check_job_store_file_id(file_id)
         if encoding is None:
             with open(
@@ -779,7 +779,7 @@ class FileJobStore(AbstractJobStore, URLAccess):
         self,
         shared_file_name: str,
         encoding: str,
-        errors: Optional[str] = None,
+        errors: str | None = None,
     ) -> Iterator[IO[str]]: ...
 
     @overload
@@ -788,16 +788,16 @@ class FileJobStore(AbstractJobStore, URLAccess):
         self,
         shared_file_name: str,
         encoding: Literal[None] = None,
-        errors: Optional[str] = None,
+        errors: str | None = None,
     ) -> Iterator[IO[bytes]]: ...
 
     @contextmanager
     def read_shared_file_stream(
         self,
         shared_file_name: str,
-        encoding: Optional[str] = None,
-        errors: Optional[str] = None,
-    ) -> Union[Iterator[IO[bytes]], Iterator[IO[str]]]:
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> Iterator[IO[bytes]] | Iterator[IO[str]]:
         self._requireValidSharedFileName(shared_file_name)
         try:
             with open(
@@ -814,7 +814,7 @@ class FileJobStore(AbstractJobStore, URLAccess):
             else:
                 raise
 
-    def list_all_file_names(self, for_job: Optional[str] = None) -> Iterable[str]:
+    def list_all_file_names(self, for_job: str | None = None) -> Iterable[str]:
         """
         Get all the file names (not file IDs) of files stored in the job store.
 
@@ -871,12 +871,18 @@ class FileJobStore(AbstractJobStore, URLAccess):
 
     def write_logs(self, msg):
         # Temporary files are placed in the stats directory tree
-        tempStatsFileName = self.LOG_PREFIX + str(uuid.uuid4().hex) + self.LOG_TEMP_SUFFIX
-        tempStatsFile = os.path.join(self._get_arbitrary_stats_inbox_dir(), tempStatsFileName)
+        tempStatsFileName = (
+            self.LOG_PREFIX + str(uuid.uuid4().hex) + self.LOG_TEMP_SUFFIX
+        )
+        tempStatsFile = os.path.join(
+            self._get_arbitrary_stats_inbox_dir(), tempStatsFileName
+        )
         writeFormat = "w" if isinstance(msg, str) else "wb"
         with open(tempStatsFile, writeFormat) as f:
             f.write(msg)
-        os.rename(tempStatsFile, tempStatsFile[:-len(self.LOG_TEMP_SUFFIX)])  # This operation is atomic
+        os.rename(
+            tempStatsFile, tempStatsFile[: -len(self.LOG_TEMP_SUFFIX)]
+        )  # This operation is atomic
 
     def read_logs(self, callback, read_all=False):
         files_processed = 0

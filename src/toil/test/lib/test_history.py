@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Generator
-from pathlib import Path
 import logging
 import time
-
-from toil.lib.history import HistoryManager
+from collections.abc import Generator
+from pathlib import Path
 
 import pytest
+
+from toil.lib.history import HistoryManager
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)

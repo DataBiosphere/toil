@@ -14,11 +14,10 @@
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 
-import sys
-from typing import Optional
 import logging
-from urllib.parse import ParseResult
+import sys
 from types import TracebackType
+from urllib.parse import ParseResult
 
 
 # TODO: isn't this built in to Python 3 now?
@@ -42,7 +41,7 @@ class panic:
     the primary exception will be reraised.
     """
 
-    def __init__(self, log: Optional[logging.Logger] = None) -> None:
+    def __init__(self, log: logging.Logger | None = None) -> None:
         super().__init__()
         self.log = log
         self.exc_info = None
@@ -57,7 +56,11 @@ class panic:
         raise_(exc_type, exc_value, traceback)
 
 
-def raise_(exc_type: Optional[type[BaseException]], exc_value: Optional[BaseException], traceback: Optional[TracebackType]) -> None:
+def raise_(
+    exc_type: type[BaseException] | None,
+    exc_value: BaseException | None,
+    traceback: TracebackType | None,
+) -> None:
     if exc_value is not None:
         exc = exc_value
     else:

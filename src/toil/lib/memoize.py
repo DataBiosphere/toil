@@ -15,9 +15,10 @@
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 import datetime
 import re
+from collections.abc import Callable
 from functools import lru_cache, wraps
 from threading import Lock
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 memoize = lru_cache(maxsize=None)
 """

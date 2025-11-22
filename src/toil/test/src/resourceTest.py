@@ -11,26 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from collections.abc import Iterable
 import importlib
 import os
-from pathlib import Path
 import subprocess
 import sys
-import tempfile
-from contextlib import contextmanager
+from collections.abc import Iterable
 from inspect import getsource
 from io import BytesIO
+from pathlib import Path
 from textwrap import dedent
 from unittest.mock import MagicMock, patch
 from zipfile import ZipFile
-from typing import Optional
+
+import pytest
 
 from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException
 from toil.version import exactPython
-
-import pytest
 
 
 def tempFileContaining(directory: Path, content: str, suffix: str = "") -> str:
@@ -151,7 +148,7 @@ class TestResource:
         self,
         module_name: str,
         shouldBelongToToil: bool = False,
-        expectedContents: Optional[Iterable[str]] = None,
+        expectedContents: Iterable[str] | None = None,
         allowExtraContents: bool = True,
     ) -> None:
         module = ModuleDescriptor.forModule(module_name)

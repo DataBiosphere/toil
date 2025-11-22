@@ -17,7 +17,6 @@ import os
 import threading
 import time
 import uuid
-from typing import Optional
 
 from libcloud.compute.drivers.gce import GCEFailedNode
 from libcloud.compute.providers import get_driver
@@ -393,7 +392,7 @@ class GCEProvisioner(AbstractProvisioner):
         return workersCreated
 
     def getProvisionedWorkers(
-        self, instance_type: Optional[str] = None, preemptible: Optional[bool] = None
+        self, instance_type: str | None = None, preemptible: bool | None = None
     ):
         assert self._leaderPrivateIP
         entireCluster = self._getNodesInCluster(instance_type=instance_type)
@@ -460,7 +459,7 @@ class GCEProvisioner(AbstractProvisioner):
         if botoExists:
             node.injectFile(self._botoPath, self.NODE_BOTO_PATH, "toil_worker")
 
-    def _getNodesInCluster(self, instance_type: Optional[str] = None):
+    def _getNodesInCluster(self, instance_type: str | None = None):
         instanceGroup = self._gceDriver.ex_get_instancegroup(
             self.clusterName, zone=self._zone
         )

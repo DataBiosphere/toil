@@ -25,7 +25,6 @@ from typing import TYPE_CHECKING, Optional
 from urllib.parse import urlparse
 
 try:
-    from flask import Flask
     from flask.testing import FlaskClient
     from werkzeug.test import TestResponse
 except ImportError:
@@ -33,7 +32,14 @@ except ImportError:
     # extra wasn't installed. We'll then skip them all.
     pass
 
-from toil.test import ToilTest, needs_aws_s3, needs_celery_broker, needs_cwl, needs_server, integrative
+from toil.test import (
+    ToilTest,
+    integrative,
+    needs_aws_s3,
+    needs_celery_broker,
+    needs_cwl,
+    needs_server,
+)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -195,10 +201,10 @@ class BucketUsingTest(ToilTest):
         from mypy_boto3_s3 import S3ServiceResource
         from mypy_boto3_s3.service_resource import Bucket
 
-    region: Optional[str]
+    region: str | None
     s3_resource: Optional["S3ServiceResource"]
     bucket: Optional["Bucket"]
-    bucket_name: Optional[str]
+    bucket_name: str | None
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -292,11 +298,13 @@ class TrueDict(dict):
     Used as a workaround to set httpx post request encoding as recommended in
     <https://github.com/encode/httpx/discussions/2399#discussioncomment-3814186>.
     """
+
     def __bool__(self) -> bool:
         """
         Always say the object is truthy.
         """
         return True
+
 
 @needs_server
 class AbstractToilWESServerTest(ToilTest):
@@ -556,6 +564,7 @@ class ToilWESServerBenchTest(AbstractToilWESServerTest):
         self.assertIn("default_workflow_engine_parameters", service_info)
         self.assertIn("system_state_counts", service_info)
         self.assertIn("tags", service_info)
+
 
 @needs_cwl
 class ToilWESServerWorkflowTest(AbstractToilWESServerTest):

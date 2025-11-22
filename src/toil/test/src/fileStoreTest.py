@@ -95,7 +95,9 @@ class hidden:
             options.realTimeLogging = True
             options.workDir = self.work_dir
             options.clean = "always"
-            log_fd, options.logFile = tempfile.mkstemp(dir=self.work_dir, prefix="logFile")
+            log_fd, options.logFile = tempfile.mkstemp(
+                dir=self.work_dir, prefix="logFile"
+            )
             os.close(log_fd)
             return options
 
@@ -375,7 +377,7 @@ class hidden:
             Ensures that files imported to the leader preserve their executable permissions
             when they are read by the fileStore.
             """
-            
+
             for executable in True, False:
                 file_path = self.create_file(content="Hello", executable=executable)
                 initial_permissions = os.stat(file_path).st_mode & stat.S_IXUSR
@@ -537,9 +539,7 @@ class hidden:
                     # The options namespace and the Config object now have the exact same behavior
                     # which means parse_jobstore will be called with argparse rather than with the config object
                     # so remove the prepended file: scheme
-                    jobStoreDev = os.stat(
-                        os.path.dirname(options.jobStore[5:])
-                    ).st_dev
+                    jobStoreDev = os.stat(os.path.dirname(options.jobStore[5:])).st_dev
                 else:
                     jobStoreDev = os.stat(os.path.dirname(options.jobStore)).st_dev
                 if workDirDev == jobStoreDev:

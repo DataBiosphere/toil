@@ -18,27 +18,17 @@ import logging
 import os
 import posixpath
 import stat
-from collections.abc import Iterable, MutableMapping, MutableSequence
+from collections.abc import Callable, Iterable, MutableMapping, MutableSequence
 from pathlib import PurePosixPath
-from typing import (
-    Any,
-    Callable,
-    TypeVar,
-    Union,
-    Optional,
-    cast,
-    MutableSequence,
-    MutableMapping,
-    TYPE_CHECKING,
-)
+from typing import TYPE_CHECKING, Any, TypeVar, Union, cast
 from urllib.parse import unquote, urlparse
 
 if TYPE_CHECKING:
     # This module needs to be importable even if cwltool is not installed.
     from cwltool.utils import CWLObjectType, CWLOutputType
+
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.url import URLAccess
 
 logger = logging.getLogger(__name__)
@@ -59,9 +49,9 @@ class CWLUnsupportedException(Exception):
 try:
     import cwltool.errors
 
-    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION: Union[
-        type[cwltool.errors.UnsupportedRequirement], type[CWLUnsupportedException]
-    ] = cwltool.errors.UnsupportedRequirement
+    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION: (
+        type[cwltool.errors.UnsupportedRequirement] | type[CWLUnsupportedException]
+    ) = cwltool.errors.UnsupportedRequirement
 except ImportError:
     CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION = CWLUnsupportedException
 
@@ -140,7 +130,7 @@ DirectoryStructure = dict[str, Union[str, "DirectoryStructure"]]
 
 def get_from_structure(
     dir_dict: DirectoryStructure, path: str
-) -> Union[str, DirectoryStructure, None]:
+) -> str | DirectoryStructure | None:
     """
     Given a relative path, follow it in the given directory structure.
 
@@ -154,7 +144,7 @@ def get_from_structure(
         return dir_dict
     if parts[0] in ("..", "/"):
         raise RuntimeError(f"Path {path} not resolvable in virtual directory")
-    found: Union[str, DirectoryStructure] = dir_dict
+    found: str | DirectoryStructure = dir_dict
     for part in parts:
         # Go down by each path component in turn
         if isinstance(found, str):
@@ -223,9 +213,7 @@ def download_structure(
                 )
             else:
                 # We need to download from some other kind of URL.
-                size, executable = URLAccess.read_from_url(
-                    value, open(dest_path, "wb")
-                )
+                size, executable = URLAccess.read_from_url(value, open(dest_path, "wb"))
                 if executable:
                     # Make the written file executable
                     os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)
@@ -243,27 +231,34 @@ def trim_mounts_op_down(file_or_directory: "CWLObjectType") -> None:
     return
 
 
-def sniff_location(file_or_directory: "CWLObjectType") -> Optional[str]:
+def sniff_location(file_or_directory: "CWLObjectType") -> str | None:
     """
     Get the local bare path for a CWL file or directory, or None.
 
     :return: None if we don't have a local path or file URI
     """
-    if file_or_directory.get('location') is None and file_or_directory.get('path') is None:
+    if (
+        file_or_directory.get("location") is None
+        and file_or_directory.get("path") is None
+    ):
         # file or directory is defined by contents or listing respectively, this is not redundant
         return None
     # Since we only consider mountable paths, if path is not file URI or bare path, don't consider it
-    path_or_url = cast(str, file_or_directory.get('location') or file_or_directory.get('path'))
+    path_or_url = cast(
+        str, file_or_directory.get("location") or file_or_directory.get("path")
+    )
     parsed = urlparse(path_or_url)
-    if parsed.scheme == 'file':
+    if parsed.scheme == "file":
         return unquote(parsed.path)
-    elif parsed.scheme == '':
+    elif parsed.scheme == "":
         return path_or_url
     else:
         return None
 
 
-def trim_mounts_op_up(file_or_directory: "CWLObjectType", op_down_ret: None, child_results: list[bool]) -> bool:
+def trim_mounts_op_up(
+    file_or_directory: "CWLObjectType", op_down_ret: None, child_results: list[bool]
+) -> bool:
     """
     Remove subtrees of the CWL file or directory object tree that only have redundant stuff in them.
 
@@ -282,40 +277,54 @@ def trim_mounts_op_up(file_or_directory: "CWLObjectType", op_down_ret: None, chi
     if own_path is None:
         return True
     # basename should be set as we are the implementation
-    own_basename = cast(str, file_or_directory['basename'])
+    own_basename = cast(str, file_or_directory["basename"])
 
     # If the basename does not match the path, then this is nonredundant
     if not own_path.endswith("/" + own_basename):
         return True
 
-    if file_or_directory['class'] == 'File':
+    if file_or_directory["class"] == "File":
         if any(child_results):
             # one of the children was detected as not redundant
             return True
-        for secondary in cast(MutableSequence[MutableMapping[str, "CWLOutputType"]], file_or_directory.get('secondaryFiles', [])):
+        for secondary in cast(
+            MutableSequence[MutableMapping[str, "CWLOutputType"]],
+            file_or_directory.get("secondaryFiles", []),
+        ):
             # secondary files should already be flagged nonredundant if they don't have either a path or location
             secondary_path = sniff_location(secondary)
-            secondary_basename = cast(str, secondary['basename'])
+            secondary_basename = cast(str, secondary["basename"])
             # If we swap the secondary basename for the primary basename in the primary path, and they don't match, then they are nonredundant
-            if os.path.join(own_path[:-len(own_basename)], secondary_basename) != secondary_path:
+            if (
+                os.path.join(own_path[: -len(own_basename)], secondary_basename)
+                != secondary_path
+            ):
                 return True
     else:
-        listings = cast(MutableSequence[MutableMapping[str, "CWLOutputType"]], file_or_directory.get('listing', []))
+        listings = cast(
+            MutableSequence[MutableMapping[str, "CWLOutputType"]],
+            file_or_directory.get("listing", []),
+        )
         if len(listings) == 0:
             return False
         # We assume child_results is in the same order as the directory listing
         # iterate backwards to avoid iteration issues
         for i in range(len(listings) - 1, -1, -1):
             if child_results[i] is False:
-                if os.path.join(own_path, cast(str, listings[i]['basename'])) == sniff_location(listings[i]):
+                if os.path.join(
+                    own_path, cast(str, listings[i]["basename"])
+                ) == sniff_location(listings[i]):
                     del listings[i]
         # If one of the listings was nonredundant, then this directory is also nonredundant
         if any(child_results):
             return True
     return False
 
+
 def remove_redundant_mounts(cwljob: "CWLObjectType") -> None:
     """
     Remove any redundant mount points from the listing. Modifies the CWL object in place.
     """
-    visit_cwl_class_and_reduce(cwljob, ["Directory", "File"], trim_mounts_op_down, trim_mounts_op_up)
+    visit_cwl_class_and_reduce(
+        cwljob, ["Directory", "File"], trim_mounts_op_down, trim_mounts_op_up
+    )
