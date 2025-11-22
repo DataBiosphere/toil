@@ -592,6 +592,9 @@ def _mesos_avail() -> bool:
     try:
         import psutil
         import pymesos
+
+        str(psutil)  # to prevent removal of this import
+        str(pymesos)  # to prevent removal of this import
     except ImportError:
         return False
     return True
@@ -793,6 +796,8 @@ def needs_cwl(test_item: MT) -> MT:
 def _cwl_available() -> bool:
     try:
         import cwltool
+
+        str(cwltool)  # to prevent removal of this import
     except ImportError:
         return False
     return True
