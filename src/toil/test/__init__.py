@@ -589,7 +589,11 @@ def _mesos_avail() -> bool:
     if not (which("mesos-master") or which("mesos-agent")):
         return False
     try:
-        pass
+        import psutil
+        import pymesos
+
+        str(psutil)  # to prevent removal of this import
+        str(pymesos)  # to prevent removal of this import
     except ImportError:
         return False
     return True
@@ -790,7 +794,9 @@ def needs_cwl(test_item: MT) -> MT:
 
 def _cwl_available() -> bool:
     try:
-        pass
+        import cwltool
+
+        str(cwltool)  # to prevent removal of this import
     except ImportError:
         return False
     return True
