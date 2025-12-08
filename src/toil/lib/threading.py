@@ -313,10 +313,11 @@ def cpu_count() -> int:
 
     # CPU affinity may limit the size
     affinity_size: float | int = float("inf")
-    if hasattr(os, "sched_getaffinity"):
+    proc_info = psutil.Process()
+    if hasattr(proc_info, "cpu_affinity"):
         try:
             logger.debug("CPU affinity available")
-            affinity_size = len(os.sched_getaffinity(0))
+            affinity_size = len(proc_info.cpu_affinity)
             logger.debug("CPU affinity is restricted to %d cores", affinity_size)
         except:
             # We can't actually read this even though it exists.
