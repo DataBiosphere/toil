@@ -51,6 +51,7 @@ WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
     "string_placeholders_conditionals_1_0",  # Parser: expression placeholders in strings in conditional expressions in 1.0, Cromwell style; Fails with MiniWDL and toil-wdl-runner
     "as_map",  # Legacy test for as_map_as_input; It looks like MiniWDL does not have the function as_map()
     "array_coerce",  # Test that array cannot coerce to a string. WDL 1.1 does not allow compound types to coerce into a string. This should return a TypeError.
+    "sibling_directories",  # TODO: This has started failing in CI despite passing locally on Mac and Linux. Come up with a more consistent test!
 ]
 
 # These tests (in the same order as in SPEC.md) are known to fail
@@ -370,7 +371,7 @@ class TestWDL:
 
                 for worker_import in (False, True):
                     with subtests.test(msg=f"Worker import: {worker_import}"):
-                       
+
                         result_json = subprocess.check_output(
                             self.base_command
                             + [
@@ -508,7 +509,7 @@ class TestWDL:
             with open(file_path, "w") as f:
                 f.write("This is a line\n")
                 f.write("This is a different line")
-            
+
             # Now it should work
             result_json = subprocess.check_output(
                     command + ["--restart"]
@@ -1022,7 +1023,7 @@ class TestWDL:
         env["TOIL_DOCKSTORE_TOKEN"] = "99cf5578ebe94b194d7864630a86258fa3d6cedcc17d757b5dd49e64ee3b68c3"
         # Enable history for when <https://github.com/DataBiosphere/toil/pull/5258> merges
         env["TOIL_HISTORY"] = "True"
-        
+
         try:
             output_log = subprocess.check_output(
                 self.base_command
