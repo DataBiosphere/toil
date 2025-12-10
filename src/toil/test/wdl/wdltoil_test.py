@@ -1055,7 +1055,7 @@ class TestWDL:
 
         json_dir = tmp_path / "json"
         json_dir.mkdir()
-        base_uri = "https://raw.githubusercontent.com/vgteam/vg_wdl/6b59e3af352c9be41d00d6b6504dc76a1f762537"
+        base_uri = "https://raw.githubusercontent.com/vgteam/vg_wdl/b641583cc04ce2e320e284d70b7640ac821f6b91"
 
         wdl_file = f"{base_uri}/workflows/giraffe_and_deepvariant.wdl"
         json_file = f"{base_uri}/params/giraffe_and_deepvariant.json"
@@ -1095,7 +1095,7 @@ class TestWDL:
         # TODO: Reduce memory requests with custom/smaller inputs.
         # TODO: Skip if node lacks enough memory.
 
-        base_uri = "https://raw.githubusercontent.com/vgteam/vg_wdl/6b59e3af352c9be41d00d6b6504dc76a1f762537"
+        base_uri = "https://raw.githubusercontent.com/vgteam/vg_wdl/b641583cc04ce2e320e284d70b7640ac821f6b91"
         wdl_file = f"{base_uri}/workflows/giraffe.wdl"
         json_file = f"{base_uri}/params/giraffe.json"
 
