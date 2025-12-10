@@ -33,27 +33,29 @@ logging.basicConfig(level=logging.DEBUG)
 class FlatcarFeedTest(ToilTest):
     """Test accessing the Flatcar AMI release feed, independent of the AWS API"""
 
-    # Note that we need to support getting an empty list back, because
-    # sometimes the Flatcar feeds are just down, and we can't fail CI at those
-    # times.
+    # Note that we need to support getting no AMI back, because sometimes the
+    # Flatcar feeds are just down, and we can't fail CI at those times.
 
     def test_parse_archive_feed(self):
         """Make sure we can get a Flatcar release from the Internet Archive."""
         ami = flatcar_release_feed_ami("us-west-2", "amd64", "archive")
-        self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
-        self.assertTrue(ami.startswith("ami-"))
+        if ami is not None:
+            self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
+            self.assertTrue(ami.startswith("ami-"))
 
     def test_parse_beta_feed(self):
         """Make sure we can get a Flatcar release from the beta channel."""
         ami = flatcar_release_feed_ami("us-west-2", "amd64", "beta")
-        self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
-        self.assertTrue(ami.startswith("ami-"))
+        if ami is not None:
+            self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
+            self.assertTrue(ami.startswith("ami-"))
 
     def test_parse_stable_feed(self):
         """Make sure we can get a Flatcar release from the stable channel."""
         ami = flatcar_release_feed_ami("us-west-2", "amd64", "stable")
-        self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
-        self.assertTrue(ami.startswith("ami-"))
+        if ami is not None:
+            self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
+            self.assertTrue(ami.startswith("ami-"))
 
 
 @needs_aws_ec2
