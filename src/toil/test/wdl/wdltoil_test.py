@@ -1055,27 +1055,10 @@ class TestWDL:
 
         json_dir = tmp_path / "json"
         json_dir.mkdir()
-        base_uri = "https://raw.githubusercontent.com/vgteam/vg_wdl/65dd739aae765f5c4dedd14f2e42d5a263f9267a"
+        base_uri = "https://raw.githubusercontent.com/vgteam/vg_wdl/6b59e3af352c9be41d00d6b6504dc76a1f762537"
 
         wdl_file = f"{base_uri}/workflows/giraffe_and_deepvariant.wdl"
-        json_file = json_dir / "inputs.json"
-        with json_file.open("w") as fp:
-            # Write some inputs. We need to override the example inputs to use a GPU container, but that means we need absolute input URLs.
-            json.dump(
-                {
-                    "GiraffeDeepVariant.INPUT_READ_FILE_1": f"{base_uri}/tests/small_sim_graph/reads_1.fastq.gz",
-                    "GiraffeDeepVariant.INPUT_READ_FILE_2": f"{base_uri}/tests/small_sim_graph/reads_2.fastq.gz",
-                    "GiraffeDeepVariant.XG_FILE": f"{base_uri}/tests/small_sim_graph/graph.xg",
-                    "GiraffeDeepVariant.SAMPLE_NAME": "s0",
-                    "GiraffeDeepVariant.GBWT_FILE": f"{base_uri}/tests/small_sim_graph/graph.gbwt",
-                    "GiraffeDeepVariant.GGBWT_FILE": f"{base_uri}/tests/small_sim_graph/graph.gg",
-                    "GiraffeDeepVariant.MIN_FILE": f"{base_uri}/tests/small_sim_graph/graph.min",
-                    "GiraffeDeepVariant.DIST_FILE": f"{base_uri}/tests/small_sim_graph/graph.dist",
-                    "GiraffeDeepVariant.OUTPUT_GAF": True,
-                    "GiraffeDeepVariant.runDeepVariantCallVariants.in_dv_gpu_container": "google/deepvariant:1.3.0-gpu",
-                },
-                fp,
-            )
+        json_file = f"{base_uri}/params/giraffe_and_deepvariant.json"
 
         result_json = subprocess.check_output(
             self.base_command
@@ -1112,7 +1095,7 @@ class TestWDL:
         # TODO: Reduce memory requests with custom/smaller inputs.
         # TODO: Skip if node lacks enough memory.
 
-        base_uri = "https://raw.githubusercontent.com/vgteam/vg_wdl/65dd739aae765f5c4dedd14f2e42d5a263f9267a"
+        base_uri = "https://raw.githubusercontent.com/vgteam/vg_wdl/6b59e3af352c9be41d00d6b6504dc76a1f762537"
         wdl_file = f"{base_uri}/workflows/giraffe.wdl"
         json_file = f"{base_uri}/params/giraffe.json"
 
