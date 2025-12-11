@@ -740,14 +740,16 @@ def parser_with_common_options(
 def addOptions(
     parser: ArgumentParser,
     jobstore_as_flag: bool = False,
+    config_option: Optional[str] = None,
     cwl: bool = False,
     wdl: bool = False,
-    config_option: Optional[str] = None,
 ) -> None:
     """
     Add all Toil command line options to a parser.
 
     Support for config files if using configargparse. This will also check and set up the default config file.
+
+    User code should consider using Job.Runner.getDefaultArgumentParser() or Job.Runner.addToilOptions() instead.
 
     :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
 
