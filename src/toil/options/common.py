@@ -198,13 +198,14 @@ JOBSTORE_HELP = (
 
 
 def add_base_toil_options(
-    parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool = False
+    parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool = False, config_option: Optional[str] = None
 ) -> None:
     """
     Add base Toil command line options to the parser.
     :param parser: Argument parser to add options to
     :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
     :param cwl: whether CWL should be included or not
+    :param config_option: If set, use this string for the Toil --config option instead of "config".
     """
 
     # This is necessary as the config file must have at least one valid key to parse properly and we want to use a
@@ -215,8 +216,8 @@ def add_base_toil_options(
     # If using argparse instead of configargparse, this should just not parse when calling parse_args()
     # default config value is set to none as defaults should already be populated at config init
     config.add_argument(
-        "--config",
-        dest="config",
+        f"--{config_option or 'config'}",
+        dest="_toil_config_file",
         is_config_file_arg=True,
         default=None,
         metavar="PATH",

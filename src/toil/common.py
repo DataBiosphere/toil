@@ -742,6 +742,7 @@ def addOptions(
     jobstore_as_flag: bool = False,
     cwl: bool = False,
     wdl: bool = False,
+    config_option: Optional[str] = None,
 ) -> None:
     """
     Add all Toil command line options to a parser.
@@ -753,6 +754,8 @@ def addOptions(
     :param cwl: Whether CWL options are expected. If so, CWL options won't be suppressed.
 
     :param wdl:  Whether WDL options are expected. If so, WDL options won't be suppressed.
+
+    :param config_option: If set, use this string for the Toil --config option instead of "config".
     """
     if cwl and wdl:
         raise RuntimeError(
@@ -801,7 +804,7 @@ def addOptions(
         raise
 
     # Add base toil options
-    add_base_toil_options(parser, jobstore_as_flag, cwl)
+    add_base_toil_options(parser, jobstore_as_flag, cwl, config_option)
     # Add CWL and WDL options
     # This is done so the config file can hold all available options
     add_cwl_options(parser, suppress=not cwl)
