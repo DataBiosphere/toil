@@ -540,8 +540,8 @@ class TestCWLWorkflow:
         main_args = [
             "--outdir",
             str(tmp_path),
-            "#workflow/github.com/dockstore-testing/md5sum-checker:master",
-            "https://raw.githubusercontent.com/dockstore-testing/md5sum-checker/refs/heads/master/md5sum/md5sum-input-cwl.json",
+            "github.com/mr-c/dockstore-tool-md5sum:master",
+            "https://github.com/mr-c/dockstore-tool-md5sum/raw/refs/heads/master/test.json"
         ]
         cwltoil.main(main_args, stdout=stdout)
         out = json.loads(stdout.getvalue())
