@@ -6,3 +6,5 @@ a307a57651296e576d55f9159869dc9130da2b7c
 1c6217e11a2815476ede1cc3ee584d5da3d5242a
 # make pyupgrade (3.9+)
 00f54f8417b3a0bc5d1ea46650aa2e6ce4792159
+# make pyupgrade (3.10+) & reformat
+e08b52cf3a8e0eb0ca8eee7b1f0223ba08c4a2ac
