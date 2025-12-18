@@ -38,6 +38,7 @@ from toil.test import pneeds_cwl as needs_cwl
 from toil.test import pneeds_docker as needs_docker
 from toil.test import pneeds_rsync3 as needs_rsync3
 from toil.test import pslow as slow
+import toil.test.sort.sort
 from toil.test.sort.sort import makeFileToSort
 from toil.utils.toilStats import get_stats, process_data
 from toil.utils.toilStatus import ToilStatus
