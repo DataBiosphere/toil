@@ -22,7 +22,7 @@ types-python-dateutil
 types-setuptools
 types-xmltodict
 flake8>=3.8.4,<8
-flake8-bugbear>=20.11.1,<25
+flake8-bugbear>=20.11.1,<26
 black
 isort
 pydocstyle
