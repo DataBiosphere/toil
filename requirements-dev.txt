@@ -8,7 +8,7 @@ stubserver>=1.1,<2
 setuptools>=65.5.1,<81
 sphinx>=7,<9
 sphinx-autoapi>=3.2.1,<4
-astroid>=3,<4
+astroid>=3,<5
 sphinx-autodoc-typehints>=1.24.0,<4
 sphinxcontrib-autoprogram==0.1.9
 cwltest>=2.6.20250314152537
