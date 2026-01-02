@@ -369,7 +369,7 @@ def workerScript(
         if i == "PATH":
             # Handle path specially. Sometimes e.g. leader may not include
             # /bin, but the Toil appliance needs it.
-            if i in os.environ and os.environ[i] != "":
+            if i in os.environ and os.environ[i] not in environment[i]:
                 # Use the provided PATH and then the local system's PATH
                 os.environ[i] = environment[i] + ":" + os.environ[i]
             else:
