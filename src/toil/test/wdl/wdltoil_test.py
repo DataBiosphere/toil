@@ -16,7 +16,6 @@ import pytest
 import WDL.Error
 import WDL.Expr
 from pytest_httpserver import HTTPServer
-from pytest_subtests import SubTests
 
 from toil.fileStores import FileID
 from toil.test import (
@@ -343,7 +342,7 @@ class TestWDL:
                 assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
 
     @needs_singularity_or_docker
-    def test_file_uri_no_hostname(self, tmp_path: Path, subtests: SubTests) -> None:
+    def test_file_uri_no_hostname(self, tmp_path: Path, subtests: pytest.Subtests) -> None:
         """Test if Toil handles file URIs without even empty hostnames"""
 
         # We need to test file:/absolute/path/to/the/file in conjunction with

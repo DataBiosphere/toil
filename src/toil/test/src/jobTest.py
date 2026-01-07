@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any, NoReturn, cast
 
 import pytest
-from pytest_subtests import SubTests
 
 from toil.common import Toil
 from toil.exceptions import FailedJobsException
@@ -256,7 +255,7 @@ class TestJob:
     @slow
     @pytest.mark.slow
     def testNewCheckpointIsLeafVertexNonRootCase(
-        self, tmp_path: Path, subtests: SubTests
+        self, tmp_path: Path, subtests: pytest.Subtests
     ) -> None:
         """
         Test for issue #1465: Detection of checkpoint jobs that are not leaf vertices
@@ -283,7 +282,7 @@ class TestJob:
     @slow
     @pytest.mark.slow
     def testNewCheckpointIsLeafVertexRootCase(
-        self, tmp_path: Path, subtests: SubTests
+        self, tmp_path: Path, subtests: pytest.Subtests
     ) -> None:
         """
         Test for issue #1466: Detection of checkpoint jobs that are not leaf vertices
@@ -305,7 +304,7 @@ class TestJob:
     def runNewCheckpointIsLeafVertexTest(
         self,
         tmp_path: Path,
-        subtests: SubTests,
+        subtests: pytest.Subtests,
         createWorkflowFn: Callable[[], tuple[Job, Job]],
     ) -> None:
         """
