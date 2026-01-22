@@ -15,24 +15,42 @@ import json
 import os
 import subprocess
 import sys
+import time
 
-env_var = 'GITLAB_SECRET_FILE_QUAY_CREDENTIALS'
+ENV_VAR = 'GITLAB_SECRET_FILE_QUAY_CREDENTIALS'
 
-if env_var not in os.environ:
-    print('Error: could not find environment variable ' + env_var)
+if ENV_VAR not in os.environ:
+    print('Error: could not find environment variable ' + ENV_VAR)
     sys.exit(1)
 
 print('Starting quay.io login process...')
-with open(os.environ[env_var], 'r') as f:
+with open(os.environ[ENV_VAR], 'r') as f:
     keys = json.load(f)
-process = subprocess.Popen('docker login quay.io -u "{user}" --password-stdin'.format(user=keys['user']),
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE,
-                           shell=True)
-print('Logging into quay.io...')
-stdout, stderr = process.communicate(input=keys['password'].encode('utf-8'))
 
-if 'Login Succeeded' in str(stdout):
-    print('Login Succeeded.')
+MAX_RETRY_TIME = 600
+MAX_DELAY = 60
+INITIAL_DELAY = 1
+
+delay = INITIAL_DELAY
+start_time = time.time()
+attempt = 1
+
+while time.time() - start_time < MAX_RETRY_TIME:
+    print(f'Logging into quay.io (attempt {attempt})...')
+    process = subprocess.Popen(['docker', 'login', 'quay.io', '-u', keys['user'], '--password-stdin'],
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+    stdout, stderr = process.communicate(input=keys['password'].encode('utf-8'))
+
+    if 'Login Succeeded' in stdout.decode('utf-8', errors='replace'):
+        print(f'Login Succeeded on attempt {attempt}.')
+        break
+
+    print(f'Attempt {attempt} failed:')
+    print(stderr.decode('utf-8', errors='replace'))
+    print(f'Retrying in {delay} seconds...')
+    time.sleep(delay)
+    delay = min(delay * 2, MAX_DELAY)
+    attempt += 1
 else:
-    print('Error while attempting to log into quay.io:\n' + str(stderr))
+    print(f'Error: Failed to log in after {time.time() - start_time:.1f} seconds')
     sys.exit(1)
