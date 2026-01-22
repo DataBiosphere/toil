@@ -1,12 +1,14 @@
 # This is a v3 compose file
 services:
   slurmmaster:
-        image: rancavil/slurm-master:19.05.5-1
+        # This should be https://github.com/jlundos/slurm-cluster/tree/devel
+        # Commit ad53b77bc74de768b627185a012e0bcb1b44ba1c
+        image: quay.io/adamnovak/slurm-master:latest
         hostname: slurmmaster
         user: admin
         volumes:
                 - shared-vol:/home/admin
-                - ${PWD}/slurm.conf:/etc/slurm-llnl/slurm.conf
+                - ${PWD}/slurm.conf:/etc/slurm/slurm.conf
 
         environment:
                 - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/admin/.local/bin
@@ -18,14 +20,31 @@ services:
           resources:
             limits:
               memory: 2G
+        healthcheck:
+          # When we start up, we write a key to a volume that the workers need to authenticate us.
+          # So don't be healthy until that key exists with the right content.
+          # The leading space maybe keeps this out of shell history? It's just
+          # stolen from
+          # <https://www.baeldung.com/linux/docker-compose-container-interdependence>
+          test: ["CMD-SHELL", " sudo diff /etc/munge/munge.key /home/admin/shared/mungesetup/munge.key"]
+          interval: 2s
+          timeout: 10s
+          retries: 3
+          start_period: 2s
+          start_interval: 2s
 
   slurmnode1:
-        image: rancavil/slurm-node:19.05.5-1
+        image: quay.io/adamnovak/slurm-node:latest
+        # TODO: The worker container must be privileged or running a job that uses --export, like:
+        #   sbatch --export=OMP_NUM_THREADS=1 --wrap="ls"
+        # will cause the executing slurmd to crash with a message in the log like:
+        #   fatal: clone: Operation not permitted
+        privileged: true
         hostname: slurmnode1
         user: admin
         volumes:
                 - shared-vol:/home/admin
-                - ${PWD}/slurm.conf:/etc/slurm-llnl/slurm.conf
+                - ${PWD}/slurm.conf:/etc/slurm/slurm.conf
         environment:
                 - SLURM_NODENAME=slurmnode1
         links:
@@ -34,14 +53,18 @@ services:
           resources:
             limits:
               memory: 2G
+        depends_on:
+          slurmmaster:
+            condition: service_healthy
 
   slurmnode2:
-        image: rancavil/slurm-node:19.05.5-1
+        image: quay.io/adamnovak/slurm-node:latest
+        privileged: true
         hostname: slurmnode2
         user: admin
         volumes:
                 - shared-vol:/home/admin
-                - ${PWD}/slurm.conf:/etc/slurm-llnl/slurm.conf
+                - ${PWD}/slurm.conf:/etc/slurm/slurm.conf
         environment:
                 - SLURM_NODENAME=slurmnode2
         links:
@@ -50,14 +73,18 @@ services:
           resources:
             limits:
               memory: 2G
+        depends_on:
+          slurmmaster:
+            condition: service_healthy
 
   slurmnode3:
-        image: rancavil/slurm-node:19.05.5-1
+        image: quay.io/adamnovak/slurm-node:latest
+        privileged: true
         hostname: slurmnode3
         user: admin
         volumes:
                 - shared-vol:/home/admin
-                - ${PWD}/slurm.conf:/etc/slurm-llnl/slurm.conf
+                - ${PWD}/slurm.conf:/etc/slurm/slurm.conf
         environment:
                 - SLURM_NODENAME=slurmnode3
         links:
@@ -66,6 +93,9 @@ services:
           resources:
             limits:
               memory: 2G
+        depends_on:
+          slurmmaster:
+            condition: service_healthy
 
 volumes:
         shared-vol:
