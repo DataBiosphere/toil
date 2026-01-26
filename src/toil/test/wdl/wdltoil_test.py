@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "4e79324f914549d891d796818bf8e02efa35468c"
+WDL_CONFORMANCE_TEST_COMMIT = "8346116c7fedc8672862d9274dc156909d110c39"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -190,7 +190,7 @@ class TestWDLConformance:
         # fail CI when the branch moves.
         os.chdir(wdl_conformance_test_repo)
         repo_url = "https://github.com/adamnovak/wdl.git"
-        repo_branch = "fix-answers"
+        repo_branch = "wdl-1.2-fix-json"
         commands1 = [
             exactPython,
             "setup_unit_tests.py",
@@ -216,6 +216,40 @@ class TestWDLConformance:
             "--progress",
             "--exclude-ids",
             ",".join(WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL),
+        ]
+        p2 = subprocess.run(commands2, capture_output=True)
+        self.check(p2)
+
+    @slow
+    def test_single_unit_test(self, wdl_conformance_test_repo: Path) -> None:
+        os.chdir(wdl_conformance_test_repo)
+        repo_url = "https://github.com/openwdl/wdl.git"
+        repo_branch = "wdl-1.1"
+        commands1 = [
+            exactPython,
+            "setup_unit_tests.py",
+            "-v",
+            "1.1",
+            "--extra-patch-data",
+            "unit_tests_patch_data.yaml",
+            "--repo",
+            repo_url,
+            "--branch",
+            repo_branch,
+            "--force-pull",
+        ]
+        p1 = subprocess.run(commands1, capture_output=True)
+        self.check(p1)
+        commands2 = [
+            exactPython,
+            "run_unit.py",
+            "-r",
+            "toil-wdl-runner",
+            "-v",
+            "1.1",
+            "--progress",
+            "--id",
+            ",".join("glob_task"),
         ]
         p2 = subprocess.run(commands2, capture_output=True)
         self.check(p2)
