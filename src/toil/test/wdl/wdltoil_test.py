@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "8346116c7fedc8672862d9274dc156909d110c39"
+WDL_CONFORMANCE_TEST_COMMIT = "5fd1716b5a23d3c2925bb2d2e706badc68a2e2b0"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -71,6 +71,11 @@ WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
 ]
 
 WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + [
+    "relative_paths_context",  # Toil can't yet resolve File coercion at task scope relative to task file.
+    "file_directory_equality",  # String to Directory coercion not yet implemented.
+    "single_return_code_task",  # MiniWDL 1.13.1 only knows returnCodes and not return_codes.
+    "all_return_codes_task",  # MiniWDL 1.13.1 only knows returnCodes and not return_codes.
+    "test_runtime_info_task",  # MiniWDL 1.13.1 can't yet expose the task global.
     "placeholder_none",  # 'outputs' section expected 1 results (['placeholder_none.s']), got 0 instead ([]) with exit code 1
     "person_struct_task",  # Doesn't work as written in the spec; see https://github.com/openwdl/wdl/issues/739
     "import_structs",  # Feature not yet implemented?
