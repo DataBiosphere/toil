@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "5fd1716b5a23d3c2925bb2d2e706badc68a2e2b0"
+WDL_CONFORMANCE_TEST_COMMIT = "12d6d8a54a11803fb529aeca18ee01cba01f1d3e"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -92,7 +92,7 @@ WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + 
     "change_extension_task",  # 'outputs' section expected 2 results (['change_extension.data', 'change_extension.index']), got 3 instead (['change_extension.index', 'change_extension.data', 'change_extension.data_file']) with exit code 0
     "join_paths_task",  # Ln 14 Col 15: No such function: join_paths
     "gen_files_task",  # 'outputs' section expected 1 results (['gen_files.glob_len']), got 2 instead (['gen_files.glob_len', 'gen_files.files']) with exit code 0
-    "file_sizes_task",  # Ln 12 Col 5: Multiple declarations of created_file
+    "file_sizes_task",  # WDL.Error.StaticTypeMismatch: Expected File? instead of Map[String,Pair[Int,File?]] 
     "read_tsv_task",  # Ln 21 Col 5: Unknown type Object
     "write_tsv_task",  # Ln 28 Col 16: write_tsv expects 1 argument(s)
     "test_contains",  # Ln 25 Col 22: No such function: contains
