@@ -31,7 +31,6 @@ services:
           timeout: 10s
           retries: 3
           start_period: 2s
-          start_interval: 2s
 
   slurmnode1:
         image: quay.io/adamnovak/slurm-node:latest
