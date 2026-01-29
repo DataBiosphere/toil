@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "826b2934b462cbbcb3d261bb125fb25d93ef2490"
+WDL_CONFORMANCE_TEST_COMMIT = "12d6d8a54a11803fb529aeca18ee01cba01f1d3e"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -71,6 +71,11 @@ WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
 ]
 
 WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + [
+    "relative_paths_context",  # Toil can't yet resolve File coercion at task scope relative to task file.
+    "file_directory_equality",  # String to Directory coercion not yet implemented.
+    "single_return_code_task",  # MiniWDL 1.13.1 only knows returnCodes and not return_codes.
+    "all_return_codes_task",  # MiniWDL 1.13.1 only knows returnCodes and not return_codes.
+    "test_runtime_info_task",  # MiniWDL 1.13.1 can't yet expose the task global.
     "placeholder_none",  # 'outputs' section expected 1 results (['placeholder_none.s']), got 0 instead ([]) with exit code 1
     "person_struct_task",  # Doesn't work as written in the spec; see https://github.com/openwdl/wdl/issues/739
     "import_structs",  # Feature not yet implemented?
@@ -87,7 +92,7 @@ WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + 
     "change_extension_task",  # 'outputs' section expected 2 results (['change_extension.data', 'change_extension.index']), got 3 instead (['change_extension.index', 'change_extension.data', 'change_extension.data_file']) with exit code 0
     "join_paths_task",  # Ln 14 Col 15: No such function: join_paths
     "gen_files_task",  # 'outputs' section expected 1 results (['gen_files.glob_len']), got 2 instead (['gen_files.glob_len', 'gen_files.files']) with exit code 0
-    "file_sizes_task",  # Ln 12 Col 5: Multiple declarations of created_file
+    "file_sizes_task",  # WDL.Error.StaticTypeMismatch: Expected File? instead of Map[String,Pair[Int,File?]] 
     "read_tsv_task",  # Ln 21 Col 5: Unknown type Object
     "write_tsv_task",  # Ln 28 Col 16: write_tsv expects 1 argument(s)
     "test_contains",  # Ln 25 Col 22: No such function: contains
@@ -190,7 +195,7 @@ class TestWDLConformance:
         # fail CI when the branch moves.
         os.chdir(wdl_conformance_test_repo)
         repo_url = "https://github.com/adamnovak/wdl.git"
-        repo_branch = "fix-answers"
+        repo_branch = "wdl-1.2-fix-json"
         commands1 = [
             exactPython,
             "setup_unit_tests.py",
@@ -216,6 +221,40 @@ class TestWDLConformance:
             "--progress",
             "--exclude-ids",
             ",".join(WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL),
+        ]
+        p2 = subprocess.run(commands2, capture_output=True)
+        self.check(p2)
+
+    @slow
+    def test_single_unit_test(self, wdl_conformance_test_repo: Path) -> None:
+        os.chdir(wdl_conformance_test_repo)
+        repo_url = "https://github.com/openwdl/wdl.git"
+        repo_branch = "wdl-1.1"
+        commands1 = [
+            exactPython,
+            "setup_unit_tests.py",
+            "-v",
+            "1.1",
+            "--extra-patch-data",
+            "unit_tests_patch_data.yaml",
+            "--repo",
+            repo_url,
+            "--branch",
+            repo_branch,
+            "--force-pull",
+        ]
+        p1 = subprocess.run(commands1, capture_output=True)
+        self.check(p1)
+        commands2 = [
+            exactPython,
+            "run_unit.py",
+            "-r",
+            "toil-wdl-runner",
+            "-v",
+            "1.1",
+            "--progress",
+            "--id",
+            ",".join("glob_task"),
         ]
         p2 = subprocess.run(commands2, capture_output=True)
         self.check(p2)
