@@ -23,8 +23,9 @@ user agent.
 >>> web_session.get(httpserver.url_for("/path"))
 <Response [200]>
 """
-import requests
 import sys
+
+import requests
 
 from toil.version import baseVersion
 
@@ -34,4 +35,8 @@ from toil.version import baseVersion
 # in theory (someone might make a new Toil version first, but there's no way
 # to know for sure that nobody else did the same thing).
 web_session = requests.Session()
-web_session.headers.update({"User-Agent": f"Toil {baseVersion} on Python {'.'.join([str(v) for v in sys.version_info])}"})
+web_session.headers.update(
+    {
+        "User-Agent": f"Toil {baseVersion} on Python {'.'.join([str(v) for v in sys.version_info])}"
+    }
+)

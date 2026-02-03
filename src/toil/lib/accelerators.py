@@ -17,7 +17,7 @@
 import os
 import string
 import subprocess
-from typing import Union, cast
+from typing import cast
 from xml.dom import minidom
 
 from toil.job import AcceleratorRequirement
@@ -34,7 +34,9 @@ def have_working_nvidia_smi() -> bool:
     it can fulfill a CUDARequirement.
     """
     try:
-        subprocess.check_call(["nvidia-smi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.check_call(
+            ["nvidia-smi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
     except (
         FileNotFoundError,
         PermissionError,
@@ -105,7 +107,7 @@ def have_working_nvidia_docker_runtime() -> bool:
                 "nvidia-smi",
             ],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.DEVNULL,
         )
     except (
         FileNotFoundError,
@@ -217,7 +219,7 @@ def get_individual_local_accelerators() -> list[AcceleratorRequirement]:
 
 
 def get_restrictive_environment_for_local_accelerators(
-    accelerator_numbers: Union[set[int], list[int]]
+    accelerator_numbers: set[int] | list[int],
 ) -> dict[str, str]:
     """
     Get environment variables which can be applied to a process to restrict it

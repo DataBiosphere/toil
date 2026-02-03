@@ -1,11 +1,9 @@
 import errno
+import hashlib
 import logging
 import os
-import hashlib
-import threading
-
 from abc import ABC, abstractmethod
-from typing import Optional, TextIO, BinaryIO, IO, Any
+from typing import IO, Any
 
 from toil.lib.checksum import ChecksumError
 from toil.lib.threading import ExceptionalThread
@@ -75,7 +73,7 @@ class WritablePipe(ABC):
     True
     """
 
-    def __init__(self, encoding: Optional[str] = None, errors: Optional[str] = None) -> None:
+    def __init__(self, encoding: str | None = None, errors: str | None = None) -> None:
         """
         The specified encoding and errors apply to the writable end of the pipe.
 
@@ -86,11 +84,11 @@ class WritablePipe(ABC):
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
         super().__init__()
-        self.encoding: Optional[str] = encoding
-        self.errors: Optional[str] = errors
-        self.readable_fh: Optional[int] = None
-        self.writable: Optional[IO[Any]] = None
-        self.thread: Optional[ExceptionalThread] = None
+        self.encoding: str | None = encoding
+        self.errors: str | None = errors
+        self.readable_fh: int | None = None
+        self.writable: IO[Any] | None = None
+        self.thread: ExceptionalThread | None = None
         self.reader_done: bool = False
 
     def __enter__(self) -> IO[Any]:
@@ -105,7 +103,9 @@ class WritablePipe(ABC):
         self.thread.start()
         return self.writable
 
-    def __exit__(self, exc_type: Optional[str], exc_val: Optional[str], exc_tb: Optional[str]) -> None:
+    def __exit__(
+        self, exc_type: str | None, exc_val: str | None, exc_tb: str | None
+    ) -> None:
         # Closing the writable end will send EOF to the readable and cause the reader thread
         # to finish.
         # TODO: Can close() fail? If so, would we try and clean up after the reader?
@@ -158,7 +158,6 @@ class WritablePipe(ABC):
             self.readable_fh = None  # signal to parent thread that we've taken over
             self.readFrom(readable)
             self.reader_done = True
-
 
 
 class ReadablePipe(ABC):
@@ -245,7 +244,7 @@ class ReadablePipe(ABC):
             if e.errno != errno.EPIPE:
                 raise
 
-    def __init__(self, encoding: Optional[str] = None, errors: Optional[str] = None) -> None:
+    def __init__(self, encoding: str | None = None, errors: str | None = None) -> None:
         """
         The specified encoding and errors apply to the readable end of the pipe.
 
@@ -256,11 +255,11 @@ class ReadablePipe(ABC):
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
         super().__init__()
-        self.encoding: Optional[str] = encoding
-        self.errors: Optional[str] = errors
-        self.writable_fh: Optional[int] = None
-        self.readable: Optional[IO[Any]] = None
-        self.thread: Optional[ExceptionalThread] = None
+        self.encoding: str | None = encoding
+        self.errors: str | None = errors
+        self.writable_fh: int | None = None
+        self.readable: IO[Any] | None = None
+        self.thread: ExceptionalThread | None = None
 
     def __enter__(self) -> IO[Any]:
         readable_fh, self.writable_fh = os.pipe()
@@ -274,7 +273,9 @@ class ReadablePipe(ABC):
         self.thread.start()
         return self.readable
 
-    def __exit__(self, exc_type: Optional[str], exc_val: Optional[str], exc_tb: Optional[str]) -> None:
+    def __exit__(
+        self, exc_type: str | None, exc_val: str | None, exc_tb: str | None
+    ) -> None:
         # Close the read end of the pipe. The writing thread may
         # still be writing to the other end, but this will wake it up
         # if that's the case.
@@ -323,7 +324,12 @@ class ReadableTransformingPipe(ReadablePipe):
 
     """
 
-    def __init__(self, source: IO[Any], encoding: Optional[str] = None, errors: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        source: IO[Any],
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> None:
         """
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
                 as for encode(). Defaults to None which represents binary mode.
@@ -357,7 +363,14 @@ class HashingPipe(ReadableTransformingPipe):
 
     Assumes info actually has a checksum.
     """
-    def __init__(self, source: IO[Any], encoding: Optional[str] = None, errors: Optional[str] = None, checksum_to_verify: Optional[str] = None) -> None:
+
+    def __init__(
+        self,
+        source: IO[Any],
+        encoding: str | None = None,
+        errors: str | None = None,
+        checksum_to_verify: str | None = None,
+    ) -> None:
         """
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
                 as for encode(). Defaults to None which represents binary mode.
@@ -365,13 +378,13 @@ class HashingPipe(ReadableTransformingPipe):
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
-        super(HashingPipe, self).__init__(source=source, encoding=encoding, errors=errors)
+        super().__init__(source=source, encoding=encoding, errors=errors)
         self.checksum_to_verify = checksum_to_verify
 
     def transform(self, readable: IO[Any], writable: IO[Any]) -> None:
         hash_object = hashlib.sha1()
         contents = readable.read(1024 * 1024)
-        while contents != b'':
+        while contents != b"":
             hash_object.update(contents)
             try:
                 writable.write(contents)
@@ -380,6 +393,8 @@ class HashingPipe(ReadableTransformingPipe):
                 # Can't check the checksum.
                 return
             contents = readable.read(1024 * 1024)
-        final_computed_checksum = f'sha1${hash_object.hexdigest()}'
+        final_computed_checksum = f"sha1${hash_object.hexdigest()}"
         if not self.checksum_to_verify == final_computed_checksum:
-            raise ChecksumError(f'Checksum mismatch. Expected: {self.checksum_to_verify} Actual: {final_computed_checksum}')
+            raise ChecksumError(
+                f"Checksum mismatch. Expected: {self.checksum_to_verify} Actual: {final_computed_checksum}"
+            )

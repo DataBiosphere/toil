@@ -13,11 +13,13 @@
 # limitations under the License.
 
 
-from argparse import Namespace
 import os
-from pathlib import Path
 import stat
 import uuid
+from argparse import Namespace
+from pathlib import Path
+
+import pytest
 
 from toil.common import Toil
 from toil.exceptions import FailedJobsException
@@ -25,9 +27,6 @@ from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
 from toil.test import pslow as slow
-
-import pytest
-from pytest_subtests import SubTests
 
 
 def create_file(tmp_path: Path, content: str, executable: bool = False) -> Path:
@@ -109,7 +108,7 @@ class TestImportExportFile:
     def test_import_export_restart_false(self, tmp_path: Path) -> None:
         self._run_import_export_workflow(tmp_path, restart=False)
 
-    def test_basic_import_export(self, tmp_path: Path, subtests: SubTests) -> None:
+    def test_basic_import_export(self, tmp_path: Path, subtests: pytest.Subtests) -> None:
         """
         Ensures that uploaded files preserve their file permissions when they
         are downloaded again. This function checks that an imported executable file

@@ -87,9 +87,7 @@ def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         help=suppress_help or "Keep and return all call outputs as workflow outputs"
     )
 
-    strict_arguments = ["--wdlStrict"] + (
-        ["--strict"] if not suppress else []
-    )
+    strict_arguments = ["--wdlStrict"] + (["--strict"] if not suppress else [])
     parser.add_argument(
         *strict_arguments,
         dest="strict",

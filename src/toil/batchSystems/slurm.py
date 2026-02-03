@@ -17,12 +17,12 @@ import errno
 import logging
 import math
 import os
-import sys
 import shlex
-
+import sys
 from argparse import SUPPRESS, ArgumentParser, _ArgumentGroup
-from datetime import datetime, timedelta, timezone
-from typing import Callable, NamedTuple, Optional, TypeVar
+from collections.abc import Callable
+from datetime import datetime, timedelta
+from typing import NamedTuple, TypeVar
 
 from toil.batchSystems.abstractBatchSystem import (
     EXIT_STATUS_UNAVAILABLE_VALUE,
@@ -103,6 +103,7 @@ def parse_slurm_time(slurm_time: str) -> int:
             total_seconds += multiplier * int(elapsed_split[index])
     return total_seconds
 
+
 # For parsing user-provided option overrides (or self-generated
 # options) for sbatch, we need a way to recognize long, long-with-equals, and
 # short forms.
@@ -111,23 +112,34 @@ def option_detector(long: str, short: str | None = None) -> Callable[[str], bool
     Get a function that returns true if it sees the long or short
     option.
     """
+
     def is_match(option: str) -> bool:
-        return option == f"--{long}" or option.startswith(f"--{long}=") or (short is not None and option == f"-{short}")
+        return (
+            option == f"--{long}"
+            or option.startswith(f"--{long}=")
+            or (short is not None and option == f"-{short}")
+        )
+
     return is_match
+
 
 def any_option_detector(options: list[str | tuple[str, str]]) -> Callable[[str], bool]:
     """
     Get a function that returns true if it sees any of the long
     options or long or short option pairs.
     """
-    detectors = [option_detector(o) if isinstance(o, str) else option_detector(*o) for o in options]
+    detectors = [
+        option_detector(o) if isinstance(o, str) else option_detector(*o)
+        for o in options
+    ]
+
     def is_match(option: str) -> bool:
         for detector in detectors:
             if detector(option):
                 return True
         return False
-    return is_match
 
+    return is_match
 
 
 class SlurmBatchSystem(AbstractGridEngineBatchSystem):
@@ -352,16 +364,16 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         ) -> list[int | tuple[int, BatchJobExitReason | None] | None]:
             """
             Collect all job exit codes in a single call.
-            
+
             :param batch_job_id_list: list of Job ID strings, where each string
                 has the form ``<job>[.<task>]``.
-            
+
             :return: list of job exit codes or exit code, exit reason pairs
                 associated with the list of job IDs.
-            
+
             :raises CalledProcessErrorStderr: if communicating with Slurm went
                 wrong.
-            
+
             :raises OSError: if job details are not available because a Slurm
                 command could not start.
             """
@@ -407,7 +419,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             """
 
             status_dict = {}
-            scontrol_problem: Optional[Exception] = None
+            scontrol_problem: Exception | None = None
 
             try:
                 # Get all the job details we can from scontrol, which we think
@@ -444,7 +456,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # One of the methods worked, so we have at least (None, None)
             # values filled in for all jobs.
             assert len(status_dict) == len(job_id_list)
-
 
             return status_dict
 
@@ -516,7 +527,11 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             return state_token
 
-        def _remaining_jobs(self, job_id_list: list[int], job_details: dict[int, tuple[str | None, int | None]]) -> list[int]:
+        def _remaining_jobs(
+            self,
+            job_id_list: list[int],
+            job_details: dict[int, tuple[str | None, int | None]],
+        ) -> list[int]:
             """
             Given a list of job IDs and a list of job details (state and exit
             code), get the list of job IDs where the details are (None, None)
@@ -550,13 +565,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # Pick a now
             now = datetime.now().astimezone(None)
             # Decide when to start the search (first copy of past midnight)
-            begin_time = now.replace(
-                hour=0,
-                minute=0,
-                second=0,
-                microsecond=0,
-                fold=0
-            )
+            begin_time = now.replace(hour=0, minute=0, second=0, microsecond=0, fold=0)
             # And when to end (a day after that)
             end_time = begin_time + timedelta(days=1)
             while end_time < now:
@@ -575,9 +584,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 # started.
                 results.update(
                     self._get_job_details_from_sacct_for_range(
-                        job_id_list,
-                        begin_time,
-                        end_time
+                        job_id_list, begin_time, end_time
                     )
                 )
                 job_id_list = self._remaining_jobs(job_id_list, results)
@@ -588,14 +595,13 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 end_time = begin_time + timedelta(seconds=1)
                 begin_time = end_time - timedelta(days=1, seconds=1)
 
-
             if end_time < self.boss.start_time and len(job_id_list) > 0:
                 # This is suspicious.
                 logger.warning(
                     "Could not find any information from sacct after "
                     "workflow start at %s about jobs: %s",
                     self.boss.start_time.isoformat(),
-                    job_id_list
+                    job_id_list,
                 )
 
             return results
@@ -622,6 +628,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             assert begin_time.tzinfo is not None, "begin_time must be aware"
             assert end_time.tzinfo is not None, "end_time must be aware"
+
             def stringify(t: datetime) -> str:
                 """
                 Convert an aware time local time, and format it *without* a
@@ -662,14 +669,14 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                         raise
                     job_statuses.update(
                         self._get_job_details_from_sacct_for_range(
-                            job_id_list[:len(job_id_list)//2],
+                            job_id_list[: len(job_id_list) // 2],
                             begin_time,
                             end_time,
                         )
                     )
                     job_statuses.update(
                         self._get_job_details_from_sacct_for_range(
-                            job_id_list[len(job_id_list)//2:],
+                            job_id_list[len(job_id_list) // 2 :],
                             begin_time,
                             end_time,
                         )
@@ -845,8 +852,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # Also any extra arguments from --slurmArgs or TOIL_SLURM_ARGS
             nativeConfig: str = self.boss.config.slurm_args  # type: ignore[attr-defined]
 
-            is_any_mem_option = any_option_detector(["mem", "mem-per-cpu", "mem-per-gpu"])
-            is_any_cpus_option = any_option_detector([("cpus-per-task", "c"), "cpus-per-gpu"])
+            is_any_mem_option = any_option_detector(
+                ["mem", "mem-per-cpu", "mem-per-gpu"]
+            )
+            is_any_cpus_option = any_option_detector(
+                [("cpus-per-task", "c"), "cpus-per-gpu"]
+            )
             is_export_option = option_detector("export")
             is_export_file_option = option_detector("export-file")
             is_time_option = option_detector("time", "t")
@@ -857,7 +868,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             # --export=[ALL,]<environment_toil_variables>
             export_all = True
-            export_list = [] # Some items here may be multiple comma-separated values
+            export_list = []  # Some items here may be multiple comma-separated values
             time_limit: int | None = self.boss.config.slurm_time  # type: ignore[attr-defined]
             partition: str | None = None
 
@@ -967,10 +978,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     raise RuntimeError(
                         f"The job {jobName} is requesting GPUs, but the Slurm cluster does not appear to have an accessible partition with GPUs"
                     )
-                if (
-                    time_limit is not None
-                    and gpu_partition.time_limit < time_limit
-                ):
+                if time_limit is not None and gpu_partition.time_limit < time_limit:
                     # TODO: find the lowest-priority GPU partition that has at least each job's time limit!
                     logger.warning(
                         "Trying to submit a job that needs %s seconds to partition %s that has a limit of %s seconds",
@@ -993,7 +1001,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if gpus:
                 # Generate GPU assignment argument
                 sbatch_line.append(f"--gres=gpu:{gpus}")
-                if partition is not None and partition not in self.boss.partitions.gpu_partitions:
+                if (
+                    partition is not None
+                    and partition not in self.boss.partitions.gpu_partitions
+                ):
                     # the specified partition is not compatible, so warn the user that the job may not work
                     logger.warning(
                         f"Job {jobName} needs GPUs, but specified partition {partition} does not have them. This job may not work."

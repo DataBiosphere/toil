@@ -7,7 +7,6 @@ from abc import ABCMeta, abstractmethod
 from contextlib import closing
 from shutil import which
 from urllib.request import urlopen
-from typing import Optional
 
 from toil.lib.retry import retry
 from toil.lib.threading import ExceptionalThread, cpu_count
@@ -26,7 +25,7 @@ class MesosTestSupport:
         with closing(urlopen("http://127.0.0.1:5050/version")) as content:
             content.read()
 
-    def _startMesos(self, numCores: Optional[int] = None) -> None:
+    def _startMesos(self, numCores: int | None = None) -> None:
         if numCores is None:
             numCores = cpu_count()
         shutil.rmtree("/tmp/mesos", ignore_errors=True)

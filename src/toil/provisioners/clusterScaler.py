@@ -18,7 +18,8 @@ import math
 import os
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Callable, Optional, Union
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Union
 
 from toil.batchSystems.abstractBatchSystem import (
     AbstractBatchSystem,
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 EVICTION_THRESHOLD = human2bytes("100MiB")
 RESERVE_SMALL_LIMIT = human2bytes("1GiB")
 RESERVE_SMALL_AMOUNT = human2bytes("255MiB")
-RESERVE_BREAKPOINTS: list[Union[int, float]] = [
+RESERVE_BREAKPOINTS: list[int | float] = [
     human2bytes("4GiB"),
     human2bytes("8GiB"),
     human2bytes("16GiB"),
@@ -120,7 +121,7 @@ class BinPackedFit:
 
     def addJobShape(
         self, jobShape: Shape
-    ) -> Optional[tuple[Shape, list[FailedConstraint]]]:
+    ) -> tuple[Shape, list[FailedConstraint]] | None:
         """
         Add the job to the first node reservation in which it will fit. (This
         is the bin-packing aspect).
@@ -141,7 +142,7 @@ class BinPackedFit:
                 jobShape,
             )
             # Go back and debug why this happened.
-            fewest_constraints: Optional[list[FailedConstraint]] = None
+            fewest_constraints: list[FailedConstraint] | None = None
             for shape in self.nodeShapes:
                 failures = NodeReservation(nodeShape).get_failed_constraints(jobShape)
                 if fewest_constraints is None or len(failures) < len(
@@ -199,7 +200,7 @@ class NodeReservation:
         # The wall-time of this slice and resources available in this timeslice
         self.shape = shape
         # The next portion of the reservation (None if this is the end)
-        self.nReservation: Optional[NodeReservation] = None
+        self.nReservation: NodeReservation | None = None
 
     def __str__(self) -> str:
         return (
@@ -290,7 +291,7 @@ class NodeReservation:
     def shapes(self) -> list[Shape]:
         """Get all time-slice shapes, in order, from this reservation on."""
         shapes = []
-        curRes: Optional[NodeReservation] = self
+        curRes: NodeReservation | None = self
         while curRes is not None:
             shapes.append(curRes.shape)
             curRes = curRes.nReservation
@@ -316,7 +317,7 @@ class NodeReservation:
         is a reservation for, and targetTime is the maximum time to wait before starting this job.
         """
         # starting slice of time that we can fit in so far
-        startingReservation: Optional[NodeReservation] = self
+        startingReservation: NodeReservation | None = self
         # current end of the slices we can fit in so far
         endingReservation = self
         # the amount of runtime of the job currently covered by slices
@@ -644,7 +645,7 @@ class ClusterScaler:
         # How many bytes are reserved so far?
         reserved = 0.0
         # How many bytes of memory have we accounted for so far?
-        accounted: Union[float, int] = 0
+        accounted: float | int = 0
         for breakpoint, fraction in zip(RESERVE_BREAKPOINTS, RESERVE_FRACTIONS):
             # Below each breakpoint, reserve the matching portion of the memory
             # since the previous breakpoint, like a progressive income tax.
@@ -1157,7 +1158,7 @@ class ClusterScaler:
         )
         return filtered_nodes
 
-    def getNodes(self, preemptible: Optional[bool] = None) -> dict["Node", NodeInfo]:
+    def getNodes(self, preemptible: bool | None = None) -> dict["Node", NodeInfo]:
         """
         Returns a dictionary mapping node identifiers of preemptible or non-preemptible nodes to
         NodeInfo objects, one for each node.
@@ -1253,9 +1254,9 @@ class JobTooBigError(Exception):
 
     def __init__(
         self,
-        job: Optional[JobDescription] = None,
-        shape: Optional[Shape] = None,
-        constraints: Optional[list[FailedConstraint]] = None,
+        job: JobDescription | None = None,
+        shape: Shape | None = None,
+        constraints: list[FailedConstraint] | None = None,
     ):
         """
         Make a JobTooBigError.
@@ -1398,8 +1399,8 @@ class ScalerThread(ExceptionalThread):
 
                     if len(could_not_fit) != 0:
                         # If we have any jobs left over that we couldn't fit, complain.
-                        bad_job: Optional[JobDescription] = None
-                        bad_shape: Optional[Shape] = None
+                        bad_job: JobDescription | None = None
+                        bad_shape: Shape | None = None
                         for job, shape in zip(queuedJobs, queuedJobShapes):
                             # Try and find an example job with an offending shape
                             if shape in could_not_fit:
@@ -1430,7 +1431,7 @@ class ScalerThread(ExceptionalThread):
 
 class ClusterStats:
     def __init__(
-        self, path: str, batchSystem: AbstractBatchSystem, clusterName: Optional[str]
+        self, path: str, batchSystem: AbstractBatchSystem, clusterName: str | None
     ) -> None:
         logger.debug("Initializing cluster statistics")
         self.stats: dict[str, dict[str, list[dict[str, Any]]]] = {}

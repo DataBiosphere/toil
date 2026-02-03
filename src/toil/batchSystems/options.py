@@ -13,7 +13,8 @@
 
 import logging
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, Optional, Protocol, TypeVar, Union
+from collections.abc import Callable
+from typing import Any, Protocol, TypeVar
 
 from toil.batchSystems.registry import (
     DEFAULT_BATCH_SYSTEM,
@@ -38,17 +39,15 @@ class OptionSetter(Protocol):
     def __call__(
         self,
         option_name: str,
-        parsing_function: Optional[Callable[[Any], OptionType]] = None,
-        check_function: Optional[Callable[[OptionType], Union[None, bool]]] = None,
-        default: Optional[OptionType] = None,
-        env: Optional[list[str]] = None,
-        old_names: Optional[list[str]] = None,
+        parsing_function: Callable[[Any], OptionType] | None = None,
+        check_function: Callable[[OptionType], None | bool] | None = None,
+        default: OptionType | None = None,
+        env: list[str] | None = None,
+        old_names: list[str] | None = None,
     ) -> bool: ...
 
 
-def set_batchsystem_options(
-    batch_system: Optional[str], set_option: OptionSetter
-) -> None:
+def set_batchsystem_options(batch_system: str | None, set_option: OptionSetter) -> None:
     """
     Call set_option for all the options for the given named batch system, or
     all batch systems if no name is provided.
@@ -80,7 +79,7 @@ def set_batchsystem_options(
     set_option("batch_logs_dir")
 
 
-def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+def add_all_batchsystem_options(parser: ArgumentParser | _ArgumentGroup) -> None:
     from toil.options.common import SYS_MAX_SIZE
 
     # Do the global cross-batch-system arguments

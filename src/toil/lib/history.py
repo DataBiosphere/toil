@@ -16,16 +16,16 @@
 Contains tools for tracking history.
 """
 
-from contextlib import contextmanager
 import logging
 import os
 import sqlite3
 import sys
-import threading
 import time
 import uuid
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Iterable, Iterator, Optional, TypeVar, Callable
+from typing import TypeVar
 
 from toil.lib.conversions import strtobool
 from toil.lib.io import get_toil_home
@@ -33,12 +33,13 @@ from toil.lib.retry import ErrorCondition, retry
 
 logger = logging.getLogger(__name__)
 
+
 class HistoryDatabaseSchemaTooNewError(RuntimeError):
     """
     Raised when we would write to the history database, but its schema is too
     new for us to understand.
     """
-    pass
+
 
 @dataclass
 class WorkflowSummary:
@@ -47,25 +48,27 @@ class WorkflowSummary:
 
     Represents all the attempts to execute one run of a workflow.
     """
+
     id: str
-    name: Optional[str]
+    name: str | None
     job_store: str
     total_attempts: int
     total_job_attempts: int
     succeeded: bool
-    start_time: Optional[float]
+    start_time: float | None
     """
     Time when the first workflow attempt started, in seconds since epoch.
 
     None if there are no attempts recorded.
     """
-    runtime: Optional[float]
+    runtime: float | None
     """
     Time from the first workflow attempt's start to the last one's end, in seconds.
 
     None if there are no attempts recorded.
     """
-    trs_spec: Optional[str]
+    trs_spec: str | None
+
 
 @dataclass
 class WorkflowAttemptSummary:
@@ -74,20 +77,22 @@ class WorkflowAttemptSummary:
 
     Helpfully includes the workflow metadata for Dockstore.
     """
+
     workflow_id: str
     attempt_number: int
     succeeded: bool
     start_time: float
     runtime: float
     submitted_to_dockstore: bool
-    batch_system: Optional[str]
-    caching: Optional[bool]
-    toil_version: Optional[str]
-    python_version: Optional[str]
-    platform_system: Optional[str]
-    platform_machine: Optional[str]
+    batch_system: str | None
+    caching: bool | None
+    toil_version: str | None
+    python_version: str | None
+    platform_system: str | None
+    platform_machine: str | None
     workflow_job_store: str
-    workflow_trs_spec: Optional[str]
+    workflow_trs_spec: str | None
+
 
 @dataclass
 class JobAttemptSummary:
@@ -95,19 +100,21 @@ class JobAttemptSummary:
     Data class holding summary information for a job attempt within a known
     workflow attempt.
     """
+
     id: str
     job_name: str
     succeeded: bool
     start_time: float
     runtime: float
     submitted_to_dockstore: bool
-    cores: Optional[float]
-    cpu_seconds: Optional[float]
-    memory_bytes: Optional[int]
-    disk_bytes: Optional[int]
+    cores: float | None
+    cpu_seconds: float | None
+    memory_bytes: int | None
+    disk_bytes: int | None
 
 
 RT = TypeVar("RT")
+
 
 def db_retry(function: Callable[..., RT]) -> Callable[..., RT]:
     """
@@ -122,6 +129,7 @@ def db_retry(function: Callable[..., RT]) -> Callable[..., RT]:
         ],
     )(function)
 
+
 class HistoryManager:
     """
     Class responsible for managing the history of Toil runs.
@@ -134,7 +142,7 @@ class HistoryManager:
 
         If False, no access at all shoulf be made to the database.
         """
-        return strtobool(os.environ.get("TOIL_HISTORY", 'True')) 
+        return strtobool(os.environ.get("TOIL_HISTORY", "True"))
 
     @classmethod
     def enabled_job(cls) -> bool:
@@ -146,10 +154,10 @@ class HistoryManager:
         # TODO: When Dockstore can take job metrics alongside whole-workflow
         # metrics, and we've tested to make sure history recording doesn't slow
         # down our leader job processing rate, turn on actual job history logging.
-        return cls.enabled() and strtobool(os.environ.get("TOIL_JOB_HISTORY", 'False')) 
+        return cls.enabled() and strtobool(os.environ.get("TOIL_JOB_HISTORY", "False"))
 
     # For testing, we can move the database path for the class.
-    database_path_override: Optional[str] = None
+    database_path_override: str | None = None
 
     @classmethod
     def database_path(cls) -> str:
@@ -180,7 +188,9 @@ class HistoryManager:
         if not cls.enabled():
             # Make sure we're not missing an enabled check along any codepath
             # that wants to access the database.
-            raise RuntimeError("Attempting to connect to database when HistoryManager is disabled!")
+            raise RuntimeError(
+                "Attempting to connect to database when HistoryManager is disabled!"
+            )
 
         if not os.path.exists(cls.database_path()):
             # Make the database and protect it from snoopers and busybodies
@@ -188,10 +198,7 @@ class HistoryManager:
             del con
             os.chmod(cls.database_path(), 0o600)
 
-        con = sqlite3.connect(
-            cls.database_path(),
-            isolation_level="DEFERRED"
-        )
+        con = sqlite3.connect(cls.database_path(), isolation_level="DEFERRED")
 
         with cls.no_transaction(con):
             # Turn on foreign keys.
@@ -203,7 +210,7 @@ class HistoryManager:
 
         # Set up the connection to use the Row class so that we can look up row values by column name and not just order.
         con.row_factory = sqlite3.Row
-        
+
         return con
 
     @classmethod
@@ -215,12 +222,12 @@ class HistoryManager:
 
         Commits the current transaction.
         """
-        
+
         con.commit()
-        if hasattr(con, 'autocommit'):
+        if hasattr(con, "autocommit"):
             con.autocommit = True
         yield
-        if hasattr(con, 'autocommit'):
+        if hasattr(con, "autocommit"):
             con.autocommit = False
 
     @classmethod
@@ -239,12 +246,14 @@ class HistoryManager:
 
         # TODO: Do a try-and-fall-back to avoid sending the table schema for
         # this every time we do anything.
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS migrations (
                 version INT NOT NULL PRIMARY KEY,
                 description TEXT
             )
-        """)
+        """
+        )
         db_version = next(cur.execute("SELECT MAX(version) FROM migrations"))[0]
         if db_version is None:
             db_version = -1
@@ -317,25 +326,37 @@ class HistoryManager:
                         PRIMARY KEY(workflow_id,attempt_number),
                         FOREIGN KEY(workflow_id) REFERENCES workflows(id)
                     )
-                    """
+                    """,
                 ],
             ),
         ]
 
         if db_version + 1 > len(migrations):
-            raise HistoryDatabaseSchemaTooNewError(f"History database version is {db_version}, but known migrations only go up to {len(migrations) - 1}")
+            raise HistoryDatabaseSchemaTooNewError(
+                f"History database version is {db_version}, but known migrations only go up to {len(migrations) - 1}"
+            )
 
         for migration_number in range(db_version + 1, len(migrations)):
-            for statement_number, statement in enumerate(migrations[migration_number][1]):
+            for statement_number, statement in enumerate(
+                migrations[migration_number][1]
+            ):
                 # Run all the migration commands.
                 # We don't use executescript() because (on old Pythons?) it
                 # commits the current transactrion first.
                 try:
                     cur.execute(statement)
                 except sqlite3.OperationalError:
-                    logger.exception("Could not execute migration %s statement %s: %s", migration_number, statement_number, statement)
+                    logger.exception(
+                        "Could not execute migration %s statement %s: %s",
+                        migration_number,
+                        statement_number,
+                        statement,
+                    )
                     raise
-            cur.execute("INSERT INTO migrations VALUES (?, ?)", (migration_number, migrations[migration_number][0]))
+            cur.execute(
+                "INSERT INTO migrations VALUES (?, ?)",
+                (migration_number, migrations[migration_number][0]),
+            )
 
         # If we did have to migrate, leave everything else we do as part of the migration transaction.
 
@@ -366,13 +387,18 @@ class HistoryManager:
         if not cls.enabled():
             return
 
-        logger.info("Recording workflow creation of %s in %s", workflow_id, job_store_spec)
+        logger.info(
+            "Recording workflow creation of %s in %s", workflow_id, job_store_spec
+        )
 
         con = cls.connection()
         cur = con.cursor()
         try:
             cls.ensure_tables(con, cur)
-            cur.execute("INSERT INTO workflows VALUES (?, ?, ?, NULL, NULL)", (workflow_id, job_store_spec, time.time()))
+            cur.execute(
+                "INSERT INTO workflows VALUES (?, ?, ?, NULL, NULL)",
+                (workflow_id, job_store_spec, time.time()),
+            )
         except:
             con.rollback()
             con.close()
@@ -383,10 +409,11 @@ class HistoryManager:
 
         # If we raise out of here the connection goes away and the transaction rolls back.
 
-
     @classmethod
     @db_retry
-    def record_workflow_metadata(cls, workflow_id: str, workflow_name: str, trs_spec: Optional[str] = None) -> None:
+    def record_workflow_metadata(
+        cls, workflow_id: str, workflow_name: str, trs_spec: str | None = None
+    ) -> None:
         """
         Associate a name and optionally a TRS ID and version with a workflow run.
         """
@@ -404,9 +431,15 @@ class HistoryManager:
         cur = con.cursor()
         try:
             cls.ensure_tables(con, cur)
-            cur.execute("UPDATE workflows SET name = ? WHERE id = ?", (workflow_name, workflow_id))
+            cur.execute(
+                "UPDATE workflows SET name = ? WHERE id = ?",
+                (workflow_name, workflow_id),
+            )
             if trs_spec is not None:
-                cur.execute("UPDATE workflows SET trs_spec = ? WHERE id = ?", (trs_spec, workflow_id))
+                cur.execute(
+                    "UPDATE workflows SET trs_spec = ? WHERE id = ?",
+                    (trs_spec, workflow_id),
+                )
         except:
             con.rollback()
             con.close()
@@ -418,18 +451,18 @@ class HistoryManager:
     @classmethod
     @db_retry
     def record_job_attempt(
-            cls,
-            workflow_id: str,
-            workflow_attempt_number: int,
-            job_name: str,
-            succeeded: bool,
-            start_time: float,
-            runtime: float,
-            cores: Optional[float] = None,
-            cpu_seconds: Optional[float] = None,
-            memory_bytes: Optional[int] = None,
-            disk_bytes: Optional[int] = None
-        ) -> None:
+        cls,
+        workflow_id: str,
+        workflow_attempt_number: int,
+        job_name: str,
+        succeeded: bool,
+        start_time: float,
+        runtime: float,
+        cores: float | None = None,
+        cpu_seconds: float | None = None,
+        memory_bytes: int | None = None,
+        disk_bytes: int | None = None,
+    ) -> None:
         """
         Record that a job ran in a workflow.
 
@@ -487,7 +520,7 @@ class HistoryManager:
                     cpu_seconds,
                     memory_bytes,
                     disk_bytes,
-                )
+                ),
             )
         except:
             con.rollback()
@@ -506,12 +539,12 @@ class HistoryManager:
         succeeded: bool,
         start_time: float,
         runtime: float,
-        batch_system: Optional[str] = None,
-        caching: Optional[bool] = None,
-        toil_version: Optional[str] = None,
-        python_version: Optional[str] = None,
-        platform_system: Optional[str] = None,
-        platform_machine: Optional[str] = None
+        batch_system: str | None = None,
+        caching: bool | None = None,
+        toil_version: str | None = None,
+        python_version: str | None = None,
+        platform_system: str | None = None,
+        platform_machine: str | None = None,
     ) -> None:
         """
         Record a workflow attempt (start or restart) having finished or failed.
@@ -561,8 +594,8 @@ class HistoryManager:
                     toil_version,
                     python_version,
                     platform_system,
-                    platform_machine
-                )
+                    platform_machine,
+                ),
             )
         except:
             con.rollback()
@@ -571,7 +604,6 @@ class HistoryManager:
         else:
             con.commit()
             con.close()
-
 
     ##
     # Read methods
@@ -630,8 +662,13 @@ class HistoryManager:
                         total_job_attempts=row["total_job_attempts"],
                         succeeded=(row["succeeded"] == 1),
                         start_time=row["start_time"],
-                        runtime=(row["end_time"] - row["start_time"]) if row["start_time"] is not None and row["end_time"] is not None else None,
-                        trs_spec=row["trs_spec"]
+                        runtime=(
+                            (row["end_time"] - row["start_time"])
+                            if row["start_time"] is not None
+                            and row["end_time"] is not None
+                            else None
+                        ),
+                        trs_spec=row["trs_spec"],
                     )
                 )
         except:
@@ -646,7 +683,9 @@ class HistoryManager:
 
     @classmethod
     @db_retry
-    def get_submittable_workflow_attempts(cls, limit: int = sys.maxsize) -> list[WorkflowAttemptSummary]:
+    def get_submittable_workflow_attempts(
+        cls, limit: int = sys.maxsize
+    ) -> list[WorkflowAttemptSummary]:
         """
         List all workflow attempts not yet submitted to Dockstore.
 
@@ -686,7 +725,7 @@ class HistoryManager:
                 ORDER BY start_time DESC
                 LIMIT ?
                 """,
-                (limit,)
+                (limit,),
             )
             for row in cur:
                 attempts.append(
@@ -704,7 +743,7 @@ class HistoryManager:
                         platform_machine=row["platform_machine"],
                         submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
                         workflow_job_store=row["workflow_job_store"],
-                        workflow_trs_spec=row["workflow_trs_spec"]
+                        workflow_trs_spec=row["workflow_trs_spec"],
                     )
                 )
         except:
@@ -719,7 +758,9 @@ class HistoryManager:
 
     @classmethod
     @db_retry
-    def get_workflow_attempts_with_submittable_job_attempts(cls, limit: int = sys.maxsize) -> list[WorkflowAttemptSummary]:
+    def get_workflow_attempts_with_submittable_job_attempts(
+        cls, limit: int = sys.maxsize
+    ) -> list[WorkflowAttemptSummary]:
         """
         Get all workflow attempts that have job attempts not yet submitted to
         Dockstore.
@@ -769,7 +810,7 @@ class HistoryManager:
                 WHERE workflows.trs_spec IS NOT NULL
                 LIMIT ?
                 """,
-                (limit,)
+                (limit,),
             )
             for row in cur:
                 # TODO: Unify row to data class conversion
@@ -788,7 +829,7 @@ class HistoryManager:
                         platform_machine=row["platform_machine"],
                         submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
                         workflow_job_store=row["workflow_job_store"],
-                        workflow_trs_spec=row["workflow_trs_spec"]
+                        workflow_trs_spec=row["workflow_trs_spec"],
                     )
                 )
         except:
@@ -803,7 +844,9 @@ class HistoryManager:
 
     @classmethod
     @db_retry
-    def get_workflow_attempt(cls, workflow_id: str, attempt_number: int) -> Optional[WorkflowAttemptSummary]:
+    def get_workflow_attempt(
+        cls, workflow_id: str, attempt_number: int
+    ) -> WorkflowAttemptSummary | None:
         """
         Get a single (not necessarily unsubmitted, not necessarily TRS-ID-having) workflow attempt summary, if present.
         """
@@ -843,7 +886,7 @@ class HistoryManager:
                 ORDER BY start_time DESC
                 LIMIT 1
                 """,
-                (workflow_id, attempt_number)
+                (workflow_id, attempt_number),
             )
             for row in cur:
                 attempts.append(
@@ -861,7 +904,7 @@ class HistoryManager:
                         platform_machine=row["platform_machine"],
                         submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
                         workflow_job_store=row["workflow_job_store"],
-                        workflow_trs_spec=row["workflow_trs_spec"]
+                        workflow_trs_spec=row["workflow_trs_spec"],
                     )
                 )
         except:
@@ -880,7 +923,9 @@ class HistoryManager:
 
     @classmethod
     @db_retry
-    def get_unsubmitted_job_attempts(cls, workflow_id: str, attempt_number: int) -> list[JobAttemptSummary]:
+    def get_unsubmitted_job_attempts(
+        cls, workflow_id: str, attempt_number: int
+    ) -> list[JobAttemptSummary]:
         """
         List all job attempts in the given workflow attempt not yet submitted to Dockstore.
 
@@ -915,7 +960,7 @@ class HistoryManager:
                 AND submitted_to_dockstore = FALSE
                 ORDER BY start_time DESC
                 """,
-                (workflow_id, attempt_number)
+                (workflow_id, attempt_number),
             )
             for row in cur:
                 attempts.append(
@@ -929,7 +974,7 @@ class HistoryManager:
                         cpu_seconds=row["cpu_seconds"],
                         memory_bytes=row["memory_bytes"],
                         disk_bytes=row["disk_bytes"],
-                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1)
+                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
                     )
                 )
         except:
@@ -948,7 +993,9 @@ class HistoryManager:
 
     @classmethod
     @db_retry
-    def mark_workflow_attempt_submitted(cls, workflow_id: str, attempt_number: int) -> None:
+    def mark_workflow_attempt_submitted(
+        cls, workflow_id: str, attempt_number: int
+    ) -> None:
         """
         Mark a workflow attempt as having been successfully submitted to Dockstore.
 
@@ -964,7 +1011,7 @@ class HistoryManager:
             cls.ensure_tables(con, cur)
             cur.execute(
                 "UPDATE workflow_attempts SET submitted_to_dockstore = TRUE WHERE workflow_id = ? AND attempt_number = ?",
-                (workflow_id, attempt_number)
+                (workflow_id, attempt_number),
             )
         except:
             con.rollback()
@@ -992,7 +1039,7 @@ class HistoryManager:
                 # Do all the marking in one transaction
                 cur.execute(
                     "UPDATE job_attempts SET submitted_to_dockstore = TRUE WHERE id = ?",
-                    (job_attempt_id,)
+                    (job_attempt_id,),
                 )
         except:
             con.rollback()
@@ -1008,7 +1055,7 @@ class HistoryManager:
         """
         Count workflows in the database.
         """
-        
+
         if not cls.enabled():
             return 0
 
@@ -1139,7 +1186,7 @@ class HistoryManager:
                     ) = 0
                 LIMIT ?
                 """,
-                (limit,)
+                (limit,),
             )
             for row in cur:
                 ids.append(row["id"])
@@ -1185,7 +1232,7 @@ class HistoryManager:
                 ORDER BY creation_time ASC
                 LIMIT ?
                 """,
-                (limit,)
+                (limit,),
             )
             for row in cur:
                 ids.append(row["id"])
@@ -1216,8 +1263,12 @@ class HistoryManager:
         try:
             cls.ensure_tables(con, cur)
 
-            cur.execute("DELETE FROM job_attempts WHERE workflow_id = ?", (workflow_id,))
-            cur.execute("DELETE FROM workflow_attempts WHERE workflow_id = ?", (workflow_id,))
+            cur.execute(
+                "DELETE FROM job_attempts WHERE workflow_id = ?", (workflow_id,)
+            )
+            cur.execute(
+                "DELETE FROM workflow_attempts WHERE workflow_id = ?", (workflow_id,)
+            )
             cur.execute("DELETE FROM workflows WHERE id = ?", (workflow_id,))
         except:
             con.rollback()
@@ -1269,13 +1320,13 @@ class HistoryManager:
 
         if not cls.enabled():
             return
-        
+
         con = cls.connection()
         cur = con.cursor()
 
         # Don't bother making tables; we don't need them for this and they need
         # a transaction.
-        
+
         with cls.no_transaction(con):
             # Do the vacuum outside any transaction, and rely on it to
             # synchronize appropriately internally.
@@ -1324,9 +1375,6 @@ class HistoryManager:
             # Re-check the size
             db_size = cls.get_database_byte_size()
 
-
-
-
     @classmethod
     def database_dump_lines(cls) -> Iterable[str]:
         """
@@ -1339,7 +1387,3 @@ class HistoryManager:
             return []
 
         return cls.connection().iterdump()
-
-
-
-

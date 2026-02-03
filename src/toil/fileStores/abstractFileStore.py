@@ -14,7 +14,7 @@
 import logging
 import os
 from abc import ABC, abstractmethod
-from collections.abc import Generator, Iterator
+from collections.abc import Callable, Generator, Iterator
 from contextlib import contextmanager
 from tempfile import mkstemp
 from threading import Event, Semaphore
@@ -22,10 +22,8 @@ from typing import (
     IO,
     TYPE_CHECKING,
     Any,
-    Callable,
     ContextManager,
     Literal,
-    Optional,
     Union,
     cast,
     overload,
@@ -118,7 +116,7 @@ class AbstractFileStore(ABC):
         )
         self.jobName: str = str(self.jobDesc)
         self.waitForPreviousCommit = waitForPreviousCommit
-        self.logging_messages: list[dict[str, Union[int, str]]] = []
+        self.logging_messages: list[dict[str, int | str]] = []
         self.logging_user_streams: list[dict[str, str]] = []
         # Records file IDs of files deleted during the current job. Doesn't get
         # committed back until the job is completely successful, because if the
@@ -129,7 +127,7 @@ class AbstractFileStore(ABC):
         # the accessed files of failed jobs.
         self._accessLog: list[tuple[str, ...]] = []
         # Holds total bytes of observed disk usage for the last job run under open()
-        self._job_disk_used: Optional[int] = None
+        self._job_disk_used: int | None = None
 
     @staticmethod
     def createFileStore(
@@ -137,14 +135,14 @@ class AbstractFileStore(ABC):
         jobDesc: JobDescription,
         file_store_dir: str,
         waitForPreviousCommit: Callable[[], Any],
-        caching: Optional[bool],
+        caching: bool | None,
     ) -> Union["NonCachingFileStore", "CachingFileStore"]:
         """Create a concreate FileStore."""
         # Defer these imports until runtime, since these classes depend on us
         from toil.fileStores.cachingFileStore import CachingFileStore
         from toil.fileStores.nonCachingFileStore import NonCachingFileStore
 
-        fileStoreCls: Union[type["CachingFileStore"], type["NonCachingFileStore"]] = (
+        fileStoreCls: type["CachingFileStore"] | type["NonCachingFileStore"] = (
             CachingFileStore if caching else NonCachingFileStore
         )
         return fileStoreCls(jobStore, jobDesc, file_store_dir, waitForPreviousCommit)
@@ -152,8 +150,8 @@ class AbstractFileStore(ABC):
     @staticmethod
     def shutdownFileStore(
         workflowID: str,
-        config_work_dir: Optional[str],
-        config_coordination_dir: Optional[str],
+        config_work_dir: str | None,
+        config_coordination_dir: str | None,
     ) -> None:
         """
         Carry out any necessary filestore-specific cleanup.
@@ -230,7 +228,7 @@ class AbstractFileStore(ABC):
             else:
                 self.log_to_leader(disk_usage, level=logging.DEBUG)
 
-    def get_disk_usage(self) -> Optional[int]:
+    def get_disk_usage(self) -> int | None:
         """
         Get the number of bytes of disk used by the last job run under open().
 
@@ -254,7 +252,7 @@ class AbstractFileStore(ABC):
         return os.path.abspath(mkdtemp(dir=self.localTempDir))
 
     def getLocalTempFile(
-        self, suffix: Optional[str] = None, prefix: Optional[str] = None
+        self, suffix: str | None = None, prefix: str | None = None
     ) -> str:
         """
         Get a new local temporary file that will persist for the duration of the job.
@@ -278,7 +276,7 @@ class AbstractFileStore(ABC):
         return os.path.abspath(tmpFile)
 
     def getLocalTempFileName(
-        self, suffix: Optional[str] = None, prefix: Optional[str] = None
+        self, suffix: str | None = None, prefix: str | None = None
     ) -> str:
         """
         Get a valid name for a new local file. Don't actually create a file at the path.
@@ -330,9 +328,9 @@ class AbstractFileStore(ABC):
     def writeGlobalFileStream(
         self,
         cleanup: bool = False,
-        basename: Optional[str] = None,
-        encoding: Optional[str] = None,
-        errors: Optional[str] = None,
+        basename: str | None = None,
+        encoding: str | None = None,
+        errors: str | None = None,
     ) -> Iterator[tuple[WriteWatchingStream, FileID]]:
         """
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
@@ -423,7 +421,7 @@ class AbstractFileStore(ABC):
                     logger.log(log_level, "Streamed file '%s'", *item)
 
     def logAccess(
-        self, fileStoreID: Union[FileID, str], destination: Union[str, None] = None
+        self, fileStoreID: FileID | str, destination: str | None = None
     ) -> None:
         """
         Record that the given file was read by the job.
@@ -445,7 +443,7 @@ class AbstractFileStore(ABC):
     def readGlobalFile(
         self,
         fileStoreID: str,
-        userPath: Optional[str] = None,
+        userPath: str | None = None,
         cache: bool = True,
         mutable: bool = False,
         symlink: bool = False,
@@ -486,21 +484,21 @@ class AbstractFileStore(ABC):
         self,
         fileStoreID: str,
         encoding: Literal[None] = None,
-        errors: Optional[str] = None,
+        errors: str | None = None,
     ) -> ContextManager[IO[bytes]]: ...
 
     @overload
     def readGlobalFileStream(
-        self, fileStoreID: str, encoding: str, errors: Optional[str] = None
+        self, fileStoreID: str, encoding: str, errors: str | None = None
     ) -> ContextManager[IO[str]]: ...
 
     @abstractmethod
     def readGlobalFileStream(
         self,
         fileStoreID: str,
-        encoding: Optional[str] = None,
-        errors: Optional[str] = None,
-    ) -> ContextManager[Union[IO[bytes], IO[str]]]:
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> ContextManager[IO[bytes] | IO[str]]:
         """
         Read a stream from the job store; similar to readGlobalFile.
 
@@ -519,7 +517,7 @@ class AbstractFileStore(ABC):
         """
         raise NotImplementedError()
 
-    def getGlobalFileSize(self, fileStoreID: Union[FileID, str]) -> int:
+    def getGlobalFileSize(self, fileStoreID: FileID | str) -> int:
         """
         Get the size of the file pointed to by the given ID, in bytes.
 
@@ -547,7 +545,7 @@ class AbstractFileStore(ABC):
         return cast(int, size)
 
     @abstractmethod
-    def deleteLocalFile(self, fileStoreID: Union[FileID, str]) -> None:
+    def deleteLocalFile(self, fileStoreID: FileID | str) -> None:
         """
         Delete local copies of files associated with the provided job store ID.
 
@@ -565,7 +563,7 @@ class AbstractFileStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def deleteGlobalFile(self, fileStoreID: Union[FileID, str]) -> None:
+    def deleteGlobalFile(self, fileStoreID: FileID | str) -> None:
         """
         Delete local files and then permanently deletes them from the job store.
 
@@ -580,13 +578,13 @@ class AbstractFileStore(ABC):
     # and the job store.
     @deprecated(new_function_name="import_file")
     def importFile(
-        self, srcUrl: str, sharedFileName: Optional[str] = None
-    ) -> Optional[FileID]:
+        self, srcUrl: str, sharedFileName: str | None = None
+    ) -> FileID | None:
         return self.import_file(srcUrl, sharedFileName)
 
     def import_file(
-        self, src_uri: str, shared_file_name: Optional[str] = None
-    ) -> Optional[FileID]:
+        self, src_uri: str, shared_file_name: str | None = None
+    ) -> FileID | None:
         return self.jobStore.import_file(src_uri, shared_file_name=shared_file_name)
 
     @deprecated(new_function_name="export_file")
@@ -625,7 +623,7 @@ class AbstractFileStore(ABC):
         @classmethod
         @abstractmethod
         @contextmanager
-        def open(cls, outer: Optional[Any] = None) -> Iterator[Any]:
+        def open(cls, outer: Any | None = None) -> Iterator[Any]:
             """
             This is a context manager that state file and reads it into an object that is returned
             to the user in the yield.

@@ -13,12 +13,13 @@
 # limitations under the License.
 import logging
 import os
-from pathlib import Path
 import signal
 import time
-from typing import Optional
 import uuid
+from pathlib import Path
 from threading import Thread
+
+import pytest
 
 from docker.errors import ContainerError  # type: ignore[import-not-found]
 from toil.common import Toil
@@ -32,9 +33,8 @@ from toil.lib.docker import (
     containerIsRunning,
     dockerKill,
 )
-from toil.test import pneeds_docker as needs_docker, pslow as slow
-
-import pytest
+from toil.test import pneeds_docker as needs_docker
+from toil.test import pslow as slow
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class TestDocker:
         caching: bool = False,
         detached: bool = True,
         rm: bool = True,
-        deferParam: Optional[int] = None,
+        deferParam: int | None = None,
     ) -> None:
         """
         Run the test container that creates a file in the work dir, and sleeps
@@ -376,9 +376,9 @@ def _testDockerCleanFn(
     job: Job,
     working_dir: Path,
     detached: bool = True,
-    rm: Optional[bool] = None,
-    deferParam: Optional[int] = None,
-    containerName: Optional[str] = None,
+    rm: bool | None = None,
+    deferParam: int | None = None,
+    containerName: str | None = None,
 ) -> None:
     """
     Test function for test docker_clean.  Runs a container with given flags and

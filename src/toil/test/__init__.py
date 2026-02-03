@@ -35,7 +35,8 @@ from pathlib import Path
 from shutil import which
 from tempfile import mkstemp
 from textwrap import dedent
-from typing import Any, Callable, Literal, Optional, TypeVar, Union, cast
+from typing import Any, Literal, Optional, TypeVar, Union, cast
+from collections.abc import Callable
 from unittest.util import strclass
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
@@ -59,6 +60,7 @@ except ImportError:
 
     class ProxyConnectionError(BaseException):  # type: ignore[no-redef]
         ...
+
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +102,7 @@ class ToilTest(unittest.TestCase):
     """
 
     _rootpath: Path
-    _tempBaseDir: Optional[str] = None
+    _tempBaseDir: str | None = None
     _tempDirs: list[str] = []
 
     def setup_method(self, method: Any) -> None:
@@ -179,11 +181,11 @@ class ToilTest(unittest.TestCase):
         assert region
         return region.group(1)
 
-    def _createTempDir(self, purpose: Optional[str] = None) -> str:
+    def _createTempDir(self, purpose: str | None = None) -> str:
         return self._createTempDirEx(self._testMethodName, purpose)
 
     @classmethod
-    def _createTempDirEx(cls, *names: Optional[str]) -> str:
+    def _createTempDirEx(cls, *names: str | None) -> str:
         classname = strclass(cls)
         if classname.startswith("toil.test."):
             classname = classname[len("toil.test.") :]
@@ -207,7 +209,7 @@ class ToilTest(unittest.TestCase):
         return path
 
     @classmethod
-    def _run(cls, command: str, *args: str, **kwargs: Any) -> Optional[str]:
+    def _run(cls, command: str, *args: str, **kwargs: Any) -> str | None:
         """
         Run a command.
 
@@ -265,7 +267,7 @@ else:
         return cast(MT, getattr(pytest_mark, name)(test_item))
 
 
-def get_temp_file(suffix: str = "", rootDir: Optional[str] = None) -> str:
+def get_temp_file(suffix: str = "", rootDir: str | None = None) -> str:
     """Return a string representing a temporary file, that must be manually deleted."""
     if rootDir is None:
         handle, tmp_file = mkstemp(suffix)
@@ -282,7 +284,7 @@ def get_temp_file(suffix: str = "", rootDir: Optional[str] = None) -> str:
         return tmp_file
 
 
-def needs_env_var(var_name: str, comment: Optional[str] = None) -> Callable[[MT], MT]:
+def needs_env_var(var_name: str, comment: str | None = None) -> Callable[[MT], MT]:
     """
     Use as a decorator before test classes or methods to run only if the given
     environment variable is set.
@@ -369,9 +371,7 @@ def needs_aws_s3(test_item: MT) -> MT:
             test_item
         )
     except ProxyConnectionError as e:
-        return unittest.skip(f"Proxy error: {e}, skipping this test.")(
-            test_item
-        )
+        return unittest.skip(f"Proxy error: {e}, skipping this test.")(test_item)
     from toil.lib.aws import running_on_ec2
 
     if not (
@@ -569,6 +569,7 @@ def needs_mesos(test_item: MT) -> MT:
         )(test_item)
     try:
         import psutil  # noqa
+
         # If pymesos is installed, because it isn't typed, mypy sees an
         # import-untyped error here.
         #
@@ -592,6 +593,9 @@ def _mesos_avail() -> bool:
     try:
         import psutil
         import pymesos
+
+        str(psutil)  # to prevent removal of this import
+        str(pymesos)  # to prevent removal of this import
     except ImportError:
         return False
     return True
@@ -793,6 +797,8 @@ def needs_cwl(test_item: MT) -> MT:
 def _cwl_available() -> bool:
     try:
         import cwltool
+
+        str(cwltool)  # to prevent removal of this import
     except ImportError:
         return False
     return True
@@ -1038,7 +1044,7 @@ def timeLimit(seconds: int) -> Generator[None, None, None]:
 
 def make_tests(
     generalMethod: Callable[[Any], Any],
-    targetClass: Optional[Callable[[Any], Any]],
+    targetClass: Callable[[Any], Any] | None,
     **kwargs: Any,
 ) -> None:
     """
@@ -1185,7 +1191,7 @@ class ApplianceTestSupport(ToilTest):
 
     @contextmanager
     def _applianceCluster(
-        self, mounts: dict[str, str], numCores: Optional[int] = None
+        self, mounts: dict[str, str], numCores: int | None = None
     ) -> Generator[
         tuple["ApplianceTestSupport.LeaderThread", "ApplianceTestSupport.WorkerThread"],
         None,
@@ -1244,22 +1250,25 @@ class ApplianceTestSupport(ToilTest):
             self.mounts = mounts
             self.cleanMounts = cleanMounts
             self.containerName = str(uuid.uuid4())
-            self.popen: Optional[subprocess.Popen[bytes]] = None
+            self.popen: subprocess.Popen[bytes] | None = None
 
         def __enter__(self) -> Self:
             with self.lock:
                 image = applianceSelf()
                 # Omitting --rm, it's unreliable, see https://github.com/docker/docker/issues/16575
-                args = [
-                    "docker",
-                    "run",
-                    f"--entrypoint={self._entryPoint()}",
-                    "--net=host",
-                    "-i",
-                    f"--name={self.containerName}"] + \
-                    ["--volume=%s:%s" % mount for mount in self.mounts.items()] + \
-                    [image] + \
-                    self._containerCommand()
+                args = (
+                    [
+                        "docker",
+                        "run",
+                        f"--entrypoint={self._entryPoint()}",
+                        "--net=host",
+                        "-i",
+                        f"--name={self.containerName}",
+                    ]
+                    + ["--volume=%s:%s" % mount for mount in self.mounts.items()]
+                    + [image]
+                    + self._containerCommand()
+                )
                 logger.info("Running %r", args)
                 self.popen = subprocess.Popen(args)
             self.start()
@@ -1347,7 +1356,7 @@ class ApplianceTestSupport(ToilTest):
             self.runOnAppliance("tee", path, input=contents)
 
         def deployScript(
-            self, path: str, packagePath: str, script: Union[str, Callable[..., Any]]
+            self, path: str, packagePath: str, script: str | Callable[..., Any]
         ) -> None:
             """
             Deploy a Python module on the appliance.

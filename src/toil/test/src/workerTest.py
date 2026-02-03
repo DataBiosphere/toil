@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
 
 from toil.common import Config
 from toil.job import CheckpointJobDescription, JobDescription
@@ -42,7 +41,7 @@ class WorkerTests(ToilTest):
             disk,
             preemptible: bool = True,
             checkpoint: bool = False,
-            local: Optional[bool] = None,
+            local: bool | None = None,
         ):
             """
             Create a JobDescription with no command (representing a Job that

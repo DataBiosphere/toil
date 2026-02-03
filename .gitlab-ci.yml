@@ -88,21 +88,21 @@ lint:
     # make diff_pydocstyle_report
 
 # We make sure to also lint with our oldest supported Python version on every PR.
-py39_lint:
+py310_lint:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
   cache:
-    key: cache-python3.9
+    key: cache-python3.10
     paths:
       - .cache/pip
       - .mypy_cache
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all dependencies (except htcondor)"
-    python3.9 -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all]
-    python3.9 -m pip freeze
-    python3.9 --version
+    python3.10 -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all]
+    python3.10 -m pip freeze
+    python3.10 --version
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:mypy\r\e[0KCheck the Python types with mypy"
     make mypy
@@ -118,7 +118,7 @@ cwl_dependency_is_stand_alone:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
   cache:
-    key: cache-$MAIN_PYTHON_PKG
+    key: cache-$MAIN_PYTHON_PKG-cwl
     paths:
       - .cache/pip
   script: |
@@ -135,7 +135,7 @@ wdl_dependency_is_stand_alone:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
   cache:
-    key: cache-$MAIN_PYTHON_PKG
+    key: cache-$MAIN_PYTHON_PKG-wdl
     paths:
       - .cache/pip
   script: |
@@ -166,52 +166,6 @@ quick_test_offline:
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the offline tests"
     # Make sure not to run the doctests here because we didn't install all possible extras
     TOIL_TEST_QUICK=True make test_offline tests=src/toil/test threads="${TEST_THREADS}"
-    echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
-
-py39_appliance_build:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_TAG
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
-    - if: $CI_COMMIT_BRANCH =~ /.*3\.9.*/
-  stage: basic_tests
-  cache:
-    key: cache-python3.9
-    paths:
-      - .cache/pip
-  script: |
-    pwd
-    echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, including htcondor"
-    python3.9 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && pip install -U build && make prepare && pip install pycparser && make develop extras=[all,htcondor]
-    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
-    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
-    echo -e "\e[0Ksection_start:`date +%s`:docker\r\e[0KBuild a source distribution and then build the docker containers"
-    python setup_gitlab_docker.py
-    make push_docker
-    echo -e "\e[0Ksection_end:`date +%s`:docker\r\e[0K"
-
-py39_main:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_TAG
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
-    - if: $CI_COMMIT_BRANCH =~ /.*3\.9.*/
-  stage: basic_tests
-  cache:
-    key: cache-python3.9
-    paths:
-      - .cache/pip
-  script: |
-    pwd
-    echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, including htcondor"
-    python3.9 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all,htcondor]
-    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
-    echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
-    make doctest threads="${TEST_THREADS}"
-    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
-    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 py310_appliance_build:
@@ -382,6 +336,43 @@ py313_main:
     # todo: htcondor is not out for python 3.13 yet, we don't actively test htcondor batchsystems but should still test an htcondor install
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, except htcondor"
     python3.13 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.13 && pip install -U pip wheel && make prepare && make develop extras=[all]
+    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
+    echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
+    make doctest threads="${TEST_THREADS}"
+    make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils src/toil/test/server"
+    TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests="src/toil/test/lib"
+    echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
+
+py314_appliance_build:
+  stage: basic_tests
+  cache:
+    key: cache-python3.14
+    paths:
+      - .cache/pip
+  script: |
+    pwd
+    echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, including htcondor"
+    python3.14 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.14 &&  pip install -U pip wheel && pip install -U build && make prepare && pip install pycparser && make develop extras=[all]
+    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
+    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
+    echo -e "\e[0Ksection_start:`date +%s`:docker\r\e[0KBuild a source distribution and then build the docker containers"
+    python setup_gitlab_docker.py
+    make push_docker
+    echo -e "\e[0Ksection_end:`date +%s`:docker\r\e[0K"
+
+py314_main:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
+  stage: basic_tests
+  cache:
+    key: cache-python3.14
+    paths:
+      - .cache/pip
+  script: |
+    pwd
+    # todo: htcondor is not out for python 3.14 yet, we don't actively test htcondor batchsystems but should still test an htcondor install
+    echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, except htcondor"
+    python3.14 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.14 && pip install -U pip wheel && make prepare && make develop extras=[all]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests"
     make doctest threads="${TEST_THREADS}"
@@ -782,7 +773,7 @@ cactus_integration:
     paths:
       - .cache/pip
   script:
-    - export CACTUS_COMMIT_SHA=03295e9af99e2e9168ccd02e78a9f4c0c8dcd490
+    - export CACTUS_COMMIT_SHA=b51ff106fa8510d33b09551d338ace48b5c5fa5a
     - set -e
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit

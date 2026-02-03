@@ -1,7 +1,7 @@
+import logging
 import unittest
 from uuid import uuid4
 
-import logging
 import pytest
 
 from toil.provisioners import cluster_factory
@@ -12,8 +12,8 @@ from toil.test.wdl.wdltoil_test import (
     WDL_CONFORMANCE_TEST_REPO,
 )
 
-
 logger = logging.getLogger(__name__)
+
 
 @integrative
 @slow

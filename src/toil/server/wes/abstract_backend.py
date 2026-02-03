@@ -4,7 +4,8 @@ import json
 import logging
 import os
 from abc import abstractmethod
-from typing import Any, Callable, Optional, Union
+from collections.abc import Callable
+from typing import Any, Union
 from urllib.parse import urldefrag
 
 import connexion  # type: ignore
@@ -27,8 +28,8 @@ class VersionNotImplementedException(Exception):
     def __init__(
         self,
         wf_type: str,
-        version: Optional[str] = None,
-        supported_versions: Optional[list[str]] = None,
+        version: str | None = None,
+        supported_versions: list[str] | None = None,
     ) -> None:
         if version:
             message = (
@@ -159,7 +160,7 @@ class WESBackend:
 
     @abstractmethod
     def list_runs(
-        self, page_size: Optional[int] = None, page_token: Optional[str] = None
+        self, page_size: int | None = None, page_token: str | None = None
     ) -> dict[str, Any]:
         """
         List the workflow runs.
@@ -207,7 +208,7 @@ class WESBackend:
         raise NotImplementedError
 
     @staticmethod
-    def log_for_run(run_id: Optional[str], message: str) -> None:
+    def log_for_run(run_id: str | None, message: str) -> None:
         if run_id:
             logging.info("Workflow %s: %s", run_id, message)
         else:
@@ -224,7 +225,7 @@ class WESBackend:
         )
 
     def collect_attachments(
-        self, args: dict[str, Any], run_id: Optional[str], temp_dir: Optional[str]
+        self, args: dict[str, Any], run_id: str | None, temp_dir: str | None
     ) -> tuple[str, dict[str, Any]]:
         """
         Collect attachments from the current request by staging uploaded files
@@ -240,7 +241,7 @@ class WESBackend:
         has_attachments = False
         for k, v in args.items():
             if k == "workflow_attachment":
-                for file in (v or []):
+                for file in v or []:
                     dest = os.path.join(temp_dir, self.secure_path(file.filename))
                     if not os.path.isdir(os.path.dirname(dest)):
                         os.makedirs(os.path.dirname(dest))
@@ -251,7 +252,7 @@ class WESBackend:
                     file.save(dest)
                     has_attachments = True
                     body["workflow_attachment"] = (
-                            "file://%s" % temp_dir
+                        "file://%s" % temp_dir
                     )  # Reference to temp working dir.
             elif k in ("workflow_params", "tags", "workflow_engine_parameters"):
                 if v is not None:

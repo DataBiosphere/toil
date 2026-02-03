@@ -20,7 +20,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
-from typing import Any, Optional, Union
+from typing import Any
 from urllib.parse import urldefrag
 
 from celery.exceptions import SoftTimeLimitExceeded  # type: ignore
@@ -143,7 +143,7 @@ class ToilWorkflowRunner:
         return dest
 
     def sort_options(
-        self, workflow_engine_parameters: Optional[dict[str, Optional[str]]] = None
+        self, workflow_engine_parameters: dict[str, str | None] | None = None
     ) -> list[str]:
         """
         Sort the command line arguments in the order that can be recognized by
@@ -316,9 +316,7 @@ class ToilWorkflowRunner:
 
         return command_args
 
-    def call_cmd(
-        self, cmd: Union[list[str], str], cwd: str
-    ) -> "subprocess.Popen[bytes]":
+    def call_cmd(self, cmd: list[str] | str, cwd: str) -> "subprocess.Popen[bytes]":
         """
         Calls a command with Popen. Writes stdout, stderr, and the command to
         separate files.

@@ -31,29 +31,24 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from queue import Empty, Queue
 from threading import Condition, Event, RLock, Thread
-from typing import Any, Callable, Literal, Optional, TypeVar, Union, cast, overload
+from typing import Any, Literal, ParamSpec, TypeVar, Union, cast, overload
 
 from toil.lib.conversions import opt_strtobool
 from toil.lib.throttle import LocalThrottle
-
-if sys.version_info < (3, 10):
-    from typing_extensions import ParamSpec
-else:
-    from typing import ParamSpec
 
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
 else:
     from typing import NotRequired
 
+import json
 from typing import Protocol, TypedDict, runtime_checkable
 
-import urllib3
 import ruamel.yaml as yaml
-import json
+import urllib3
 
 # The Right Way to use the Kubernetes module is to `import kubernetes` and then you get all your stuff as like ApiClient. But this doesn't work for the stubs: the stubs seem to only support importing things from the internal modules in `kubernetes` where they are actually defined. See for example <https://github.com/MaterializeInc/kubernetes-stubs/issues/9 and <https://github.com/MaterializeInc/kubernetes-stubs/issues/10>. So we just import all the things we use into our global namespace here.
 from kubernetes.client import (
@@ -74,13 +69,13 @@ from kubernetes.client import (
     V1NodeSelectorTerm,
     V1ObjectMeta,
     V1Pod,
+    V1PodSecurityContext,
     V1PodSpec,
     V1PodTemplateSpec,
     V1PreferredSchedulingTerm,
     V1ResourceRequirements,
     V1SecretVolumeSource,
     V1SecurityContext,
-    V1PodSecurityContext,
     V1Toleration,
     V1Volume,
     V1VolumeMount,
@@ -114,7 +109,7 @@ from toil.options.common import SYS_MAX_SIZE
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
-retryable_kubernetes_errors: list[Union[type[Exception], ErrorCondition]] = [
+retryable_kubernetes_errors: list[type[Exception] | ErrorCondition] = [
     urllib3.exceptions.MaxRetryError,
     urllib3.exceptions.ProtocolError,
     ApiException,
@@ -168,7 +163,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         logging.getLogger("requests_oauthlib").setLevel(logging.ERROR)
 
         # This will hold the last time our Kubernetes credentials were refreshed
-        self.credential_time: Optional[datetime.datetime] = None
+        self.credential_time: datetime.datetime | None = None
         # And this will hold our cache of API objects
         self._apis: KubernetesBatchSystem._ApiStorageDict = {}
 
@@ -177,10 +172,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Decide if we are going to mount a Kubernetes host path as the Toil
         # work dir in the workers, for shared caching.
-        self.host_path: Optional[str] = config.kubernetes_host_path
+        self.host_path: str | None = config.kubernetes_host_path
 
         # Get the service account name to use, if any.
-        self.service_account: Optional[str] = config.kubernetes_service_account
+        self.service_account: str | None = config.kubernetes_service_account
 
         # Get how long we should wait for a pod that lands on a node to
         # actually start.
@@ -208,7 +203,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.finished_job_ttl: int = 3600  # seconds
 
         # Here is where we will store the user script resource object if we get one.
-        self.user_script: Optional[Resource] = None
+        self.user_script: Resource | None = None
 
         # Ge the image to deploy from Toil's configuration
         self.docker_image: str = applianceSelf()
@@ -234,9 +229,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.environment["TMPDIR"] = "/var/tmp"
 
         # Get the name of the AWS secret, if any, to mount in containers.
-        self.aws_secret_name: Optional[str] = os.environ.get(
-            "TOIL_AWS_SECRET_NAME", None
-        )
+        self.aws_secret_name: str | None = os.environ.get("TOIL_AWS_SECRET_NAME", None)
 
         # Set this to True to enable the experimental wait-for-job-update code
         self.enable_watching: bool = os.environ.get("KUBE_WATCH_ENABLED", False)
@@ -323,7 +316,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         drop_boring(root_dict)
         s = io.StringIO()
-        YAML = yaml.YAML(typ='safe')
+        YAML = yaml.YAML(typ="safe")
         YAML.dump(root_dict, s)
         return s.getvalue()
 
@@ -332,7 +325,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self,
         kind: Literal["batch"],
         max_age_seconds: float = 5 * 60,
-        errors: Optional[list[int]] = None,
+        errors: list[int] | None = None,
     ) -> BatchV1Api: ...
 
     @overload
@@ -340,7 +333,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self,
         kind: Literal["core"],
         max_age_seconds: float = 5 * 60,
-        errors: Optional[list[int]] = None,
+        errors: list[int] | None = None,
     ) -> CoreV1Api: ...
 
     @overload
@@ -348,7 +341,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self,
         kind: Literal["customObjects"],
         max_age_seconds: float = 5 * 60,
-        errors: Optional[list[int]] = None,
+        errors: list[int] | None = None,
     ) -> CustomObjectsApi: ...
 
     @overload
@@ -358,15 +351,15 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     def _api(
         self,
-        kind: Union[
-            Literal["batch"],
-            Literal["core"],
-            Literal["customObjects"],
-            Literal["namespace"],
-        ],
+        kind: (
+            Literal["batch"]
+            | Literal["core"]
+            | Literal["customObjects"]
+            | Literal["namespace"]
+        ),
         max_age_seconds: float = 5 * 60,
-        errors: Optional[list[int]] = None,
-    ) -> Union[BatchV1Api, CoreV1Api, CustomObjectsApi, str]:
+        errors: list[int] | None = None,
+    ) -> BatchV1Api | CoreV1Api | CustomObjectsApi | str:
         """
         The Kubernetes module isn't clever enough to renew its credentials when
         they are about to expire. See
@@ -545,7 +538,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         def __getitem__(self, name: Literal["raw_object"]) -> dict[str, Any]: ...
 
         def __getitem__(
-            self, name: Union[Literal["type"], Literal["object"], Literal["raw_object"]]
+            self, name: Literal["type"] | Literal["object"] | Literal["raw_object"]
         ) -> Any: ...
 
     P = ParamSpec("P")
@@ -773,7 +766,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             if preferred_scheduling_terms or required_selector_requirements:
                 # We prefer or require something about labels.
 
-                requirements_selector: Optional[V1NodeSelector] = None
+                requirements_selector: V1NodeSelector | None = None
                 if required_selector_requirements:
                     # Make a term that says we match all the requirements
                     requirements_term = V1NodeSelectorTerm(
@@ -817,7 +810,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
     class FakeResponse:
         data: str
 
-    T = TypeVar('T')
+    T = TypeVar("T")
+
     def _load_kubernetes_object(self, file: str, cls: type[T]) -> T:
         """
         Deserialize a YAML representation into a Kubernetes object
@@ -825,20 +819,19 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         :param cls: Kubernetes API model type for deserialized object
         :return: Deserialized object
         """
-        YAML = yaml.YAML(typ='safe')
-        object_def = YAML.load(open('container.yaml').read())
+        YAML = yaml.YAML(typ="safe")
+        object_def = YAML.load(open("container.yaml").read())
         # The kubernetes API does not have an actual deserializer, so this is a workaround
         # See: https://github.com/kubernetes-client/python/issues/977
         faked_response = self.FakeResponse()
         faked_response.data = json.dumps(object_def)
         return ApiClient().deserialize(faked_response, cls)
 
-
     def _create_pod_spec(
         self,
         command: str,
         job_desc: JobDescription,
-        job_environment: Optional[dict[str, str]] = None,
+        job_environment: dict[str, str] | None = None,
     ) -> V1PodSpec:
         """
         Make the specification for a pod that can execute the given job.
@@ -978,7 +971,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         )
 
         if self.config.kubernetes_security_context:
-            container.security_context = self._load_kubernetes_object(self.config.kubernetes_security_context, V1SecurityContext)
+            container.security_context = self._load_kubernetes_object(
+                self.config.kubernetes_security_context, V1SecurityContext
+            )
 
         # In case security context rules are not allowed to be set, we only apply
         # a security context at all if we need to turn on privileged mode.
@@ -993,7 +988,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         )
 
         if self.config.kubernetes_pod_security_context:
-            pod_spec.security_context = self._load_kubernetes_object(self.config.kubernetes_pod_security_context, V1PodSecurityContext)
+            pod_spec.security_context = self._load_kubernetes_object(
+                self.config.kubernetes_pod_security_context, V1PodSecurityContext
+            )
 
         # Tell the spec where to land
         placement.apply(pod_spec)
@@ -1129,7 +1126,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self,
         command: str,
         job_desc: JobDescription,
-        job_environment: Optional[dict[str, str]] = None,
+        job_environment: dict[str, str] | None = None,
     ) -> int:
         # Try the job as local
         localID = self.handleLocalJob(command, job_desc)
@@ -1255,7 +1252,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # There isn't one. We got everything.
                 break
 
-    def _getPodForJob(self, jobObject: V1Job) -> Optional[V1Pod]:
+    def _getPodForJob(self, jobObject: V1Job) -> V1Pod | None:
         """
         Get the pod that belongs to the given job, or None if the job's pod is
         missing. The pod knows about things like the job's exit code.
@@ -1421,8 +1418,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
     def _isPodStuckWaiting(
         self,
         pod_object: V1Pod,
-        reason: Optional[str] = None,
-        timeout: Optional[float] = None,
+        reason: str | None = None,
+        timeout: float | None = None,
     ) -> bool:
         """
         Return True if the pod looks to be in a waiting state, and false otherwise.
@@ -1477,7 +1474,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Kubernetes "Terminating" is the same as having the deletion_timestamp
         # set in the metadata of the object.
 
-        deletion_timestamp: Optional[datetime.datetime] = getattr(
+        deletion_timestamp: datetime.datetime | None = getattr(
             getattr(kube_thing, "metadata", None), "deletion_timestamp", None
         )
         # If the deletion timestamp is set to anything, it is in the process of
@@ -1498,7 +1495,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         assert jobObject.metadata.name is not None
         return int(jobObject.metadata.name[len(self.job_prefix) :])
 
-    def getUpdatedBatchJob(self, maxWait: float) -> Optional[UpdatedBatchJobInfo]:
+    def getUpdatedBatchJob(self, maxWait: float) -> UpdatedBatchJobInfo | None:
 
         entry = datetime.datetime.now()
 
@@ -1541,7 +1538,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 succeeded_pods = jobObject.status.succeeded or 0
                 failed_pods = jobObject.status.failed or 0
                 # Fetch out the condition object that has info about how the job is going.
-                condition: Optional[V1JobCondition] = None
+                condition: V1JobCondition | None = None
                 if (
                     jobObject.status.conditions is not None
                     and len(jobObject.status.conditions) > 0
@@ -1650,7 +1647,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # When we get here, either we found something or we ran out of time
             return result
 
-    def _getUpdatedBatchJobImmediately(self) -> Optional[UpdatedBatchJobInfo]:
+    def _getUpdatedBatchJobImmediately(self) -> UpdatedBatchJobInfo | None:
         """
         Return None if no updated (completed or failed) batch job is currently
         available, and jobID, exitCode, runtime if such a job can be found.
@@ -2004,7 +2001,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         )
 
     def _get_start_time(
-        self, pod: Optional[V1Pod] = None, job: Optional[V1Job] = None
+        self, pod: V1Pod | None = None, job: V1Job | None = None
     ) -> datetime.datetime:
         """
         Get an actual or estimated start time for a pod.
@@ -2120,13 +2117,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         enforced.
         """
 
-        kubernetes_host_path: Optional[str]
+        kubernetes_host_path: str | None
         kubernetes_owner: str
-        kubernetes_service_account: Optional[str]
+        kubernetes_service_account: str | None
         kubernetes_pod_timeout: float
 
     @classmethod
-    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+    def add_options(cls, parser: ArgumentParser | _ArgumentGroup) -> None:
         parser.add_argument(
             "--kubernetesHostPath",
             dest="kubernetes_host_path",
@@ -2170,18 +2167,23 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             "privileged operations, such as FUSE. On Toil-managed clusters with --enableFuse, "
             "this is set to True. (default: %(default)s)",
         )
-        parser.add_argument("--kubernetesPodSecurityContext",
-                            dest='kubernetes_pod_security_context',
-                            type=str,
-                            env_var="TOIL_KUBERNETES_POD_SECURITY_CONTEXT",
-                            default=None,
-                            help="Path to a YAML defining a pod security context to apply to all pods.")
-        parser.add_argument("--kubernetesSecurityContext",
-                            dest='kubernetes_security_context',
-                            type=str,
-                            env_var="TOIL_KUBERNETES_SECURITY_CONTEXT",
-                            default=None,
-                            help="Path to a YAML defining a security context to apply to all containers.")
+        parser.add_argument(
+            "--kubernetesPodSecurityContext",
+            dest="kubernetes_pod_security_context",
+            type=str,
+            env_var="TOIL_KUBERNETES_POD_SECURITY_CONTEXT",
+            default=None,
+            help="Path to a YAML defining a pod security context to apply to all pods.",
+        )
+        parser.add_argument(
+            "--kubernetesSecurityContext",
+            dest="kubernetes_security_context",
+            type=str,
+            env_var="TOIL_KUBERNETES_SECURITY_CONTEXT",
+            default=None,
+            help="Path to a YAML defining a security context to apply to all containers.",
+        )
+
     OptionType = TypeVar("OptionType")
 
     @classmethod

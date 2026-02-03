@@ -65,9 +65,7 @@ def down(job, inputFileStoreID, N, path, downCheckpoints, options, memory=sortMe
     length = os.path.getsize(inputFile)
     if length > N:
         # We will subdivide the file
-        RealtimeLogger.critical(
-            "Splitting file: %s of size: %s" % (inputFileStoreID, length)
-        )
+        RealtimeLogger.critical(f"Splitting file: {inputFileStoreID} of size: {length}")
         # Split the file into two copies
         midPoint = getMidPoint(inputFile, 0, length)
         t1 = job.fileStore.getLocalTempFile()
@@ -109,9 +107,7 @@ def down(job, inputFileStoreID, N, path, downCheckpoints, options, memory=sortMe
         ).rv()
     else:
         # We can sort this bit of the file
-        RealtimeLogger.critical(
-            "Sorting file: %s of size: %s" % (inputFileStoreID, length)
-        )
+        RealtimeLogger.critical(f"Sorting file: {inputFileStoreID} of size: {length}")
         # Sort the copy and write back to the fileStore
         shutil.copyfile(inputFile, inputFile + ".sort")
         sort(inputFile + ".sort")

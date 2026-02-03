@@ -67,9 +67,9 @@ import os
 import queue
 import tempfile
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import IO, Any, Callable, NamedTuple, Optional, TypeVar, TYPE_CHECKING, cast
+from typing import IO, Any, NamedTuple, Optional, TypeVar, cast
 
 from pubsub.core import Publisher
 from pubsub.core.listener import Listener
@@ -282,7 +282,7 @@ def bytes_to_message(message_type: type[MessageType], data: bytes) -> MessageTyp
     # Get a mapping from field name to type in the named tuple.
     # We need to check a couple different fields because this moved in a recent
     # Python 3 release.
-    field_to_type: Optional[dict[str, type]] = cast(
+    field_to_type: dict[str, type] | None = cast(
         Optional[dict[str, type]],
         getattr(
             message_type, "__annotations__", getattr(message_type, "_field_types", None)
@@ -369,7 +369,7 @@ class MessageBus:
             # We are supposed to receive messages
             while True:
                 # Until we can't get a message, get one
-                message: Optional[Any] = None
+                message: Any | None = None
                 try:
                     message = self._queue.get_nowait()
                 except queue.Empty:
@@ -528,7 +528,7 @@ class MessageBusClient:
         """
 
         # We might be given a reference to the message bus
-        self._bus: Optional[MessageBus] = None
+        self._bus: MessageBus | None = None
 
     def _set_bus(self, bus: MessageBus) -> None:
         """
@@ -775,43 +775,45 @@ def replay_message_bus(path: FileDescriptorOrPath) -> dict[str, JobStatus]:
                 # And for each of them
                 logger.debug("Got message from workflow: %s", event)
 
-                if isinstance(event, JobUpdatedMessage):
-                    # Apply the latest return code from the job with this ID.
-                    job_statuses[event.job_id].exit_code = event.result_status
-                elif isinstance(event, JobIssuedMessage):
-                    job_statuses[event.job_id].job_store_id = event.job_id
-                    job_statuses[event.job_id].name = event.job_type
-                    job_statuses[event.job_id].toil_batch_id = event.toil_batch_id
-                    job_statuses[event.job_id].exit_code = -1
-                    batch_to_job_id[event.toil_batch_id] = event.job_id
-                elif isinstance(event, JobCompletedMessage):
-                    job_statuses[event.job_id].name = event.job_type
-                    job_statuses[event.job_id].exit_code = event.exit_code
-                elif isinstance(event, JobFailedMessage):
-                    job_statuses[event.job_id].name = event.job_type
-                    if job_statuses[event.job_id].exit_code == 0:
-                        # Record the failure if we never got a failed exit code.
-                        job_statuses[event.job_id].exit_code = 1
-                elif isinstance(event, JobAnnotationMessage):
-                    # Remember the last value of any annotation that is set
-                    job_statuses[event.job_id].annotations[
-                        event.annotation_name
-                    ] = event.annotation_value
-                elif isinstance(event, ExternalBatchIdMessage):
-                    if event.toil_batch_id in batch_to_job_id:
+                match event:
+                    case JobUpdatedMessage():
+                        # Apply the latest return code from the job with this ID.
+                        job_statuses[event.job_id].exit_code = event.result_status
+                    case JobIssuedMessage():
+                        job_statuses[event.job_id].job_store_id = event.job_id
+                        job_statuses[event.job_id].name = event.job_type
+                        job_statuses[event.job_id].toil_batch_id = event.toil_batch_id
+                        job_statuses[event.job_id].exit_code = -1
+                        batch_to_job_id[event.toil_batch_id] = event.job_id
+                    case JobCompletedMessage():
+                        job_statuses[event.job_id].name = event.job_type
+                        job_statuses[event.job_id].exit_code = event.exit_code
+                    case JobFailedMessage():
+                        job_statuses[event.job_id].name = event.job_type
+                        if job_statuses[event.job_id].exit_code == 0:
+                            # Record the failure if we never got a failed exit code.
+                            job_statuses[event.job_id].exit_code = 1
+                    case JobAnnotationMessage():
+                        # Remember the last value of any annotation that is set
+                        job_statuses[event.job_id].annotations[
+                            event.annotation_name
+                        ] = event.annotation_value
+                    case ExternalBatchIdMessage() as ebim if (
+                        ebim.toil_batch_id in batch_to_job_id
+                    ):
                         job_statuses[
-                            batch_to_job_id[event.toil_batch_id]
-                        ].external_batch_id = event.external_batch_id
+                            batch_to_job_id[ebim.toil_batch_id]
+                        ].external_batch_id = ebim.external_batch_id
                         job_statuses[
-                            batch_to_job_id[event.toil_batch_id]
-                        ].batch_system = event.batch_system
+                            batch_to_job_id[ebim.toil_batch_id]
+                        ].batch_system = ebim.batch_system
     except FileNotFoundError:
         logger.warning("We were unable to access the file")
 
     return job_statuses
 
 
-def gen_message_bus_path(tmpdir: Optional[str] = None) -> str:
+def gen_message_bus_path(tmpdir: str | None = None) -> str:
     """
     Return a file path in tmp to store the message bus at.
     Calling function is responsible for cleaning the generated file.

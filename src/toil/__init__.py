@@ -16,14 +16,11 @@ import os
 import re
 import socket
 import sys
-from datetime import datetime
-from typing import TYPE_CHECKING, Optional
-
-from toil.lib.web import web_session
+from typing import TYPE_CHECKING
 
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
-from toil.lib.retry import retry as retry
+from toil.lib.web import web_session
 from toil.version import currentCommit
 
 if TYPE_CHECKING:
@@ -32,7 +29,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-def which(cmd, mode=os.F_OK | os.X_OK, path=None) -> Optional[str]:
+def which(cmd, mode=os.F_OK | os.X_OK, path=None) -> str | None:
     """
     Return the path with conforms to the given mode on the Path.
 
@@ -355,11 +352,11 @@ def parseDockerAppliance(appliance: str) -> tuple[str, str, str]:
 def checkDockerSchema(appliance):
     if not appliance:
         raise ImageNotFound("No docker image specified.")
-    elif "://" in appliance:
+    if "://" in appliance:
         raise ImageNotFound(
             "Docker images cannot contain a schema (such as '://'): %s" "" % appliance
         )
-    elif len(appliance) > 256:
+    if len(appliance) > 256:
         raise ImageNotFound(
             "Docker image must be less than 256 chars: %s" "" % appliance
         )
@@ -479,4 +476,3 @@ def logProcessContext(config: "Config") -> None:
 
     log.info("Running Toil version %s on host %s.", version, socket.gethostname())
     log.debug("Configuration: %s", config.__dict__)
-
