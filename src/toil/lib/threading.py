@@ -317,7 +317,7 @@ def cpu_count() -> int:
     if hasattr(proc_info, "cpu_affinity"):
         try:
             logger.debug("CPU affinity available")
-            affinity_size = len(proc_info.cpu_affinity)
+            affinity_size = len(proc_info.cpu_affinity())
             logger.debug("CPU affinity is restricted to %d cores", affinity_size)
         except:
             # We can't actually read this even though it exists.
