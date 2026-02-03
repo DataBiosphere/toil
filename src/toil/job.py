@@ -2476,7 +2476,7 @@ class Job:
         @staticmethod
         def getDefaultArgumentParser(
                 jobstore_as_flag: bool = False,
-                config_option: Optional[str] = None,
+                config_option: str | None = None,
             ) -> ArgParser:
             """
             Get argument parser with added toil workflow options.
@@ -2528,7 +2528,7 @@ class Job:
         def addToilOptions(
             parser: OptionParser | ArgumentParser,
             jobstore_as_flag: bool = False,
-            config_option: Optional[str] = None,
+            config_option: str | None = None,
         ) -> None:
             """
             Adds the default toil options to an :mod:`optparse` or :mod:`argparse`

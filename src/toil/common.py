@@ -755,7 +755,7 @@ def parser_with_common_options(
 def addOptions(
     parser: ArgumentParser,
     jobstore_as_flag: bool = False,
-    config_option: Optional[str] = None,
+    config_option: str | None = None,
     cwl: bool = False,
     wdl: bool = False,
 ) -> None:
