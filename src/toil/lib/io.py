@@ -397,6 +397,8 @@ def path_union(first_path: str, second_path: str | None) -> str:
     # Special case: None or empty string shouldn't produce an entry at all.
     if second_path in (None, ""):
         return first_path
+    # Now we know second_path isn't None, but MyPy doesn't
+    assert second_path is not None
     if first_path == "":
         return second_path
 
