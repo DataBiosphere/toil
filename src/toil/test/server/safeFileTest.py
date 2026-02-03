@@ -33,26 +33,12 @@ from unittest.mock import patch
 
 import pytest
 
+from toil.test import needs_server
+
 # Timeout for waiting on synchronization events. Should be long enough to
 # never trigger in normal operation, but short enough to fail fast if
 # something deadlocks.
 SYNC_TIMEOUT = 10.0
-
-
-def _server_available() -> bool:
-    """Check if the server extra is installed."""
-    try:
-        import connexion  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
-
-
-needs_server = pytest.mark.skipif(
-    not _server_available(),
-    reason="Install Toil with the 'server' extra to include this test.",
-)
 
 
 class Checkpoint:
