@@ -365,6 +365,52 @@ def try_path(path: str, min_size: int = 100 * 1024 * 1024) -> str | None:
 
     return path
 
+def path_union(first_path: str, second_path: str | None) -> str:
+    """
+    Union two os.pathsep-separated PATH environment variables.
+
+    Paths appearing in first_path will come first in the result, in the order
+    they appear in first_path.
+
+    Relative order within second_path is preserved, when items aren't being
+    promoted by first_path.
+
+    Note that os.pathsep (generally ':' on *nix) cannot be escaped in PATH per
+    the POSIX standard, so it cannot appear in any of the individual values.
+
+    >>> path_union("/home/username/bin:/usr/bin:/bin", "/usr/bin/games:/bin:/usr/bin")
+    '/home/username/bin:/usr/bin:/bin:/usr/bin/games'
+    >>> path_union("/bin", None)
+    '/bin'
+    >>> path_union("/bin:/usr/bin", "")
+    '/bin:/usr/bin'
+    >>> path_union("", "/bin:/usr/bin")
+    '/bin:/usr/bin'
+    >>> path_union("99 beers", "a lizard")
+    '99 beers:a lizard'
+    >>> # The doctest escaping is weird here but the result has one real
+    >>> # backslash at the end of each of the two path components.
+    >>> path_union("A:B\\:C:D", "D\\:C:B:A")
+    'A:B\\\\:C:D:D\\\\:B'
+    """
+
+    # Special case: None or empty string shouldn't produce an entry at all.
+    if second_path in (None, ""):
+        return first_path
+    if first_path == "":
+        return second_path
+
+    # We want an ordered set here, but not enough to get a dependency. So we
+    # use dict keys.
+    result = {e: None for e in first_path.split(os.pathsep)}
+
+    for old_item in second_path.split(os.pathsep):
+        if old_item not in result:
+            result[old_item] = None
+
+    return os.pathsep.join(result.keys())
+
+
 
 class WriteWatchingStream:
     """
