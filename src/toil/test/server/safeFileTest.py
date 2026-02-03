@@ -33,8 +33,6 @@ from unittest.mock import patch
 
 import pytest
 
-from toil.test import needs_server
-
 # Timeout for waiting on synchronization events. Should be long enough to
 # never trigger in normal operation, but short enough to fail fast if
 # something deadlocks.
@@ -86,6 +84,9 @@ class Checkpoint:
         return self._arrived.is_set()
 
 
+# TODO: SimulatedLock doesn't track which threads hold shared locks.
+# release() will decrement count even if called by a thread that doesn't hold
+# a lock. Should use a set to track shared lock holders.
 class SimulatedLock:
     """
     Simulates flock semantics using threading primitives.
@@ -240,7 +241,10 @@ class FileOperationTracker:
         return file_obj
 
 
-@needs_server
+# TODO: Add tests for AtomicFileCreate path (concurrent new file creation).
+# TODO: The 0.1s timeout waits to verify blocking are effectively sleeps;
+# consider adding a checkpoint before lock acquisition to prove thread is
+# actually blocked waiting for the lock.
 @pytest.mark.timeout(30)
 class TestSafeFileInterleaving:
     """
