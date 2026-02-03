@@ -425,6 +425,34 @@ class TestWDL:
                             os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
                         )
 
+    @needs_singularity_or_docker
+    def test_MD5sum_extended(self, tmp_path: Path, subtests: pytest.Subtests) -> None:
+        """
+        Test if Toil handles the WDL 1.2 extended File value syntax.
+        """
+        with get_data("test/wdl/md5sum/md5sum.1.2.wdl") as wdl:
+            for format_name in ("extended", "extended-string"):
+                # The spec says the value can be an object or a JSON string of an object.
+                with subtests.test(msg=f"{format_name} format"):
+                    with get_data(f"test/wdl/md5sum/md5sum-{format_name}.json") as json_file:
+                        result_json = subprocess.check_output(
+                            self.base_command
+                            + [
+                                str(wdl),
+                                str(json_file),
+                                "-o",
+                                str(tmp_path),
+                                "--logDebug",
+                                "--retryCount=0",
+                            ]
+                        )
+                        result = json.loads(result_json)
+
+                        assert "ga4ghMd5.value" in result
+                        assert isinstance(result["ga4ghMd5.value"], str)
+                        assert os.path.exists(result["ga4ghMd5.value"])
+                        assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
+
     @needs_online
     def test_url_to_file(self, tmp_path: Path) -> None:
         """
