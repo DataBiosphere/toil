@@ -16,10 +16,9 @@ import os
 import random
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, NoReturn, cast
+from typing import Any, Callable, NoReturn, cast
 
 import pytest
-from pytest_subtests import SubTests
 
 from toil.common import Toil
 from toil.exceptions import FailedJobsException
@@ -153,6 +152,63 @@ class TestJob:
             with pytest.raises(FailedJobsException):
                 toil.start(i)
 
+    def testDeadlockDetectionStatic(self) -> None:
+        """
+        Test cycle detection on small example graphs.
+        """
+        # Test 1: Simple 3-node graph with a child cycle: 0 -> 1 -> 2 -> 0
+        childEdges: set[tuple[int, int]] = {(0, 1), (1, 2)}
+        followOnEdges: set[tuple[int, int]] = set()
+        # Valid DAG should pass
+        rootJob = self.makeJobGraph(3, childEdges, followOnEdges, None, False)
+        rootJob.checkJobGraphAcylic()
+        rootJob.checkJobGraphConnected()
+        # Adding edge (2, 0) creates cycle
+        childEdges.add((2, 0))
+        with pytest.raises(JobGraphDeadlockException):
+            self.makeJobGraph(3, childEdges, followOnEdges, None, False).checkJobGraphAcylic()
+
+        # Test 2: Self-loop (0 -> 0)
+        childEdges = {(0, 1), (0, 0)}
+        with pytest.raises(JobGraphDeadlockException):
+            self.makeJobGraph(2, childEdges, followOnEdges, None, False).checkJobGraphAcylic()
+
+        # Test 3: Multiple roots detection (nodes 0 and 2 are both roots)
+        childEdges = {(0, 1), (2, 1)}  # Both 0 and 2 point to 1, neither has incoming edges
+        with pytest.raises(JobGraphDeadlockException):
+            self.makeJobGraph(3, childEdges, followOnEdges, None, False).checkJobGraphConnected()
+
+        # Test 4: Follow-on creating a cycle
+        # Graph: 0 -> 1, with follow-on 1 -> 0
+        childEdges = {(0, 1)}
+        followOnEdges = {(1, 0)}
+        with pytest.raises(JobGraphDeadlockException):
+            self.makeJobGraph(2, childEdges, followOnEdges, None, False).checkJobGraphAcylic()
+
+        # Test 5: Self follow-on
+        childEdges = {(0, 1)}
+        followOnEdges = {(0, 0)}
+        with pytest.raises(JobGraphDeadlockException):
+            self.makeJobGraph(2, childEdges, followOnEdges, None, False).checkJobGraphAcylic()
+
+        # Test 6: Larger graph - 5 nodes in a chain, add back-edge
+        childEdges = {(0, 1), (1, 2), (2, 3), (3, 4)}
+        followOnEdges = set()
+        rootJob = self.makeJobGraph(5, childEdges, followOnEdges, None, False)
+        rootJob.checkJobGraphAcylic()
+        # Add back-edge from 4 to 2
+        childEdges.add((4, 2))
+        with pytest.raises(JobGraphDeadlockException):
+            self.makeJobGraph(5, childEdges, followOnEdges, None, False).checkJobGraphAcylic()
+
+    # We have this marked as xfail but allow it to pass also, to try and
+    # collect failing cases without breaking unrelated PRs.
+    # TODO: In the future, go through the CI logs and find the cases that
+    # manage to fail. No failure was found in many iterations locally.
+    @pytest.mark.xfail(
+        reason="Flaky test - see https://github.com/DataBiosphere/toil/issues/5354",
+        strict=False,
+    )
     def testDeadlockDetection(self) -> None:
         """
         Randomly generate job graphs with various types of cycle in them and
@@ -187,17 +243,31 @@ class TestJob:
             rootJob2 = self.makeJobGraph(
                 nodeNumber + 1, childEdges2, followOnEdges, None, False
             )
-            with pytest.raises(JobGraphDeadlockException):
-                rootJob2.checkJobGraphConnected()
+            self._assertDeadlockDetected(
+                rootJob2.checkJobGraphConnected,
+                "multiple roots",
+                nodeNumber + 1,
+                childEdges2,
+                followOnEdges,
+            )
 
             def checkChildEdgeCycleDetection(fNode: int, tNode: int) -> None:
                 childEdges.add((fNode, tNode))  # Create a cycle
                 adjacencyList[fNode].add(tNode)
-                assert not self.isAcyclic(adjacencyList)
-                with pytest.raises(JobGraphDeadlockException):
-                    self.makeJobGraph(
+                assert not self.isAcyclic(adjacencyList), (
+                    f"isAcyclic incorrectly returned True after adding cycle edge "
+                    f"({fNode}, {tNode}). nodeNumber={nodeNumber}, "
+                    f"childEdges={childEdges}, followOnEdges={followOnEdges}"
+                )
+                self._assertDeadlockDetected(
+                    lambda: self.makeJobGraph(
                         nodeNumber, childEdges, followOnEdges, None
-                    ).checkJobGraphAcylic()
+                    ).checkJobGraphAcylic(),
+                    f"child edge cycle ({fNode}, {tNode})",
+                    nodeNumber,
+                    childEdges,
+                    followOnEdges,
+                )
                 # Remove the edges
                 childEdges.remove((fNode, tNode))
                 adjacencyList[fNode].remove(tNode)
@@ -208,10 +278,15 @@ class TestJob:
 
             def checkFollowOnEdgeCycleDetection(fNode: int, tNode: int) -> None:
                 followOnEdges.add((fNode, tNode))  # Create a cycle
-                with pytest.raises(JobGraphDeadlockException):
-                    self.makeJobGraph(
+                self._assertDeadlockDetected(
+                    lambda: self.makeJobGraph(
                         nodeNumber, childEdges, followOnEdges, None, False
-                    ).checkJobGraphAcylic()
+                    ).checkJobGraphAcylic(),
+                    f"follow-on edge cycle ({fNode}, {tNode})",
+                    nodeNumber,
+                    childEdges,
+                    followOnEdges,
+                )
                 # Remove the edges
                 followOnEdges.remove((fNode, tNode))
                 # Check is now acyclic again
@@ -253,10 +328,33 @@ class TestJob:
             ):
                 checkFollowOnEdgeCycleDetection(fNode, tNode)
 
+    def _assertDeadlockDetected(
+        self,
+        check_fn: Callable[[], None],
+        description: str,
+        nodeNumber: int,
+        childEdges: set[tuple[int, int]],
+        followOnEdges: set[tuple[int, int]],
+    ) -> None:
+        """
+        Assert that check_fn raises JobGraphDeadlockException.
+
+        If it doesn't, provide detailed graph info for reproduction.
+        """
+        try:
+            check_fn()
+        except JobGraphDeadlockException:
+            return  # Expected
+        pytest.fail(
+            f"JobGraphDeadlockException not raised for {description}. "
+            f"Graph info for reproduction: nodeNumber={nodeNumber}, "
+            f"childEdges={repr(childEdges)}, followOnEdges={repr(followOnEdges)}"
+        )
+
     @slow
     @pytest.mark.slow
     def testNewCheckpointIsLeafVertexNonRootCase(
-        self, tmp_path: Path, subtests: SubTests
+        self, tmp_path: Path, subtests: pytest.Subtests
     ) -> None:
         """
         Test for issue #1465: Detection of checkpoint jobs that are not leaf vertices
@@ -283,7 +381,7 @@ class TestJob:
     @slow
     @pytest.mark.slow
     def testNewCheckpointIsLeafVertexRootCase(
-        self, tmp_path: Path, subtests: SubTests
+        self, tmp_path: Path, subtests: pytest.Subtests
     ) -> None:
         """
         Test for issue #1466: Detection of checkpoint jobs that are not leaf vertices
@@ -305,7 +403,7 @@ class TestJob:
     def runNewCheckpointIsLeafVertexTest(
         self,
         tmp_path: Path,
-        subtests: SubTests,
+        subtests: pytest.Subtests,
         createWorkflowFn: Callable[[], tuple[Job, Job]],
     ) -> None:
         """

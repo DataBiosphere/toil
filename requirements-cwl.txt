@@ -1,8 +1,8 @@
-cwltool==3.1.20251031082601
+cwltool==3.1.20260108082145
 schema-salad>=8.4.20230128170514,<9
 galaxy-tool-util<26
 galaxy-util<26
-ruamel.yaml>=0.15,<=0.19
+ruamel.yaml>=0.15,<=0.19.1
 ruamel.yaml.clib>=0.2.6
 networkx!=2.8.1,<4
 CacheControl[filecache]
