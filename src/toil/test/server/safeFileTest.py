@@ -23,10 +23,13 @@ locks at the right times.
 The tests use no sleeps - all synchronization is done via events/conditions.
 """
 
+import builtins
 import fcntl
 import os
 import threading
+from abc import ABC, abstractmethod
 from collections.abc import Generator
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -140,19 +143,43 @@ class SimulatedLock:
         return self._shared_count
 
 
-class LockManager:
-    """Manages simulated locks for multiple files."""
+class Checkpointer(ABC):
+    """Base class for hooking checkpoints into operations."""
 
     def __init__(self) -> None:
+        self._checkpoints: dict[str, Checkpoint] = {}
+
+    def add(self, thread_name: str, checkpoint: Checkpoint) -> None:
+        """Register a checkpoint for the given thread."""
+        self._checkpoints[thread_name] = checkpoint
+
+    def get(self, thread_name: str) -> Checkpoint | None:
+        """Get checkpoint for thread, if any."""
+        return self._checkpoints.get(thread_name)
+
+    @abstractmethod
+    @contextmanager
+    def install(self) -> Generator[None, None, None]:
+        """
+        Install patches for this checkpointer.
+
+        Each checkpointer provides its own context manager that patches the
+        necessary functions. Multiple checkpointers compose by each capturing
+        the current (possibly already-patched) functions.
+        """
+        ...
+
+
+class LockCheckpointer(Checkpointer):
+    """Checkpointer that pauses after flock acquisition."""
+
+    def __init__(self) -> None:
+        super().__init__()
         self._locks: dict[str, SimulatedLock] = {}
         self._fd_to_path: dict[int, str] = {}
         self._global_lock = threading.Lock()
 
-        # Checkpoints that tests can use to pause at specific points.
-        # Keyed by thread name.
-        self.after_acquire: dict[str, Checkpoint] = {}
-
-    def register_fd(self, fd: int, path: str) -> None:
+    def _register_fd(self, fd: int, path: str) -> None:
         """Associate a file descriptor with a path."""
         with self._global_lock:
             real_path = os.path.realpath(path)
@@ -160,7 +187,7 @@ class LockManager:
             if real_path not in self._locks:
                 self._locks[real_path] = SimulatedLock()
 
-    def get_lock(self, fd: int) -> SimulatedLock | None:
+    def _get_lock(self, fd: int) -> SimulatedLock | None:
         """Get the lock for a file descriptor."""
         with self._global_lock:
             path = self._fd_to_path.get(fd)
@@ -169,76 +196,110 @@ class LockManager:
         return None
 
     def get_lock_for_path(self, path: str) -> SimulatedLock | None:
-        """Get the lock for a path."""
+        """Get the lock for a path (for test assertions)."""
         real_path = os.path.realpath(path)
         with self._global_lock:
             return self._locks.get(real_path)
 
-    def flock(self, fd: int, operation: int) -> None:
-        """Simulated flock that respects checkpoints."""
-        lock = self.get_lock(fd)
-        if lock is None:
-            return
+    @contextmanager
+    def install(self) -> Generator[None, None, None]:
+        """Patch open to register fds, and patch flock with lock simulation."""
+        original_open = builtins.open
+        checkpointer = self
 
-        thread_name = threading.current_thread().name
+        def patched_open(
+            path: Any, mode: str = "r", *args: Any, **kwargs: Any
+        ) -> Any:
+            f = original_open(path, mode, *args, **kwargs)
+            try:
+                checkpointer._register_fd(f.fileno(), str(path))
+            except (OSError, ValueError):
+                pass
+            return f
 
-        if operation == fcntl.LOCK_UN:
-            lock.release()
+        def patched_flock(fd: int, operation: int) -> None:
+            lock = checkpointer._get_lock(fd)
+            if lock is None:
+                return
 
-        elif operation == fcntl.LOCK_SH:
-            lock.acquire_shared()
-            checkpoint = self.after_acquire.get(thread_name)
-            if checkpoint:
-                checkpoint.arrive_and_wait()
-
-        elif operation == fcntl.LOCK_EX:
-            lock.acquire_exclusive()
-            checkpoint = self.after_acquire.get(thread_name)
-            if checkpoint:
-                checkpoint.arrive_and_wait()
-
-
-class FileOperationTracker:
-    """
-    Tracks and controls file operations with checkpoints.
-
-    Wraps file objects to inject synchronization points during read/write.
-    """
-
-    def __init__(self, lock_manager: LockManager) -> None:
-        self.lock_manager = lock_manager
-        # Checkpoints keyed by thread name
-        self.during_write: dict[str, Checkpoint] = {}
-        self.during_read: dict[str, Checkpoint] = {}
-
-    def wrap_file(self, file_obj: Any, path: str) -> Any:
-        """Wrap a file object to track operations."""
-        try:
-            self.lock_manager.register_fd(file_obj.fileno(), path)
-        except (OSError, ValueError):
-            pass
-
-        original_write = file_obj.write
-        original_read = file_obj.read
-        tracker = self
-
-        def tracked_write(data: str) -> int:
             thread_name = threading.current_thread().name
-            checkpoint = tracker.during_write.get(thread_name)
-            if checkpoint:
-                checkpoint.arrive_and_wait()
-            return original_write(data)
 
-        def tracked_read(size: int = -1) -> str:
-            thread_name = threading.current_thread().name
-            checkpoint = tracker.during_read.get(thread_name)
-            if checkpoint:
-                checkpoint.arrive_and_wait()
-            return original_read(size)
+            if operation == fcntl.LOCK_UN:
+                lock.release()
+            elif operation == fcntl.LOCK_SH:
+                lock.acquire_shared()
+                checkpoint = checkpointer.get(thread_name)
+                if checkpoint:
+                    checkpoint.arrive_and_wait()
+            elif operation == fcntl.LOCK_EX:
+                lock.acquire_exclusive()
+                checkpoint = checkpointer.get(thread_name)
+                if checkpoint:
+                    checkpoint.arrive_and_wait()
 
-        file_obj.write = tracked_write
-        file_obj.read = tracked_read
-        return file_obj
+        with (
+            patch("builtins.open", patched_open),
+            patch("toil.server.utils.fcntl.flock", patched_flock),
+        ):
+            yield
+
+
+class ReadCheckpointer(Checkpointer):
+    """Checkpointer that pauses during file read."""
+
+    @contextmanager
+    def install(self) -> Generator[None, None, None]:
+        """Patch open to wrap read operations with checkpoint hooks."""
+        original_open = builtins.open
+        checkpointer = self
+
+        def patched_open(
+            path: Any, mode: str = "r", *args: Any, **kwargs: Any
+        ) -> Any:
+            f = original_open(path, mode, *args, **kwargs)
+            original_read = f.read
+
+            def tracked_read(size: int = -1) -> str:
+                thread_name = threading.current_thread().name
+                checkpoint = checkpointer.get(thread_name)
+                if checkpoint:
+                    checkpoint.arrive_and_wait()
+                return original_read(size)
+
+            f.read = tracked_read
+            return f
+
+        with patch("builtins.open", patched_open):
+            yield
+
+
+class WriteCheckpointer(Checkpointer):
+    """Checkpointer that pauses during file write."""
+
+    @contextmanager
+    def install(self) -> Generator[None, None, None]:
+        """Patch open to wrap write operations with checkpoint hooks."""
+        original_open = builtins.open
+        checkpointer = self
+
+        def patched_open(
+            path: Any, mode: str = "r", *args: Any, **kwargs: Any
+        ) -> Any:
+            f = original_open(path, mode, *args, **kwargs)
+            original_write = f.write
+
+            def tracked_write(data: str) -> int:
+                thread_name = threading.current_thread().name
+                checkpoint = checkpointer.get(thread_name)
+                if checkpoint:
+                    checkpoint.arrive_and_wait()
+                return original_write(data)
+
+            f.write = tracked_write
+            return f
+
+        with patch("builtins.open", patched_open):
+            yield
 
 
 # TODO: Add tests for AtomicFileCreate path (concurrent new file creation).
@@ -256,30 +317,25 @@ class TestSafeFileInterleaving:
     """
 
     @pytest.fixture(autouse=True)
-    def setup_managers(self, tmp_path: Path) -> Generator[None]:
-        """Set up lock manager and file tracker for each test."""
+    def setup_test_file(self, tmp_path: Path) -> Generator[None]:
+        """Set up test file path for each test."""
         self.test_file = tmp_path / "test_file"
-        self.lock_manager = LockManager()
-        self.file_tracker = FileOperationTracker(self.lock_manager)
         yield
 
-    def _create_patches(self) -> tuple[Any, Any]:
-        """Create patch contexts for flock and open."""
-        original_open = open
-        lock_manager = self.lock_manager
-        file_tracker = self.file_tracker
+    @contextmanager
+    def patched_io(
+        self, *checkpointers: Checkpointer
+    ) -> Generator[None, None, None]:
+        """
+        Context manager that installs all checkpointer patches.
 
-        def patched_open(path: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
-            f = original_open(path, mode, *args, **kwargs)
-            return file_tracker.wrap_file(f, str(path))
-
-        def patched_flock(fd: int, operation: int) -> None:
-            lock_manager.flock(fd, operation)
-
-        return (
-            patch("builtins.open", patched_open),
-            patch("toil.server.utils.fcntl.flock", patched_flock),
-        )
+        Uses ExitStack to compose the context managers from each checkpointer.
+        Patches compose naturally since each captures the current open.
+        """
+        with ExitStack() as stack:
+            for checkpointer in checkpointers:
+                stack.enter_context(checkpointer.install())
+            yield
 
     def test_reader_blocked_while_writer_holds_lock(self) -> None:
         """
@@ -298,9 +354,9 @@ class TestSafeFileInterleaving:
 
         self.test_file.write_text("original")
 
-        # Checkpoint to pause writer after acquiring lock
         writer_checkpoint = Checkpoint()
-        self.lock_manager.after_acquire["writer"] = writer_checkpoint
+        locker = LockCheckpointer()
+        locker.add("writer", writer_checkpoint)
 
         reader_completed = threading.Event()
         results: dict[str, Any] = {"writer_done": False, "reader_result": None}
@@ -320,8 +376,7 @@ class TestSafeFileInterleaving:
             except Exception as e:
                 errors.append(e)
 
-        patches = self._create_patches()
-        with patches[0], patches[1]:
+        with self.patched_io(locker):
             t_writer = threading.Thread(target=writer, name="writer")
             t_writer.start()
 
@@ -329,7 +384,7 @@ class TestSafeFileInterleaving:
             assert writer_checkpoint.wait_for_arrival(), "Writer didn't reach checkpoint"
 
             # Verify writer has the lock
-            lock = self.lock_manager.get_lock_for_path(str(self.test_file))
+            lock = locker.get_lock_for_path(str(self.test_file))
             assert lock is not None
             assert lock.has_exclusive, "Writer should hold exclusive lock"
 
@@ -364,7 +419,8 @@ class TestSafeFileInterleaving:
         self.test_file.write_text("original")
 
         reader_checkpoint = Checkpoint()
-        self.lock_manager.after_acquire["reader"] = reader_checkpoint
+        locker = LockCheckpointer()
+        locker.add("reader", reader_checkpoint)
 
         writer_completed = threading.Event()
         results: dict[str, Any] = {"reader_result": None, "writer_done": False}
@@ -384,14 +440,13 @@ class TestSafeFileInterleaving:
             except Exception as e:
                 errors.append(e)
 
-        patches = self._create_patches()
-        with patches[0], patches[1]:
+        with self.patched_io(locker):
             t_reader = threading.Thread(target=reader, name="reader")
             t_reader.start()
 
             assert reader_checkpoint.wait_for_arrival(), "Reader didn't reach checkpoint"
 
-            lock = self.lock_manager.get_lock_for_path(str(self.test_file))
+            lock = locker.get_lock_for_path(str(self.test_file))
             assert lock is not None
             assert lock.shared_count == 1, "Reader should hold shared lock"
 
@@ -423,8 +478,9 @@ class TestSafeFileInterleaving:
 
         reader1_checkpoint = Checkpoint()
         reader2_checkpoint = Checkpoint()
-        self.lock_manager.after_acquire["reader1"] = reader1_checkpoint
-        self.lock_manager.after_acquire["reader2"] = reader2_checkpoint
+        locker = LockCheckpointer()
+        locker.add("reader1", reader1_checkpoint)
+        locker.add("reader2", reader2_checkpoint)
 
         results: dict[str, str | None] = {"reader1": None, "reader2": None}
         errors: list[Exception] = []
@@ -441,14 +497,13 @@ class TestSafeFileInterleaving:
             except Exception as e:
                 errors.append(e)
 
-        patches = self._create_patches()
-        with patches[0], patches[1]:
+        with self.patched_io(locker):
             t_reader1 = threading.Thread(target=reader1, name="reader1")
             t_reader1.start()
 
             assert reader1_checkpoint.wait_for_arrival(), "Reader1 didn't reach checkpoint"
 
-            lock = self.lock_manager.get_lock_for_path(str(self.test_file))
+            lock = locker.get_lock_for_path(str(self.test_file))
             assert lock is not None
             assert lock.shared_count == 1
 
@@ -485,7 +540,8 @@ class TestSafeFileInterleaving:
         self.test_file.write_text("original")
 
         writer1_checkpoint = Checkpoint()
-        self.lock_manager.after_acquire["writer1"] = writer1_checkpoint
+        locker = LockCheckpointer()
+        locker.add("writer1", writer1_checkpoint)
 
         writer2_completed = threading.Event()
         results: dict[str, bool] = {"writer1_done": False, "writer2_done": False}
@@ -506,14 +562,13 @@ class TestSafeFileInterleaving:
             except Exception as e:
                 errors.append(e)
 
-        patches = self._create_patches()
-        with patches[0], patches[1]:
+        with self.patched_io(locker):
             t_writer1 = threading.Thread(target=writer1, name="writer1")
             t_writer1.start()
 
             assert writer1_checkpoint.wait_for_arrival(), "Writer1 didn't reach checkpoint"
 
-            lock = self.lock_manager.get_lock_for_path(str(self.test_file))
+            lock = locker.get_lock_for_path(str(self.test_file))
             assert lock is not None
             assert lock.has_exclusive, "Writer1 should hold exclusive lock"
 
@@ -536,60 +591,66 @@ class TestSafeFileInterleaving:
         assert results["writer1_done"]
         assert results["writer2_done"]
 
-    def test_reader_never_sees_partial_write(self) -> None:
+    def test_reader_paused_mid_read_blocks_writer(self) -> None:
         """
-        Verify that a reader cannot see partial write content.
-        Reader either sees old content or complete new content.
+        Verify that a writer is blocked even when reader is paused during
+        the actual read operation (not just after lock acquisition).
         """
         from toil.server.utils import safe_read_file, safe_write_file
 
-        self.test_file.write_text("AAAA")
+        self.test_file.write_text("original")
 
-        writer_checkpoint = Checkpoint()
-        self.lock_manager.after_acquire["writer"] = writer_checkpoint
+        # Pause reader during the read operation itself
+        read_checkpoint = Checkpoint()
+        read_hooker = ReadCheckpointer()
+        read_hooker.add("reader", read_checkpoint)
 
+        # Also need lock checkpointer for fd registration and lock simulation
+        locker = LockCheckpointer()
+
+        writer_completed = threading.Event()
         results: dict[str, Any] = {"reader_result": None}
-        reader_completed = threading.Event()
         errors: list[Exception] = []
-
-        def writer() -> None:
-            try:
-                safe_write_file(str(self.test_file), "BBBB")
-            except Exception as e:
-                errors.append(e)
 
         def reader() -> None:
             try:
                 results["reader_result"] = safe_read_file(str(self.test_file))
-                reader_completed.set()
             except Exception as e:
                 errors.append(e)
 
-        patches = self._create_patches()
-        with patches[0], patches[1]:
-            t_writer = threading.Thread(target=writer, name="writer")
-            t_writer.start()
+        def writer() -> None:
+            try:
+                safe_write_file(str(self.test_file), "updated")
+                writer_completed.set()
+            except Exception as e:
+                errors.append(e)
 
-            assert writer_checkpoint.wait_for_arrival(), "Writer didn't reach checkpoint"
-
+        with self.patched_io(locker, read_hooker):
             t_reader = threading.Thread(target=reader, name="reader")
             t_reader.start()
 
-            # Reader should be blocked
-            assert not reader_completed.wait(timeout=0.1), (
-                "Reader should be blocked while writer holds lock"
+            assert read_checkpoint.wait_for_arrival(), "Reader didn't reach read checkpoint"
+
+            # Reader should hold shared lock while paused mid-read
+            lock = locker.get_lock_for_path(str(self.test_file))
+            assert lock is not None
+            assert lock.shared_count == 1, "Reader should hold lock during read"
+
+            t_writer = threading.Thread(target=writer, name="writer")
+            t_writer.start()
+
+            # Writer should be blocked
+            assert not writer_completed.wait(timeout=0.1), (
+                "Writer should be blocked while reader is mid-read"
             )
-            assert results["reader_result"] is None
 
-            writer_checkpoint.release()
+            read_checkpoint.release()
 
-            t_writer.join(timeout=SYNC_TIMEOUT)
             t_reader.join(timeout=SYNC_TIMEOUT)
+            t_writer.join(timeout=SYNC_TIMEOUT)
 
         assert errors == []
-        assert results["reader_result"] == "BBBB", (
-            "Reader should see complete write, not partial"
-        )
+        assert results["reader_result"] == "original"
 
     def test_writer_paused_mid_write_blocks_reader(self) -> None:
         """
@@ -602,7 +663,11 @@ class TestSafeFileInterleaving:
 
         # Pause writer during the write operation itself
         write_checkpoint = Checkpoint()
-        self.file_tracker.during_write["writer"] = write_checkpoint
+        write_hooker = WriteCheckpointer()
+        write_hooker.add("writer", write_checkpoint)
+
+        # Also need lock checkpointer for fd registration and lock simulation
+        locker = LockCheckpointer()
 
         reader_completed = threading.Event()
         results: dict[str, Any] = {"reader_result": None}
@@ -621,15 +686,14 @@ class TestSafeFileInterleaving:
             except Exception as e:
                 errors.append(e)
 
-        patches = self._create_patches()
-        with patches[0], patches[1]:
+        with self.patched_io(locker, write_hooker):
             t_writer = threading.Thread(target=writer, name="writer")
             t_writer.start()
 
             assert write_checkpoint.wait_for_arrival(), "Writer didn't reach write checkpoint"
 
             # Writer should hold exclusive lock while paused mid-write
-            lock = self.lock_manager.get_lock_for_path(str(self.test_file))
+            lock = locker.get_lock_for_path(str(self.test_file))
             assert lock is not None
             assert lock.has_exclusive, "Writer should hold lock during write"
 
