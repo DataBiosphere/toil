@@ -755,6 +755,7 @@ def parser_with_common_options(
 def addOptions(
     parser: ArgumentParser,
     jobstore_as_flag: bool = False,
+    config_option: str | None = None,
     cwl: bool = False,
     wdl: bool = False,
 ) -> None:
@@ -763,11 +764,15 @@ def addOptions(
 
     Support for config files if using configargparse. This will also check and set up the default config file.
 
+    User code should consider using Job.Runner.getDefaultArgumentParser() or Job.Runner.addToilOptions() instead.
+
     :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
 
     :param cwl: Whether CWL options are expected. If so, CWL options won't be suppressed.
 
     :param wdl:  Whether WDL options are expected. If so, WDL options won't be suppressed.
+
+    :param config_option: If set, use this string for the Toil --config option instead of "config".
     """
     if cwl and wdl:
         raise RuntimeError(
@@ -816,7 +821,7 @@ def addOptions(
         raise
 
     # Add base toil options
-    add_base_toil_options(parser, jobstore_as_flag, cwl)
+    add_base_toil_options(parser, jobstore_as_flag, cwl, config_option)
     # Add CWL and WDL options
     # This is done so the config file can hold all available options
     add_cwl_options(parser, suppress=not cwl)

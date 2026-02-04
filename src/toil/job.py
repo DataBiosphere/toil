@@ -2474,7 +2474,10 @@ class Job:
         """Used to setup and run Toil workflow."""
 
         @staticmethod
-        def getDefaultArgumentParser(jobstore_as_flag: bool = False) -> ArgParser:
+        def getDefaultArgumentParser(
+                jobstore_as_flag: bool = False,
+                config_option: str | None = None,
+            ) -> ArgParser:
             """
             Get argument parser with added toil workflow options.
 
@@ -2482,6 +2485,7 @@ class Job:
             workflow.
 
             :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
+            :param config_option: If set, use this string for the Toil --config option instead of "config".
             :returns: The argument parser used by a toil workflow with added Toil options.
             """
             parser = ArgParser(formatter_class=ArgumentDefaultsHelpFormatter)
@@ -2490,7 +2494,9 @@ class Job:
 
         @staticmethod
         def getDefaultOptions(
-            jobStore: StrPath | None = None, jobstore_as_flag: bool = False
+            jobStore: StrPath | None = None,
+            jobstore_as_flag: bool = False,
+            config_option: str | None = None,
         ) -> Namespace:
             """
             Get default options for a toil workflow.
@@ -2498,6 +2504,7 @@ class Job:
             :param jobStore: A string describing the jobStore \
             for the workflow.
             :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
+            :param config_option: If set, use this string for the Toil --config option instead of "config".
             :returns: The options used by a toil workflow.
             """
             # setting jobstore_as_flag to True allows the user to declare the jobstore in the config file instead
@@ -2507,7 +2514,8 @@ class Job:
                     "to False!"
                 )
             parser = Job.Runner.getDefaultArgumentParser(
-                jobstore_as_flag=jobstore_as_flag
+                jobstore_as_flag=jobstore_as_flag,
+                config_option=config_option,
             )
             arguments = []
             if jobstore_as_flag and jobStore is not None:
@@ -2520,6 +2528,7 @@ class Job:
         def addToilOptions(
             parser: OptionParser | ArgumentParser,
             jobstore_as_flag: bool = False,
+            config_option: str | None = None,
         ) -> None:
             """
             Adds the default toil options to an :mod:`optparse` or :mod:`argparse`
@@ -2534,8 +2543,13 @@ class Job:
 
             :param parser: Options object to add toil options to.
             :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
+            :param config_option: If set, use this string for the Toil --config option instead of "config".
             """
-            addOptions(parser, jobstore_as_flag=jobstore_as_flag)
+            addOptions(
+                parser,
+                jobstore_as_flag=jobstore_as_flag,
+                config_option=config_option,
+            )
 
         @staticmethod
         def startToil(job: Job, options) -> Any:
