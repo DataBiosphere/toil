@@ -24,6 +24,7 @@ from toil.test import (
     needs_docker_cuda,
     needs_google_storage,
     needs_online,
+    needs_singularity,
     needs_singularity_or_docker,
     slow,
 )
@@ -379,6 +380,47 @@ class TestWDL:
                 assert isinstance(result["ga4ghMd5.value"], str)
                 assert os.path.exists(result["ga4ghMd5.value"])
                 assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
+
+    @needs_singularity
+    def test_sif_image(self, tmp_path: Path) -> None:
+        """Test if Toil can run a SIF image as a container"""
+
+        # We need to grab a SIF somewhere.
+        sif_file = tmp_path / "image.sif"
+        # The SIF needs to have Bash for WDL to use it. So we grab an Ubuntu
+        # image off a friendly server. This is probably too big to check in.
+        subprocess.check_call([
+            "singularity",
+            "pull",
+            str(sif_file),
+            "docker://mirror.gcr.io/library/ubuntu:25.10"
+        ])
+
+        with get_data("test/wdl/singularity/singularity.wdl") as wdl:
+            inputs =  {
+                "singularity_wf.leader_sif_path": str(os.path.abspath(sif_file))
+            }
+
+            result_json = subprocess.check_output(
+                self.base_command
+                + [
+                    str(wdl),
+                    json.dumps(inputs),
+                    "-o",
+                    str(tmp_path),
+                    "--logDebug",
+                    "--retryCount=0",
+                    "--container=singularity",
+                ]
+            )
+            result = json.loads(result_json)
+
+            assert "singularity_wf.value" in result
+            assert isinstance(result["singularity_wf.value"], str)
+            assert result["singularity_wf.value"] == "questing"
+
+        # TODO: This only tests absolute path, but we ought to also support
+        # relative path.
 
     @needs_singularity_or_docker
     def test_file_uri_no_hostname(self, tmp_path: Path, subtests: pytest.Subtests) -> None:
