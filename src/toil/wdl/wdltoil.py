@@ -68,6 +68,7 @@ from WDL._util import byte_size_units, chmod_R_plus
 from WDL.CLI import outline, print_error
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
+from WDL.runtime.backend.cli_subprocess import SubprocessBase
 from WDL.runtime.error import DownloadFailed
 from WDL.runtime.task_container import TaskContainer
 from WDL.Tree import ReadSourceResult
@@ -4139,6 +4140,10 @@ class WDLTaskJob(WDLBaseJob):
             self._wdl_options["namespace"],
         )
 
+        # If we grab a container by relative path we'll need it relative to the
+        # leader execution directory.
+        leader_execution_dir = self._wdl_options.get("execution_dir", ".")
+
         # Pick a host directory for if we use a container.
         host_dir = file_store.localTempDir
 
@@ -4207,6 +4212,7 @@ class WDLTaskJob(WDLBaseJob):
         elif self._wdl_options.get("container") in ["docker", "auto"]:
             # Run containers with Docker
             # TODO: Poll if it is available and don't just try and fail.
+            # TODO: Detect if the container image specifically needs Singularity instead.
             TaskContainerImplementation = SwarmContainer
             if (
                 runtime_bindings.has_binding("gpuType")
@@ -4370,6 +4376,37 @@ class WDLTaskJob(WDLBaseJob):
                     return mounts
 
                 task_container.prepare_mounts = patch_prepare_mounts_singularity  # type: ignore[method-assign]
+
+                # We also need to patch _pull_invocation to allow direct SIF file usage.
+                # TODO: Remove this when https://github.com/chanzuckerberg/miniwdl/issues/792 is fixed and MiniWDL has this itself.
+
+                singularity_original_pull_invocation = task_container._pull_invocation
+
+                def patch_pull_invocation_singularity(logger: logging.Logger, cleanup: ExitStack) -> tuple[str, list[str]]:
+                    """
+                    Get the image path to use, and the pull command to run to populate it, or an empty list.
+                    """
+
+                    image, _ = SubprocessBase._pull_invocation(task_container, logger, cleanup)
+                    for prefix in ("singularity://", "file://"):
+                        if image.startswith(prefix):
+                            # This is a Singularity image path.
+                            image_path = image[len(prefix):]
+                            # Interpret it relative to the leader execution directory
+                            image_path = os.path.join(leader_execution_dir, image_path)
+
+                            if not os.path.exists(image_path):
+                                raise RuntimeError(f"Singularity image {image_path} does not exist")
+
+                            # The image exists; no need to get it
+                            return image_path, []
+
+                    # If we get here we didn't match a prefix.
+                    # TODO: Also support the explicit docker:// prefix, which MiniWDL should but doesn't.
+                    return singularity_original_pull_invocation(logger, cleanup)
+
+                task_container._pull_invocation = patch_pull_invocation_singularity  # type: ignore[method-assign]
+
             elif isinstance(task_container, SwarmContainer):
                 docker_original_prepare_mounts = task_container.prepare_mounts
 

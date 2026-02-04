@@ -749,3 +749,90 @@ class SlurmTest(ToilTest):
         self.assertTrue(detector("-B"))
         self.assertFalse(detector("--no-bazz"))
         self.assertFalse(detector("--foo-bar=--bazz-only"))
+
+    ###
+    ### Tests for parse_slurm_time
+    ###
+
+    def test_parse_slurm_time_minutes(self):
+        """Test parsing 'minutes' format."""
+        result = toil.batchSystems.slurm.parse_slurm_time("5")
+        self.assertEqual(result, 5 * 60)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("30")
+        self.assertEqual(result, 30 * 60)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("120")
+        self.assertEqual(result, 120 * 60)
+
+    def test_parse_slurm_time_minutes_seconds(self):
+        """Test parsing 'minutes:seconds' format."""
+        result = toil.batchSystems.slurm.parse_slurm_time("5:30")
+        self.assertEqual(result, 5 * 60 + 30)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("10:00")
+        self.assertEqual(result, 10 * 60)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("0:45")
+        self.assertEqual(result, 45)
+
+    def test_parse_slurm_time_hours_minutes_seconds(self):
+        """Test parsing 'hours:minutes:seconds' format."""
+        result = toil.batchSystems.slurm.parse_slurm_time("1:30:00")
+        self.assertEqual(result, 1 * 3600 + 30 * 60)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("2:15:30")
+        self.assertEqual(result, 2 * 3600 + 15 * 60 + 30)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("10:00:00")
+        self.assertEqual(result, 10 * 3600)
+
+    def test_parse_slurm_time_days_hours(self):
+        """Test parsing 'days-hours' format."""
+        result = toil.batchSystems.slurm.parse_slurm_time("3-0")
+        self.assertEqual(result, 3 * 86400)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("1-12")
+        self.assertEqual(result, 1 * 86400 + 12 * 3600)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("7-00")
+        self.assertEqual(result, 7 * 86400)
+
+    def test_parse_slurm_time_days_hours_minutes(self):
+        """Test parsing 'days-hours:minutes' format."""
+        result = toil.batchSystems.slurm.parse_slurm_time("3-0:00")
+        self.assertEqual(result, 3 * 86400)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("3-00:00")
+        self.assertEqual(result, 3 * 86400)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("1-6:30")
+        self.assertEqual(result, 1 * 86400 + 6 * 3600 + 30 * 60)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("2-12:45")
+        self.assertEqual(result, 2 * 86400 + 12 * 3600 + 45 * 60)
+
+    def test_parse_slurm_time_days_hours_minutes_seconds(self):
+        """Test parsing 'days-hours:minutes:seconds' format."""
+        result = toil.batchSystems.slurm.parse_slurm_time("7-00:00:00")
+        self.assertEqual(result, 7 * 86400)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("1-02:30:45")
+        self.assertEqual(result, 1 * 86400 + 2 * 3600 + 30 * 60 + 45)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("5-12:00:00")
+        self.assertEqual(result, 5 * 86400 + 12 * 3600)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("0-01:30:00")
+        self.assertEqual(result, 1 * 3600 + 30 * 60)
+
+    def test_parse_slurm_time_edge_cases(self):
+        """Test edge cases and zero values."""
+        result = toil.batchSystems.slurm.parse_slurm_time("0-00:00:00")
+        self.assertEqual(result, 0)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("0")
+        self.assertEqual(result, 0)
+
+        result = toil.batchSystems.slurm.parse_slurm_time("365-00:00:00")
+        self.assertEqual(result, 365 * 86400)
