@@ -375,7 +375,7 @@ def path_union(first_path: str, second_path: str | None) -> str:
     Relative order within second_path is preserved, when items aren't being
     promoted by first_path.
 
-    Note that os.pathsep (generally ':' on *nix) cannot be escaped in PATH per
+    Note that os.pathsep (generally ':' on unices) cannot be escaped in PATH per
     the POSIX standard, so it cannot appear in any of the individual values.
 
     >>> path_union("/home/username/bin:/usr/bin:/bin", "/usr/bin/games:/bin:/usr/bin")
