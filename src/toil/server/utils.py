@@ -117,7 +117,7 @@ def safe_read_file(file: str) -> str | None:
 
     try:
         # acquire a shared lock on the state file, which is blocking until we can lock it
-        fcntl.lockf(file_obj.fileno(), fcntl.LOCK_SH)
+        fcntl.flock(file_obj.fileno(), fcntl.LOCK_SH)
 
         try:
             return file_obj.read()
