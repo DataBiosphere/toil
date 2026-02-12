@@ -446,6 +446,31 @@ class AbstractJobStoreTest:
             with jobstore2.read_file_stream(fileID, encoding="utf-8") as f:
                 self.assertEqual(bar, f.read())
 
+        def testStreamUpdateAtomic(self):
+            """Checks if updating a stream and failing in the middle does nothing."""
+            jobstore = self.jobstore_initialized
+            foo = "foo"
+            bar = "bar"
+
+            with jobstore.write_file_stream(encoding="utf-8") as (
+                f,
+                fileID,
+            ):
+                f.write(foo)
+
+            class FakeError(RuntimeError):
+                pass
+            
+            try:
+                with jobstore.update_file_stream(fileID, encoding="utf-8") as f:
+                    f.write(bar)
+                    raise FakeError("Oh dear")
+            except FakeError as e:
+                pass
+
+            with jobstore.read_file_stream(fileID, encoding="utf-8") as f:
+                self.assertEqual(foo, f.read())
+
         def testPerJobFiles(self):
             """Tests the behavior of files on jobs."""
             jobstore1 = self.jobstore_initialized

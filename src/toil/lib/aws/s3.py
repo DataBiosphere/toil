@@ -319,6 +319,7 @@ class MultiPartPipe(WritablePipe):
                     break
                 hasher.update(buf)
         except:
+            logger.error("Aborting upload!")
             self.s3_client.abort_multipart_upload(
                 Bucket=self.bucket_name, Key=self.file_id, UploadId=upload_id
             )
