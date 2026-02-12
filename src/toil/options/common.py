@@ -872,7 +872,7 @@ def add_base_toil_options(
         action=make_open_interval_action(0),
         metavar="FLOAT",
         help=f"Number of seconds to wait when first retrying a job. "
-        f"default={10}",
+        f"default={2}",
     )
     job_options.add_argument(
         "--retryBackoffFactor",
@@ -882,7 +882,7 @@ def add_base_toil_options(
         action=make_open_interval_action(1),
         metavar="FLOAT",
         help=f"Factor to increase retry backof time by for each "
-        f"additional retry. default={2}",
+        f"additional retry. default={3}",
     )
     job_options.add_argument(
         "--stopOnFirstFailure",
