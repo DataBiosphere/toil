@@ -493,6 +493,7 @@ class hidden:
                     jobs[i].addChild(F)
                 options = self.options()
                 options.retryCount = 10
+                options.retry_backoff_seconds = 0
                 options.badWorker = 0.25
                 options.badWorkerFailInterval = 0.2
                 Job.Runner.startToil(E, options)
@@ -1091,6 +1092,7 @@ class hidden:
             """
             options = self.options()
             options.retryCount = 20
+            options.retry_backoff_seconds = 0
             options.badWorker = 0.5
             options.badWorkerFailInterval = 0.1
             workdir = self._createTempDir(purpose="nonLocalDir")
