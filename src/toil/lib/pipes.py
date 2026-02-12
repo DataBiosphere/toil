@@ -4,12 +4,12 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from typing import IO, Any
+from types import TracebackType
 
 from toil.lib.checksum import ChecksumError
 from toil.lib.threading import ExceptionalThread
 
 log = logging.getLogger(__name__)
-
 
 class WritablePipe(ABC):
     """
@@ -25,11 +25,9 @@ class WritablePipe(ABC):
     ...     _ = writable.write('Hello, world!\\n'.encode('utf-8'))
     Hello, world!
 
-    Each instance of this class creates a thread and invokes the readFrom method in that thread.
-    The thread will be join()ed upon normal exit from the context manager, i.e. the body of the
-    `with` statement. If an exception occurs, the thread will not be joined but a well-behaved
-    :meth:`.readFrom` implementation will terminate shortly thereafter due to the pipe having
-    been closed.
+    Each instance of this class creates a thread and invokes the readFrom
+    method in that thread. The thread will be join()ed upon exit from the
+    context manager, i.e. the body of the `with` statement.
 
     Now, exceptions in the reader thread will be reraised in the main thread:
 
@@ -71,6 +69,27 @@ class WritablePipe(ABC):
     RuntimeError: Hello, world!
     >>> y = os.dup(0); os.close(y); x == y
     True
+
+    Exceptions in the body of the with statement will cause an error that the
+    readFrom method can detect, visible by the time the empty-read EOF marker
+    is visible.
+
+    >>> seen_errors = []
+    >>> class MyPipe(WritablePipe):
+    ...     def readFrom(self, readable):
+    ...         while readable.read(100) != "":
+    ...             pass
+    ...         if self.writer_error is not None:
+    ...             seen_errors.append(self.writer_error)
+    >>> with MyPipe() as writable:
+    ...     raise RuntimeError('Hello, world!')
+    Traceback (most recent call last):
+    ...
+    RuntimeError: Hello, world!
+    >>> len(seen_errors)
+    1
+    >>> type(seen_errors[0])
+    RuntimeError
     """
 
     def __init__(self, encoding: str | None = None, errors: str | None = None) -> None:
@@ -90,6 +109,7 @@ class WritablePipe(ABC):
         self.writable: IO[Any] | None = None
         self.thread: ExceptionalThread | None = None
         self.reader_done: bool = False
+        self.writer_error: BaseException | None = None
 
     def __enter__(self) -> IO[Any]:
         self.readable_fh, writable_fh = os.pipe()
@@ -99,13 +119,19 @@ class WritablePipe(ABC):
             encoding=self.encoding,
             errors=self.errors,
         )
+        self.writer_error = None
         self.thread = ExceptionalThread(target=self._reader)
         self.thread.start()
         return self.writable
 
     def __exit__(
-        self, exc_type: str | None, exc_val: str | None, exc_tb: str | None
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None
     ) -> None:
+        # If there was an exception, make sure it is visible to the reader
+        # before closing the write end of the pipe and generating an EOF.
+        if exc_val is not None:
+            self.writer_error = exc_val
+
         # Closing the writable end will send EOF to the readable and cause the reader thread
         # to finish.
         # TODO: Can close() fail? If so, would we try and clean up after the reader?
@@ -143,6 +169,10 @@ class WritablePipe(ABC):
         Implement this method to read data from the pipe. This method should support both
         binary and text mode output.
 
+        If this method needs to do any sort of cleanup on failure, it should
+        check self.writer_error after observing EOF, to distinguish normal
+        and abnormal termination of the writer.
+
         :param file readable: the file object representing the readable end of the pipe. Do not
             explicitly invoke the close() method of the object; that will be done automatically.
         """
@@ -158,7 +188,6 @@ class WritablePipe(ABC):
             self.readable_fh = None  # signal to parent thread that we've taken over
             self.readFrom(readable)
             self.reader_done = True
-
 
 class ReadablePipe(ABC):
     """
@@ -228,6 +257,10 @@ class ReadablePipe(ABC):
         Implement this method to write data from the pipe. This method should support both
         binary and text mode input.
 
+        Trying to write to the writable stream after the reader has
+        unexpectedly failed will produce an error, because the pipe will be
+        broken.
+
         :param file writable: the file object representing the writable end of the pipe. Do not
             explicitly invoke the close() method of the object, that will be done automatically.
         """
@@ -274,7 +307,7 @@ class ReadablePipe(ABC):
         return self.readable
 
     def __exit__(
-        self, exc_type: str | None, exc_val: str | None, exc_tb: str | None
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None
     ) -> None:
         # Close the read end of the pipe. The writing thread may
         # still be writing to the other end, but this will wake it up

@@ -2738,7 +2738,7 @@ class Job:
                 # File may be gone if the job is a service being re-run and the accessing job is
                 # already complete.
                 if jobStore.file_exists(promiseFileStoreID):
-                    logger.debug(
+                    logger.info(
                         "Resolve promise %s from %s with a %s",
                         promiseFileStoreID,
                         self,
@@ -4204,6 +4204,11 @@ class Promise:
     A set of IDs of files containing promised values when we know we won't need them anymore
     """
 
+    resolving = True
+    """
+    Set to False to disable promise resolution for debugging.
+    """
+
     def __init__(self, job: Job, path: Any):
         """
         Initialize this promise.
@@ -4241,7 +4246,7 @@ class Promise:
             raise RuntimeError(
                 "Cannot instantiate promise. Invalid number of arguments given (Expected 2)."
             )
-        if isinstance(args[0], Job):
+        if not cls.resolving or isinstance(args[0], Job):
             # Regular instantiation when promise is created, before it is being pickled
             return super().__new__(cls)
         else:
