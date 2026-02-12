@@ -871,6 +871,10 @@ class JobDescription(Requirer):
         # default value for this workflow execution.
         self._remainingTryCount = None
 
+        # The number of seconds to back off before retry.
+        # Gets increased each time the job fails, and reset at workflow restart.
+        self._retry_backoff_seconds = None
+
         # Holds FileStore FileIDs of the files that should be seen as deleted,
         # as part of a transaction with the writing of this version of the job
         # to the job store. Used to journal deletions of files and recover from
@@ -1342,6 +1346,23 @@ class JobDescription(Requirer):
         :param jobStore: The job store we are being placed into
         """
 
+    def chargeRetry(self) -> None:
+        """
+        Charge the job one of its remaining retries.
+
+        Manages exponential backoff of retried jobs.
+
+        On completion, self.retry_backoff_seconds will be the time to wait
+        before the next retry.
+        """
+        self.remainingTryCount = max(0, self.remainingTryCount - 1)
+        if self._retry_backoff_seconds is None:
+            # This was the first retry
+            self._retry_backoff_seconds = self._config.retry_backoff_seconds
+        else:
+            self._retry_backoff_seconds *= self._config.retry_backoff_factor
+
+
     def setupJobAfterFailure(
         self,
         exit_status: int | None = None,
@@ -1380,7 +1401,7 @@ class JobDescription(Requirer):
                 self.jobStoreID,
             )
         else:
-            self.remainingTryCount = max(0, self.remainingTryCount - 1)
+            self.chargeRetry() 
             logger.warning(
                 "Due to failure we are reducing the remaining try count of job %s with ID %s to %s",
                 self,
@@ -1442,16 +1463,29 @@ class JobDescription(Requirer):
     def remainingTryCount(self, val):
         self._remainingTryCount = val
 
-    def clearRemainingTryCount(self) -> bool:
+    @property
+    def retry_backoff_seconds(self) -> float:
         """
-        Clear remainingTryCount and set it back to its default value.
+        Get the number of seconds to wait before retrying this job.
+        """
+        if self._retry_backoff_seconds is None:
+            # We need to distinguish the state of not yet having charged a retry.
+            # The config has the value to use after charging for the first retry.
+            return 0.0
+        else:
+            return self._retry_backoff_seconds
+
+    def resetRetries(self) -> bool:
+        """
+        Clear retry system values back to the workflow defaults.
 
         :returns: True if a modification to the JobDescription was made, and
                   False otherwise.
         """
-        if self._remainingTryCount is not None:
+        if self._remainingTryCount is not None or self._retryBackoff is not None:
             # We had a value stored
             self._remainingTryCount = None
+            self._retryBackoff = None
             return True
         else:
             # No change needed
@@ -2474,10 +2508,7 @@ class Job:
         """Used to setup and run Toil workflow."""
 
         @staticmethod
-        def getDefaultArgumentParser(
-                jobstore_as_flag: bool = False,
-                config_option: str | None = None,
-            ) -> ArgParser:
+        def getDefaultArgumentParser(jobstore_as_flag: bool = False) -> ArgParser:
             """
             Get argument parser with added toil workflow options.
 
@@ -2485,7 +2516,6 @@ class Job:
             workflow.
 
             :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
-            :param config_option: If set, use this string for the Toil --config option instead of "config".
             :returns: The argument parser used by a toil workflow with added Toil options.
             """
             parser = ArgParser(formatter_class=ArgumentDefaultsHelpFormatter)
@@ -2494,9 +2524,7 @@ class Job:
 
         @staticmethod
         def getDefaultOptions(
-            jobStore: StrPath | None = None,
-            jobstore_as_flag: bool = False,
-            config_option: str | None = None,
+            jobStore: StrPath | None = None, jobstore_as_flag: bool = False
         ) -> Namespace:
             """
             Get default options for a toil workflow.
@@ -2504,7 +2532,6 @@ class Job:
             :param jobStore: A string describing the jobStore \
             for the workflow.
             :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
-            :param config_option: If set, use this string for the Toil --config option instead of "config".
             :returns: The options used by a toil workflow.
             """
             # setting jobstore_as_flag to True allows the user to declare the jobstore in the config file instead
@@ -2514,8 +2541,7 @@ class Job:
                     "to False!"
                 )
             parser = Job.Runner.getDefaultArgumentParser(
-                jobstore_as_flag=jobstore_as_flag,
-                config_option=config_option,
+                jobstore_as_flag=jobstore_as_flag
             )
             arguments = []
             if jobstore_as_flag and jobStore is not None:
@@ -2528,7 +2554,6 @@ class Job:
         def addToilOptions(
             parser: OptionParser | ArgumentParser,
             jobstore_as_flag: bool = False,
-            config_option: str | None = None,
         ) -> None:
             """
             Adds the default toil options to an :mod:`optparse` or :mod:`argparse`
@@ -2543,13 +2568,8 @@ class Job:
 
             :param parser: Options object to add toil options to.
             :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
-            :param config_option: If set, use this string for the Toil --config option instead of "config".
             """
-            addOptions(
-                parser,
-                jobstore_as_flag=jobstore_as_flag,
-                config_option=config_option,
-            )
+            addOptions(parser, jobstore_as_flag=jobstore_as_flag)
 
         @staticmethod
         def startToil(job: Job, options) -> Any:
@@ -2738,7 +2758,7 @@ class Job:
                 # File may be gone if the job is a service being re-run and the accessing job is
                 # already complete.
                 if jobStore.file_exists(promiseFileStoreID):
-                    logger.debug(
+                    logger.info(
                         "Resolve promise %s from %s with a %s",
                         promiseFileStoreID,
                         self,
@@ -4204,6 +4224,11 @@ class Promise:
     A set of IDs of files containing promised values when we know we won't need them anymore
     """
 
+    resolving = True
+    """
+    Set to False to disable promise resolution for debugging.
+    """
+
     def __init__(self, job: Job, path: Any):
         """
         Initialize this promise.
@@ -4241,7 +4266,7 @@ class Promise:
             raise RuntimeError(
                 "Cannot instantiate promise. Invalid number of arguments given (Expected 2)."
             )
-        if isinstance(args[0], Job):
+        if not cls.resolving or isinstance(args[0], Job):
             # Regular instantiation when promise is created, before it is being pickled
             return super().__new__(cls)
         else:

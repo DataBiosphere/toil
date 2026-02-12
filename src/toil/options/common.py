@@ -865,6 +865,26 @@ def add_base_toil_options(
         f"labeling job failed. default={1}",
     )
     job_options.add_argument(
+        "--retryBackoffSeconds",
+        dest="retry_backoff_seconds",
+        default=2,
+        type=float,
+        action=make_open_interval_action(0),
+        metavar="FLOAT",
+        help=f"Number of seconds to wait when first retrying a job. "
+        f"default={2}",
+    )
+    job_options.add_argument(
+        "--retryBackoffFactor",
+        dest="retry_backoff_factor",
+        default=3,
+        type=float,
+        action=make_open_interval_action(1),
+        metavar="FLOAT",
+        help=f"Factor to increase retry backof time by for each "
+        f"additional retry. default={3}",
+    )
+    job_options.add_argument(
         "--stopOnFirstFailure",
         dest="stop_on_first_failure",
         type=strtobool,
