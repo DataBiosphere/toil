@@ -2,4 +2,4 @@ boto3-stubs[s3,sdb,iam,sts,boto3,ec2,autoscaling]>=1.28.3.post2, <2
 mypy-boto3-iam>=1.28.3.post2, <2 # Need to force .post1 to be replaced
 mypy-boto3-s3>=1.28.3.post2, <2
 moto>=5.0.3, <6
-ec2_metadata>=2.14.0,<3
+ec2_metadata>=2.14.0,<4
