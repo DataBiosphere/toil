@@ -119,7 +119,7 @@ class TestJob:
         # Check output
         assert open(outFile).readline() == "ABCDE"
 
-    def test_retry_backoff(self, tmp_path: Path):
+    def test_retry_backoff(self, tmp_path: Path) -> None:
         """
         Make sure jobs retry with exponential backoff.
         """
@@ -843,7 +843,7 @@ def fn2Test(pStrings: list[str], s: str, outputFile: Path) -> str:
         fH.write(" ".join(pStrings) + " " + s)
     return s
 
-def time_recording_fn(path) -> None:
+def time_recording_fn(path: Path) -> None:
     """
     Function to record the times it runs to a file, and fail.
     """
