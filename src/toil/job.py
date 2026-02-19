@@ -1482,10 +1482,10 @@ class JobDescription(Requirer):
         :returns: True if a modification to the JobDescription was made, and
                   False otherwise.
         """
-        if self._remainingTryCount is not None or self._retryBackoff is not None:
+        if self._remainingTryCount is not None or self._retry_backoff_seconds is not None:
             # We had a value stored
             self._remainingTryCount = None
-            self._retryBackoff = None
+            self._retry_backoff_seconds = None
             return True
         else:
             # No change needed
