@@ -29,7 +29,6 @@ def main():
         'docs/conf.py',
         'docs/vendor/sphinxcontrib/fulltoc.py',
         'docs/vendor/sphinxcontrib/__init__.py',
-        'src/toil/job.py',
         'src/toil/leader.py',
         'src/toil/__init__.py',
         'src/toil/deferred.py',

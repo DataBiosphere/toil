@@ -14,6 +14,7 @@
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 
+from typing import Any
 
 class Expando(dict):
     """
@@ -101,7 +102,7 @@ class Expando(dict):
     True
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.__slots__ = None
         self.__dict__ = self

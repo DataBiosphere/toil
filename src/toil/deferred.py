@@ -17,6 +17,8 @@ import os
 import tempfile
 from collections import namedtuple
 from contextlib import contextmanager
+from typing import Any, Callable
+from typing_extensions import ParamSpec
 
 import dill
 
@@ -40,8 +42,10 @@ class DeferredFunction(
     True
     """
 
+    P = ParamSpec("P")
+
     @classmethod
-    def create(cls, function, *args, **kwargs):
+    def create(cls, function: Callable[P, Any], *args: P.args, **kwargs: P.kwargs):
         """
         Capture the given callable and arguments as an instance of this class.
 

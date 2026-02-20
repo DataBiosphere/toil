@@ -2939,14 +2939,12 @@ def makeRootJob(
         # Get metadata for non-tool input files
         input_metadata = get_file_sizes(
             input_filenames,
-            toil._jobStore,
             include_remote_files=options.reference_inputs,
         )
 
         # Also get metadata for tool input files, so we can resilve them to candidate URIs
         tool_metadata = get_file_sizes(
             input_filenames,
-            toil._jobStore,
             include_remote_files=options.reference_inputs,
         )
 

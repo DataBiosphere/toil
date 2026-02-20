@@ -263,11 +263,11 @@ class AbstractJobStore(ABC):
         """Set the root job of the workflow backed by this job store."""
         return self.set_root_job(rootJobStoreID)
 
-    def set_root_job(self, job_id: FileID) -> None:
+    def set_root_job(self, job_id: str) -> None:
         """
         Set the root job of the workflow backed by this job store.
 
-        :param job_id: The ID of the job to set as root
+        :param job_id: The job store ID of the job to set as root
         """
         with self.write_shared_file_stream(self.rootJobStoreIDFileName) as f:
             f.write(job_id.encode("utf-8"))
