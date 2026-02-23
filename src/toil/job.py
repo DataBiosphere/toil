@@ -2553,22 +2553,9 @@ class Job:
     ####################################################
 
     P = ParamSpec("P")
-    # TODO: sphinx-autodoc-typehints 3.0.1 can't understand this.
-    # It produces:
-    #
-    #     WARNING: Cannot resolve forward reference in type annotations of "toil.job.Job.defer": name 'P' is not defined
-    #
-    # We can't tell if newer versions can understanhd this, because we are
-    # compatible back to Python 3.10, and later versions of
-    # sphinx-autodoc-typehints drop Pythion 3.10 support, because later
-    # versions of Sphinx drop python 3.10 support, even though Python 3.10
-    # isn't EOL yet.
-    #
-    # We can't suppress a single Sphinx warning instance, only whole
-    # categories of warnings with suppress_warnings (see
-    # <https://github.com/tox-dev/sphinx-autodoc-typehints/issues/432>), and
-    # that isn't available until 3.3.0 anyway.
-    def defer(self, function: Callable[P, Any], *args: "P.args", **kwargs: "P.kwargs") -> None:
+    # TODO: sphinx-autodoc-typehints 3.0.1 can't understand P unquoted, and we
+    # can't upgrade until we drop Python 3.10.
+    def defer(self, function: Callable["P", Any], *args: "P.args", **kwargs: "P.kwargs") -> None:
         """
         Register a deferred function, i.e. a callable that will be invoked after the current
         attempt at running this job concludes. A job attempt is said to conclude when the job
