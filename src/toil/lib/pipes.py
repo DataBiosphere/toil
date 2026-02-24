@@ -77,7 +77,7 @@ class WritablePipe(ABC):
     >>> seen_errors = []
     >>> class MyPipe(WritablePipe):
     ...     def readFrom(self, readable):
-    ...         while readable.read(100) != "":
+    ...         while readable.read(100):
     ...             pass
     ...         if self.writer_error is not None:
     ...             seen_errors.append(self.writer_error)
