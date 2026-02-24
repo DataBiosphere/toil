@@ -316,9 +316,13 @@ def cpu_count() -> int:
     proc_info = psutil.Process()
     if hasattr(proc_info, "cpu_affinity"):
         try:
-            logger.debug("CPU affinity available")
-            affinity_size = len(proc_info.cpu_affinity())
-            logger.debug("CPU affinity is restricted to %d cores", affinity_size)
+            affinity = proc_info.cpu_affinity()
+            if affinity is not None:
+                affinity_size = len(affinity)
+                logger.debug("CPU affinity is restricted to %d cores", affinity_size)
+            else:
+                # Somehow this returned None, which MyPy thinks it might
+                logger.debug("CPU affinity appears available but isn't")
         except:
             # We can't actually read this even though it exists.
             logger.debug(

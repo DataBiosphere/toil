@@ -14,6 +14,7 @@
 import collections
 import os
 import random
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Callable, NoReturn, cast
@@ -71,9 +72,10 @@ class TestJob:
         options = Job.Runner.getDefaultOptions(tmp_path / "jobstore")
         options.logLevel = "INFO"
         options.retryCount = 100
+        options.retry_backoff_seconds = 0
         options.badWorker = 0.5
         options.badWorkerFailInterval = 0.01
-        # Run the workflow, the return value being the number of failed jobs
+        # Run the workflow, or raise if it does not succeed
         Job.Runner.startToil(A, options)
 
         # Check output
@@ -108,13 +110,48 @@ class TestJob:
         options = Job.Runner.getDefaultOptions(tmp_path / "jobstore")
         options.logLevel = "INFO"
         options.retryCount = 100
+        options.retry_backoff_seconds = 0
         options.badWorker = 0.5
         options.badWorkerFailInterval = 0.01
-        # Run the workflow, the return value being the number of failed jobs
+        # Run the workflow, or raise if it does not succeed
         Job.Runner.startToil(A, options)
 
         # Check output
         assert open(outFile).readline() == "ABCDE"
+
+    def test_retry_backoff(self, tmp_path: Path) -> None:
+        """
+        Make sure jobs retry with exponential backoff.
+        """
+
+        time_file = tmp_path / "times.txt"
+
+        # Make a job that will log the time when it attempts to run, and that
+        # always fails.
+        MainJob = Job.wrapFn(time_recording_fn, time_file)
+
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobstore")
+        options.logLevel = "INFO"
+        options.retryCount = 4 # Plus the one original try
+        options.retry_backoff_seconds = 1.0
+        options.retry_backoff_factor = 2.0
+
+        try:
+            # Run the workflow, or raise if it does not succeed
+            Job.Runner.startToil(MainJob, options)
+        except FailedJobsException as e:
+            # This is expected
+            pass
+
+        assert time_file.exists()
+
+        time_values = [float(l) for l in open(time_file) if len(l) > 0]
+
+        assert len(time_values) == 5
+        assert time_values[1] - time_values[0] >= 1.0
+        assert time_values[2] - time_values[1] >= 2.0
+        assert time_values[3] - time_values[2] >= 4.0
+        assert time_values[4] - time_values[3] >= 8.0
 
     @slow
     @pytest.mark.slow
@@ -806,6 +843,13 @@ def fn2Test(pStrings: list[str], s: str, outputFile: Path) -> str:
         fH.write(" ".join(pStrings) + " " + s)
     return s
 
+def time_recording_fn(path: Path) -> None:
+    """
+    Function to record the times it runs to a file, and fail.
+    """
+    with open(path, "a") as fp:
+        fp.write(f"{time.time()}\n")
+    raise RuntimeError("Refuse to succeed!")
 
 def trivialParent(job: Job) -> None:
     strandedJob = JobFunctionWrappingJob(child)

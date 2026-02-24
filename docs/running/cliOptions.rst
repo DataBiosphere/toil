@@ -475,8 +475,14 @@ systems have issues!).
   --retryCount INT
                         Number of times to retry a failing job before giving
                         up and labeling job failed. default=1
+  --retryBackoffSeconds FLOAT
+                        Number of seconds to wait when first retrying a job.
+                        default=2
+  --retryBackoffFactor FLOAT
+                        Factor to increase retry backof time by for each
+                        additional retry. default=3
   --stopOnFirstFailure BOOL
-                        Stop the workflow at the first complete job failure. 
+                        Stop the workflow at the first complete job failure.
   --enableUnlimitedPreemptibleRetries
                         If set, preemptible failures (or any failure due to an
                         instance getting unexpectedly terminated) will not count

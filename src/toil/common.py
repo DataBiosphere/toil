@@ -218,6 +218,8 @@ class Config:
 
     # Retrying/rescuing jobs
     retryCount: int
+    retry_backoff_seconds: float
+    retry_backoff_factor: float
     stop_on_first_failure: bool
     enableUnlimitedPreemptibleRetries: bool
     doubleMem: bool
@@ -397,6 +399,8 @@ class Config:
 
         # Retrying/rescuing jobs
         set_option("retryCount")
+        set_option("retry_backoff_seconds")
+        set_option("retry_backoff_factor")
         set_option("stop_on_first_failure")
         set_option("enableUnlimitedPreemptibleRetries")
         set_option("doubleMem")

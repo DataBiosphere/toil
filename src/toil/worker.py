@@ -520,7 +520,7 @@ def workerScript(
                 # Reduce the try count
                 if jobDesc.remainingTryCount < 0:
                     raise RuntimeError("The try count of the job cannot be negative.")
-                jobDesc.remainingTryCount = max(0, jobDesc.remainingTryCount - 1)
+                jobDesc.chargeRetry()
                 jobDesc.restartCheckpoint(job_store)
             # Otherwise, the job and successors are done, and we can cleanup stuff we couldn't clean
             # because of the job being a checkpoint
