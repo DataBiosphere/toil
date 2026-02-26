@@ -307,6 +307,12 @@ py312_main:
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 py313_appliance_build:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+    - if: $CI_COMMIT_BRANCH =~ /.*3\.13.*/
   stage: basic_tests
   cache:
     key: cache-python3.13
@@ -325,7 +331,11 @@ py313_appliance_build:
 
 py313_main:
   rules:
-    - if: $CI_PIPELINE_SOURCE != "schedule"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+    - if: $CI_COMMIT_BRANCH =~ /.*3\.13.*/
   stage: basic_tests
   cache:
     key: cache-python3.13
