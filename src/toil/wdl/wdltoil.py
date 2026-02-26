@@ -6002,8 +6002,8 @@ class WDLImportWrapper(WDLSectionJob):
         wdl_options: WDLContext,
         inputs_search_path: list[str],
         import_remote_files: bool,
-        import_workers_batchsize: str,
-        import_workers_disk: ParseableIndivisibleResource,
+        import_workers_batchsize: int,
+        import_workers_disk: int,
         **kwargs: Any,
     ):
         """

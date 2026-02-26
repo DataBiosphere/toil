@@ -4221,8 +4221,8 @@ class ImportsJob(Job):
     def __init__(
         self,
         file_to_data: dict[str, FileMetadata],
-        max_batch_size: str,
-        import_worker_disk: ParseableIndivisibleResource,
+        max_batch_size: int,
+        import_worker_disk: int,
         **kwargs: Any,
     ):
         """
@@ -4232,7 +4232,9 @@ class ImportsJob(Job):
 
         :param file_to_data: mapping of file source name to file metadata
         :param max_batch_size: maximum cumulative file size of a batched
-            import, as a disk amount specification.
+            import, in bytes. To parse this from a string, see human2bytes().
+        :param import_worker_disk: bytes of disk to allocate for each worker
+            import job.
         """
         super().__init__(local=True, **kwargs)
         self._file_to_data = file_to_data
@@ -4255,12 +4257,9 @@ class ImportsJob(Job):
             to FileMetadata mapping). The candidate URI is stored in
             FileMetadata.source.
         """
-        # Parse the disk amount for the batch size.
-        max_batch_size: int = human2bytes(self._max_batch_size)
-        file_to_data = self._file_to_data
         # Run WDL imports on a worker instead
 
-        filenames = list(file_to_data.keys())
+        filenames = list(self._file_to_data.keys())
 
         import_jobs = []
 
@@ -4273,9 +4272,9 @@ class ImportsJob(Job):
         while len(filenames) > 0:
             filename = filenames.pop(0)
             # See if adding this to the queue will make the batch job too big.
-            filesize = file_to_data[filename][2]
+            filesize = self._file_to_data[filename][2]
             assert filesize is not None
-            if per_batch_size + filesize >= max_batch_size:
+            if per_batch_size + filesize >= self._max_batch_size:
                 # batch is too big now, store to schedule the batch
                 if len(per_batch_files) == 0:
                     # schedule the individual file
@@ -4293,7 +4292,7 @@ class ImportsJob(Job):
 
         # Create batch import jobs for each group of files
         for batch in file_batches:
-            candidate_uris = [file_to_data[filename][0] for filename in batch]
+            candidate_uris = [self._file_to_data[filename][0] for filename in batch]
             import_jobs.append(
                 WorkerImportJob(candidate_uris, disk=self._import_worker_disk)
             )
@@ -4306,7 +4305,7 @@ class ImportsJob(Job):
             job.addFollowOn(combine_imports_job)
         self.addChild(combine_imports_job)
 
-        return combine_imports_job.rv(), file_to_data
+        return combine_imports_job.rv(), self._file_to_data
 
 
 class Promise:
