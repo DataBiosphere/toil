@@ -89,7 +89,7 @@ class WritablePipe(ABC):
     >>> len(seen_errors)
     1
     >>> type(seen_errors[0])
-    RuntimeError
+    <class 'RuntimeError'>
     """
 
     def __init__(self, encoding: str | None = None, errors: str | None = None) -> None:
