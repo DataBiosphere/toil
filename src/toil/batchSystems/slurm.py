@@ -86,22 +86,37 @@ NONTERMINAL_STATES: set[str] = {
 
 def parse_slurm_time(slurm_time: str) -> int:
     """
-    Parse a Slurm-style time duration like 7-00:00:00 to a number of seconds.
+    Parse a Slurm-style time duration to a number of seconds.
+
+    Slurm supports the following time formats:
+    - "minutes"
+    - "minutes:seconds"
+    - "hours:minutes:seconds"
+    - "days-hours"
+    - "days-hours:minutes"
+    - "days-hours:minutes:seconds"
 
     Raises ValueError if not parseable.
     """
-    # slurm returns time in days-hours:minutes:seconds format
-    # Sometimes it will only return minutes:seconds, so days may be omitted
-    # For ease of calculating, we'll make sure all the delimeters are ':'
-    # Then reverse the list so that we're always counting up from seconds -> minutes -> hours -> days
-    total_seconds = 0
-    elapsed_split: list[str] = slurm_time.replace("-", ":").split(":")
-    elapsed_split.reverse()
-    seconds_per_unit = [1, 60, 3600, 86400]
-    for index, multiplier in enumerate(seconds_per_unit):
-        if index < len(elapsed_split):
-            total_seconds += multiplier * int(elapsed_split[index])
-    return total_seconds
+    # Split on dash to check for days
+    if "-" in slurm_time:
+        days_str, _, slurm_time = slurm_time.partition("-")
+        days = int(days_str)
+    else:
+        days = 0
+
+    # Split remaining time into components and convert to integers
+    time_components = [int(x) for x in slurm_time.split(":")]
+
+    # Pad right to 3 if we have days, 2 otherwise
+    time_components += [0] * ((3 if days else 2) - len(time_components))
+
+    # Parse as base 60 from the left
+    result = 0
+    for component in time_components:
+        result = result * 60 + component
+
+    return days * 86400 + result
 
 
 # For parsing user-provided option overrides (or self-generated

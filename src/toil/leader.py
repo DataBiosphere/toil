@@ -16,6 +16,7 @@
 
 import base64
 import glob
+import heapq
 import logging
 import os
 import pickle
@@ -122,6 +123,13 @@ class Leader:
         # in the jobStore, and its bus is the one true place to listen for
         # state change information about jobs.
         self.toilState = ToilState(self.jobStore)
+
+        # We keep a min-heap of jobs that shouldn't be reissued until a
+        # particular time in seconds since epoch, as (time, JobDescription)
+        # pairs. When jobs fail, we can put them here to let them back off
+        # before being issued again. These jobs will have already been "ready"
+        # and just need to be issued at the right time.
+        self._waiting_jobs: list[tuple[float, JobDescription]] = []
 
         # Message bus messages need to go to the given file.
         # Keep a reference to the return value so the listener stays alive.
@@ -594,7 +602,7 @@ class Leader:
             )
             self.processTotallyFailedJob(predecessor_id)
 
-    def _processReadyJob(self, job_id: str, result_status: int):
+    def _process_ready_job(self, job_id: str, result_status: int):
         # We operate on the JobDescription mostly.
         readyJob = self.toilState.get_job(job_id)
 
@@ -638,7 +646,14 @@ class Leader:
                 logger.warning("Job %s is completely failed", readyJob)
             else:
                 # Otherwise try the job again
-                self.issueJob(readyJob)
+                if result_status != 0 and readyJob.retry_backoff_seconds > 0:
+                    # We don't want to reissue the job until some time has passed
+                    target_time = time.time() + readyJob.retry_backoff_seconds
+                    logger.info("Waiting %s seconds to retry job %s", readyJob.retry_backoff_seconds, readyJob)
+                    heapq.heappush(self._waiting_jobs, (target_time, readyJob))
+                else:
+                    # We can issue the job now
+                    self.issueJob(readyJob)
         elif next(readyJob.serviceHostIDsInBatches(), None) is not None:
             # the job has services to run, which have not been started, start them
             # Build a map from the service jobs to the job and a map
@@ -725,7 +740,7 @@ class Leader:
                     readyJob.jobStoreID,
                 )
 
-    def _processReadyJobs(self):
+    def _process_ready_jobs(self):
         """Process jobs that are ready to be scheduled/have successors to schedule."""
         logger.debug(
             "Built the jobs list, currently have %i jobs to update and %i jobs issued",
@@ -772,8 +787,21 @@ class Leader:
                 continue
             else:
                 # New job for this tick so actually handle that it is updated
-                self._processReadyJob(message.job_id, message.result_status)
+                self._process_ready_job(message.job_id, message.result_status)
                 handled_with_status[message.job_id] = message.result_status
+    
+    def _process_waiting_jobs(self):
+        """
+        See if any jobs in the waiting-job min-heap are ready to issue.
+
+        If so, reissues them.
+        """
+        
+        while len(self._waiting_jobs) > 0 and self._waiting_jobs[0][0] <= time.time():
+            # The next job is ready!
+            ready_time, ready_job = heapq.heappop(self._waiting_jobs)
+            logger.info("Job %s has finished its backoff period", ready_job)
+            self.issueJob(ready_job)
 
     def _startServiceJobs(self):
         """Start any service jobs available from the service manager."""
@@ -913,12 +941,16 @@ class Leader:
 
         while (
             self._messages.count(JobUpdatedMessage) > 0
+            or len(self._waiting_jobs) > 0
             or self.getNumberOfJobsIssued()
             or self.serviceManager.get_job_count()
         ):
 
             if self._messages.count(JobUpdatedMessage) > 0:
-                self._processReadyJobs()
+                self._process_ready_jobs()
+
+            if len(self._waiting_jobs) > 0:
+                self._process_waiting_jobs()
 
             # deal with service-related jobs
             self._startServiceJobs()
@@ -988,8 +1020,8 @@ class Leader:
         totalRunningJobs = len(self.batchSystem.getRunningBatchJobIDs())
         totalServicesIssued = self.serviceJobsIssued + self.preemptibleServiceJobsIssued
 
-        # If there are no updated jobs and at least some jobs running
-        if totalServicesIssued >= totalRunningJobs and totalRunningJobs > 0:
+        # If there are no updated jobs and no waiting jobs and at least some jobs running
+        if totalServicesIssued >= totalRunningJobs and len(self._waiting_jobs) == 0 and totalRunningJobs > 0:
             # Collect all running service job store IDs into a set to compare with the deadlock set
             running_service_ids: set[str] = set()
             for js_id in self.issued_jobs_by_batch_system_id.values():
@@ -1067,7 +1099,7 @@ class Leader:
                 # We have observed non-service jobs running, so reset the potential deadlock
                 self.feed_deadlock_watchdog()
         else:
-            # We have observed non-service jobs running, so reset the potential deadlock.
+            # We have observed non-service jobs running, or jobs waiting, so reset the potential deadlock.
             self.feed_deadlock_watchdog()
 
     def feed_deadlock_watchdog(self) -> None:

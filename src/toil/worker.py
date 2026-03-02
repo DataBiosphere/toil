@@ -50,7 +50,7 @@ from toil.job import (
 )
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.expando import MagicExpando
-from toil.lib.io import make_public_dir
+from toil.lib.io import make_public_dir, path_union
 from toil.lib.resources import ResourceMonitor
 from toil.statsAndLogging import configure_root_logger, install_log_color, set_log_level
 
@@ -365,18 +365,15 @@ def workerScript(
         "XDG_DATA_DIRS",
         "DBUS_SESSION_BUS_ADDRESS",
     }
-    for i in environment:
-        if i == "PATH":
+    for k, v in environment.items():
+        if k == "PATH":
             # Handle path specially. Sometimes e.g. leader may not include
             # /bin, but the Toil appliance needs it.
-            if i in os.environ and os.environ[i] != "":
-                # Use the provided PATH and then the local system's PATH
-                os.environ[i] = environment[i] + ":" + os.environ[i]
-            else:
-                # Use the provided PATH only
-                os.environ[i] = environment[i]
-        elif i not in env_reject:
-            os.environ[i] = environment[i]
+
+            # Use the provided PATH and then the local system's PATH if any
+            os.environ[k] = path_union(v, os.environ.get(k))
+        elif k not in env_reject:
+            os.environ[k] = v
     # sys.path is used by __import__ to find modules
     if "PYTHONPATH" in environment:
         for e in environment["PYTHONPATH"].split(":"):
@@ -523,7 +520,7 @@ def workerScript(
                 # Reduce the try count
                 if jobDesc.remainingTryCount < 0:
                     raise RuntimeError("The try count of the job cannot be negative.")
-                jobDesc.remainingTryCount = max(0, jobDesc.remainingTryCount - 1)
+                jobDesc.chargeRetry()
                 jobDesc.restartCheckpoint(job_store)
             # Otherwise, the job and successors are done, and we can cleanup stuff we couldn't clean
             # because of the job being a checkpoint

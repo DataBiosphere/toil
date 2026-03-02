@@ -20,7 +20,6 @@ from argparse import Namespace
 from pathlib import Path
 
 import pytest
-from pytest_subtests import SubTests
 
 from toil.common import Toil
 from toil.exceptions import FailedJobsException
@@ -109,7 +108,7 @@ class TestImportExportFile:
     def test_import_export_restart_false(self, tmp_path: Path) -> None:
         self._run_import_export_workflow(tmp_path, restart=False)
 
-    def test_basic_import_export(self, tmp_path: Path, subtests: SubTests) -> None:
+    def test_basic_import_export(self, tmp_path: Path, subtests: pytest.Subtests) -> None:
         """
         Ensures that uploaded files preserve their file permissions when they
         are downloaded again. This function checks that an imported executable file

@@ -1,4 +1,4 @@
-.. image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/required.json%3Fjob=cwl_badge?icon=commonwl&label=CWL%201.2%20Conformance
+.. image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/required.json%3Fjob=cwl_badge%26search_recent_successful_pipelines=true?icon=commonwl&label=CWL%201.2%20Conformance
    :alt: Toil CWL 1.2 Conformance Badge
    :target: https://github.com/common-workflow-language/cwl-v1.2/blob/main/CONFORMANCE_TESTS.md
 

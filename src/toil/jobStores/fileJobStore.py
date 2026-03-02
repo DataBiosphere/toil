@@ -688,16 +688,17 @@ class FileJobStore(AbstractJobStore, URLAccess):
     @contextmanager
     def update_file_stream(self, file_id, encoding=None, errors=None):
         self._check_job_store_file_id(file_id)
-        # File objects are context managers (CM) so we could simply return what open returns.
-        # However, it is better to wrap it in another CM so as to prevent users from accessing
-        # the file object directly, without a with statement.
-        with open(
-            self._get_file_path_from_id(file_id),
-            "wb" if encoding == None else "wt",
-            encoding=encoding,
-            errors=errors,
-        ) as f:
-            yield f
+
+        with AtomicFileCreate(self._get_file_path_from_id(file_id)) as tmp_path:
+            # We show the user an open stream, and take the update only if the
+            # user finishes writing successfully.
+            with open(
+                tmp_path,
+                "wb" if encoding == None else "wt",
+                encoding=encoding,
+                errors=errors,
+            ) as f:
+                yield f
 
     @contextmanager
     @overload

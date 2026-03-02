@@ -315,13 +315,23 @@ class MultiPartPipe(WritablePipe):
                 # Get the next block of data we want to put
                 buf = readable.read(self.part_size)
                 if len(buf) == 0:
-                    # Don't allow any part other than the very first to be empty.
+                    # The writer has stoped writing.
+                    if self.writer_error is not None:
+                        # This is because of abnormal termination.
+                        # Don't complete the upload.
+                        raise RuntimeError("Writer failed when writing to MultiPartPipe") from self.writer_error
+                    # Otherwise, the upload is done.
                     break
                 hasher.update(buf)
         except:
+            logger.exception(f"[{upload_id}] Aborting upload")
             self.s3_client.abort_multipart_upload(
                 Bucket=self.bucket_name, Key=self.file_id, UploadId=upload_id
             )
+            if self.writer_error is None:
+                # If the writer isn't already failing (and causing us to fail
+                # for that reason), fail for this reason.
+                raise
         else:
             # Save the checksum
             checksum = f"sha1${hasher.hexdigest()}"

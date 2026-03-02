@@ -722,10 +722,27 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
             def readFrom(self, readable):
                 if not update:
                     assert not blob.exists()
-                if readable.seekable():
-                    blob.upload_from_file(readable)
-                else:
-                    blob.upload_from_string(readable.read())
+                # TODO: our pipe stream is not seekable, and
+                # blob.upload_from_file() apparently wants a seekable stream
+                # (TODO: check this! The docs at
+                # <https://docs.cloud.google.com/python/docs/reference/storage/latest/google.cloud.storage.blob.Blob#google_cloud_storage_blob_Blob_upload_from_file>
+                # don't say but they do say it acts differently based on file
+                # size.)
+
+                # So we just always dump the whole stream to memory and then
+                # upload it.
+                all_data = readable.read()
+
+                # This in turn means we can use WritabelPipe's built-in writer
+                # exception detection to cancel the upload on writer failure,
+                # and we don't need to work out a way to get an error to come
+                # from a read call inside Google's code.
+                if self.writer_error is not None:
+                    # Don't actually commit an upload where the writer failed.
+                    log.error("Aborting upload due to error in writer")
+                    return
+
+                blob.upload_from_string(all_data)
 
         with UploadPipe(encoding=encoding, errors=errors) as writable:
             yield writable
