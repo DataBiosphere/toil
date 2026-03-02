@@ -4574,6 +4574,7 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
                 # directories, we need to copy outputs out of tmpdir before
                 # deletion. Otherwise, downstream steps that reference files
                 # in the tmpdir will fail.
+                # TODO: "move" doesn't work here. Why?
                 runtime_context.move_outputs = "copy"
 
             # We instantiate an early builder object here to populate indirect
