@@ -2343,73 +2343,57 @@ def test_leave_tmpdir(tmp_path: Path) -> None:
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
-def test_rm_tmpdir(tmp_path: Path) -> None:
+def test_rm_tmpdir(tmp_path: Path, subtests: pytest.Subtests) -> None:
     """
     Test that --rm-tmpdir (the default) removes intermediate temporary directories.
-
-    This test uses --bypass-file-store because the tmpdir_prefix option is only
-    respected when bypassing the file store. When using the file store, Toil
-    manages temp directories internally.
     """
-    tmpdir_prefix = os.path.join(tmp_path, "tmpdir", "prefix_")
 
-    # Create the parent directory for tmpdir_prefix
-    os.makedirs(os.path.dirname(tmpdir_prefix), exist_ok=True)
+    subtest_num = 0
+    for bypass_filestore in (False, True):
+        for successful_workflow in (True, False):
+            with subtests.test(msg=f"Bypass filestore: {bypass_filestore} Successful workflow: {successful_workflow}"):
+                
+                # Each run needs a separate root
+                base_dir = tmp_path / str(subtest_num)
+                subtest_num += 1
 
-    # Use the same prefix for both tmpdir and tmp_outdir so they all go to the
-    # same parent directory and we can check for any leftovers
-    with get_data("test/cwl/echo_string.cwl") as cwl_file:
-        cmd = [
-            "toil-cwl-runner",
-            f"--jobStore=file:{tmp_path / 'jobstore'}",
-            "--bypass-file-store",
-            "--rm-tmpdir",
-            f"--tmpdir-prefix={tmpdir_prefix}",
-            f"--tmp-outdir-prefix={tmpdir_prefix}",
-            f"--outdir={tmp_path / 'outdir'}",
-            str(cwl_file),
-        ]
-        p = subprocess.run(cmd)
-        assert p.returncode == 0
+                # Use the same tree for all sorts of temp file so we can check for
+                # any leftovers
+                to_clean = base_dir / "tmpdir"
+                os.makedirs(to_clean, exist_ok=True)
 
-    # Check that temp directories were cleaned up
-    tmpdir_parent = os.path.dirname(tmpdir_prefix)
-    leftover_dirs = os.listdir(tmpdir_parent)
-    assert len(leftover_dirs) == 0, f"Expected temp directories to be removed with --rm-tmpdir, but found: {leftover_dirs}"
+                workflow_path = "test/cwl/echo_string.cwl" if successful_workflow else "test/cwl/echo_string_and_fail.cwl"
 
+                
+                with get_data(workflow_path) as cwl_file:
+                    # We set both tmpdir-prefix and workDir to be extra special sure
+                    # the files go in there.
+                    # TODO: Anthropic Claude got the idea that we might not actually
+                    # follow --tmpdir-prefix when using the filestore; do we have a
+                    # test to rule that out?
+                    cmd = [
+                        "toil-cwl-runner",
+                        f"--jobStore=file:{base_dir / 'jobstore'}",
+                        "--rm-tmpdir",
+                        f"--tmpdir-prefix={to_clean / 'prefix'}",
+                        f"--workDir={to_clean}",
+                        f"--tmp-outdir-prefix={to_clean / 'out_prefix'}",
+                        f"--outdir={base_dir / 'outdir'}",
+                    ]
+                    if bypass_filestore:
+                        cmd.append("--bypass-file-store")
+                    cmd.append(str(cwl_file))
+                    p = subprocess.run(cmd)
+                    if successful_workflow:
+                        assert p.returncode == 0
+                    else:
+                        # The workflow should fail but we should still do the
+                        # cleanup, because the cleanup should be per task.
+                        assert p.returncode != 0
 
-@needs_cwl
-@pytest.mark.cwl
-@pytest.mark.cwl_small
-def test_rm_tmpdir_without_bypass(tmp_path: Path) -> None:
-    """
-    Test that --rm-tmpdir cleans up temp directories when NOT bypassing file store.
-
-    When using the file store (not bypassing), Toil manages temp directories
-    internally under the workDir. This test verifies that no temp directories
-    are left behind after the workflow completes.
-    """
-    work_dir = tmp_path / "workdir"
-    work_dir.mkdir()
-
-    with get_data("test/cwl/echo_string.cwl") as cwl_file:
-        cmd = [
-            "toil-cwl-runner",
-            f"--jobStore=file:{tmp_path / 'jobstore'}",
-            "--rm-tmpdir",
-            f"--workDir={work_dir}",
-            f"--outdir={tmp_path / 'outdir'}",
-            str(cwl_file),
-        ]
-        p = subprocess.run(cmd)
-        assert p.returncode == 0
-
-    # Check that workDir has no leftover temp directories
-    # Toil creates temp directories under workDir with names like "toilwf-*"
-    leftover_items = os.listdir(work_dir)
-    # Filter out any non-temp items that might legitimately exist
-    temp_leftovers = [item for item in leftover_items if item.startswith("toil")]
-    assert len(temp_leftovers) == 0, f"Expected no temp directories in workDir, but found: {temp_leftovers}"
+                # Check that temp directories were cleaned up
+                leftover_dirs = os.listdir(to_clean)
+                assert len(leftover_dirs) == 0, f"Expected temp directories to be removed with --rm-tmpdir, but found: {leftover_dirs}"
 
 
 # StreamHandler is generic, _typeshed doesn't exist at runtime, do a bit of typing trickery, see https://github.com/python/typeshed/issues/5680
