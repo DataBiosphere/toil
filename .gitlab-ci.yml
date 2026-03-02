@@ -7,7 +7,7 @@ variables:
   TOIL_OWNER_TAG: "shared"
   TOIL_HISTORY: "0"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  MAIN_PYTHON_PKG: "python3.13"
+  MAIN_PYTHON_PKG: "python3.14"
   # Used to tell pytest which tests to be run by specifying markers,
   # Allows partitioning of tests to prevent duplicate running of tests in different jobs.
   # Currently specifies special tests that are not run by quick_test_offline.
