@@ -176,8 +176,11 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         gpu_partitions: set[str]
 
         def __init__(self) -> None:
-            self._get_partition_info()
-            self._get_gpu_partitions()
+            try:
+                self._get_partition_info()
+                self._get_gpu_partitions()
+            except CalledProcessErrorStderr as e:
+                logger.warning("Could not retrieve Slurm partition info due to: '%s'.", e)
 
         def _get_gpu_partitions(self) -> None:
             """
