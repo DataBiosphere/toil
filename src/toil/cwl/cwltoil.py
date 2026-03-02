@@ -2791,6 +2791,10 @@ class CWLJob(CWLNamedJob):
                 get_file=getattr(runtime_context, "toil_get_file"),
                 streaming_allowed=runtime_context.streaming_allowed,
             )
+        else:
+            # Multiple jobs may be racing to create the workflow outdir, and
+            # cwltool's creation code doesn't handle that, so create it now.
+            os.makedirs(runtime_context.outdir, exist_ok=True)
 
         # Collect standard output and standard error somewhere if they don't go to files.
         # We need to keep two FDs to these because cwltool will close what we give it.

@@ -2311,10 +2311,6 @@ def test_missing_tmpdir_and_tmp_outdir(tmp_path: Path) -> None:
 def test_leave_tmpdir(tmp_path: Path) -> None:
     """
     Test that --leave-tmpdir leaves intermediate temporary directories behind.
-
-    This test uses --bypass-file-store because the tmpdir_prefix option is only
-    respected when bypassing the file store. When using the file store, Toil
-    manages temp directories internally.
     """
     tmpdir_prefix = os.path.join(tmp_path, "tmpdir", "prefix_")
 
@@ -2322,6 +2318,9 @@ def test_leave_tmpdir(tmp_path: Path) -> None:
     os.makedirs(os.path.dirname(tmpdir_prefix), exist_ok=True)
 
     with get_data("test/cwl/echo_string.cwl") as cwl_file:
+        # We need to bypass the file store or else we use --workDir and not
+        # --tmpdir-prefix, and then the workers always clean up at the Toil
+        # level.
         cmd = [
             "toil-cwl-runner",
             f"--jobStore=file:{tmp_path / 'jobstore'}",
@@ -2329,6 +2328,7 @@ def test_leave_tmpdir(tmp_path: Path) -> None:
             "--leave-tmpdir",
             f"--tmpdir-prefix={tmpdir_prefix}",
             f"--outdir={tmp_path / 'outdir'}",
+            "--retryCount=0",
             str(cwl_file),
         ]
         p = subprocess.run(cmd)
@@ -2345,7 +2345,7 @@ def test_leave_tmpdir(tmp_path: Path) -> None:
 @pytest.mark.cwl_small
 def test_rm_tmpdir(tmp_path: Path, subtests: pytest.Subtests) -> None:
     """
-    Test that --rm-tmpdir (the default) removes intermediate temporary directories.
+    Test that --rm-tmpdir removes intermediate temporary directories.
     """
 
     subtest_num = 0
@@ -2367,10 +2367,8 @@ def test_rm_tmpdir(tmp_path: Path, subtests: pytest.Subtests) -> None:
                 
                 with get_data(workflow_path) as cwl_file:
                     # We set both tmpdir-prefix and workDir to be extra special sure
-                    # the files go in there.
-                    # TODO: Anthropic Claude got the idea that we might not actually
-                    # follow --tmpdir-prefix when using the filestore; do we have a
-                    # test to rule that out?
+                    # the files go in there. When not bypassing the filestore,
+                    # we ignore the tmpdir-prefix and work in workDir.
                     cmd = [
                         "toil-cwl-runner",
                         f"--jobStore=file:{base_dir / 'jobstore'}",
@@ -2379,6 +2377,7 @@ def test_rm_tmpdir(tmp_path: Path, subtests: pytest.Subtests) -> None:
                         f"--workDir={to_clean}",
                         f"--tmp-outdir-prefix={to_clean / 'out_prefix'}",
                         f"--outdir={base_dir / 'outdir'}",
+                        "--retryCount=0",
                     ]
                     if bypass_filestore:
                         cmd.append("--bypass-file-store")
