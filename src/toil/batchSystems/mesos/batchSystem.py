@@ -969,7 +969,7 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
                         log.warning("Executor: %s", line.rstrip())
 
                 except Exception as e:
-                    log.warning("Could not retrieve exceutor log due to: '%s'.", e)
+                    log.warning("Could not retrieve executor log due to: '%s'.", e)
                     log.warning(traceback.format_exc())
 
             for agentLogFilename in agentLogFilenames:
