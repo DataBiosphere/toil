@@ -193,7 +193,6 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         help=suppress_help or "Path prefix for intermediate output directories",
         default=None,
     )
-    # same workaround as dockergroup for mutually exclusive groups with suppressed help
     tmpdirgroup = (
         parser.add_mutually_exclusive_group()
         if not suppress_help
@@ -278,7 +277,6 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         default=False,
         help=suppress_help or SUPPRESS,
     )
-    # same workaround as dockergroup
     checkgroup = (
         parser.add_mutually_exclusive_group()
         if not suppress_help
