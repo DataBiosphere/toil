@@ -4696,27 +4696,6 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
             stdout.write("\n")
             logger.info("CWL run complete!")
 
-            # Clean up intermediate output directories when rm_tmpdir is enabled
-            # and we're bypassing the file store. The rm_tmpdir flag controls
-            # per-tool tmpdir cleanup, but the tmp_outdir directories that hold
-            # intermediate outputs between workflow steps are only cleaned up here
-            # at workflow completion.
-            if options.rm_tmpdir and options.bypass_file_store:
-                # Get the prefix used for intermediate output directories
-                tmp_outdir_prefix_path = runtime_context.tmp_outdir_prefix
-                prefix_dir = os.path.dirname(tmp_outdir_prefix_path)
-                prefix_base = os.path.basename(tmp_outdir_prefix_path)
-                if os.path.isdir(prefix_dir):
-                    for entry in os.listdir(prefix_dir):
-                        if entry.startswith(prefix_base):
-                            entry_path = os.path.join(prefix_dir, entry)
-                            if os.path.isdir(entry_path):
-                                logger.debug(
-                                    "Cleaning up intermediate output directory: %s",
-                                    entry_path,
-                                )
-                                shutil.rmtree(entry_path, ignore_errors=True)
-
     # Don't expose tracebacks to the user for exceptions that may be expected
     except FailedJobsException as err:
         if err.exit_code == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
