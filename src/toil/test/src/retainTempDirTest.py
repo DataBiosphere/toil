@@ -80,7 +80,7 @@ class TestCleanWorkDir:
             "The worker's temporary workspace was not deleted despite "
             "a successful job execution and cleanWorkDir being set to 'onSuccesss'"
         )
-
+    
     def _runAndReturnWorkDir(
         self,
         tmp_path: Path,
@@ -107,12 +107,12 @@ class TestCleanWorkDir:
         return os.listdir(workdir)
 
     def _launchRegular(
-        self, A: JobFunctionWrappingJob, options: argparse.Namespace
+        self, A: Job, options: argparse.Namespace
     ) -> None:
         Job.Runner.startToil(A, options)
 
     def _launchError(
-        self, A: JobFunctionWrappingJob, options: argparse.Namespace
+        self, A: Job, options: argparse.Namespace
     ) -> None:
         try:
             Job.Runner.startToil(A, options)

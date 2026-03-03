@@ -473,8 +473,8 @@ def serviceAccessor(
 
         # Try reading an integer from the input file and writing out the message
         with job.fileStore.jobStore.read_file_stream(outJobStoreFileID) as fH:
-            fH = codecs.getreader("utf-8")(fH)
-            line = fH.readline()
+            reader = codecs.getreader("utf-8")(fH)
+            line = reader.readline()
 
         tokens = line.split()
         if len(tokens) != 2:

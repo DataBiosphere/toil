@@ -6002,8 +6002,8 @@ class WDLImportWrapper(WDLSectionJob):
         wdl_options: WDLContext,
         inputs_search_path: list[str],
         import_remote_files: bool,
-        import_workers_batchsize: ParseableIndivisibleResource,
-        import_workers_disk: ParseableIndivisibleResource,
+        import_workers_batchsize: int,
+        import_workers_disk: int,
         **kwargs: Any,
     ):
         """
@@ -6023,7 +6023,6 @@ class WDLImportWrapper(WDLSectionJob):
         filenames = extract_inode_values(self._inputs)
         file_to_metadata = get_file_sizes(
             filenames,
-            file_store.jobStore,
             self._inputs_search_path,
             include_remote_files=self._import_remote_files,
             execution_dir=self._wdl_options.get("execution_dir"),

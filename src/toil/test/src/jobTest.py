@@ -24,7 +24,6 @@ import pytest
 from toil.common import Toil
 from toil.exceptions import FailedJobsException
 from toil.job import (
-    FunctionWrappingJob,
     Job,
     JobFunctionWrappingJob,
     JobGraphDeadlockException,
@@ -406,7 +405,7 @@ class TestJob:
 
         """
 
-        def createWorkflow() -> tuple[Job, FunctionWrappingJob]:
+        def createWorkflow() -> tuple[Job, Job]:
             rootJob = Job.wrapJobFn(simpleJobFn, "Parent")
             childCheckpointJob = rootJob.addChildJobFn(
                 simpleJobFn, "Child", checkpoint=True
@@ -731,9 +730,9 @@ class TestJob:
         followOn edges.
         """
         # Map of jobs to the list of promises they have
-        jobsToPromisesMap: dict[FunctionWrappingJob, list[Promise]] = {}
+        jobsToPromisesMap: dict[Job, list[Promise]] = {}
 
-        def makeJob(string: str) -> FunctionWrappingJob:
+        def makeJob(string: str) -> Job:
             promises: list[Promise] = []
             job = Job.wrapFn(
                 fn2Test,
@@ -751,7 +750,7 @@ class TestJob:
         jobs = [makeJob(str(i)) for i in range(nodeNumber)]
 
         # Record predecessors for sampling
-        predecessors: dict[FunctionWrappingJob, list[FunctionWrappingJob]] = (
+        predecessors: dict[Job, list[Job]] = (
             collections.defaultdict(list)
         )
 
@@ -777,7 +776,7 @@ class TestJob:
             for job in jobs
         }
 
-        def getRandomPredecessor(job: FunctionWrappingJob) -> FunctionWrappingJob:
+        def getRandomPredecessor(job: Job) -> Job:
             predecessor = random.choice(list(predecessors[job]))
             while random.random() > 0.5 and len(predecessors[predecessor]) > 0:
                 predecessor = random.choice(list(predecessors[predecessor]))

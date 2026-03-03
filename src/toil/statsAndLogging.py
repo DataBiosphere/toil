@@ -24,7 +24,7 @@ from threading import Event, Thread
 from typing import IO, TYPE_CHECKING, Any, Union
 
 from toil.lib.conversions import strtobool
-from toil.lib.expando import Expando
+from toil.lib.expando import Expando, MagicExpando
 from toil.lib.history import HistoryManager
 from toil.lib.resources import ResourceMonitor
 
@@ -44,6 +44,10 @@ TRACE = logging.DEBUG - 5
 
 logging.addLevelName(TRACE, "TRACE")
 
+class StatsDict(MagicExpando):
+    """Subclass of MagicExpando for type-checking purposes."""
+
+    jobs: list[Expando]
 
 class StatsAndLogging:
     """A thread to aggregate statistics and logging."""

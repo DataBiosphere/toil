@@ -30,17 +30,23 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from io import BytesIO
+from types import ModuleType
 from typing import (
     TYPE_CHECKING,
     Any,
+    ContextManager,
+    IO,
+    Iterable,
     Literal,
     NamedTuple,
+    NoReturn,
     TypedDict,
     TypeVar,
     Union,
     cast,
     overload,
 )
+from typing_extensions import reveal_type, ParamSpec
 from urllib.error import HTTPError
 from urllib.parse import unquote, urljoin, urlsplit
 
@@ -50,6 +56,7 @@ from configargparse import ArgParser
 from toil.lib.io import is_remote_url
 from toil.lib.memoize import memoize
 from toil.lib.misc import StrPath
+from toil.lib.url import URLAccess
 
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
@@ -66,7 +73,7 @@ from toil.lib.exceptions import UnimplementedURLException
 from toil.lib.expando import Expando
 from toil.lib.resources import ResourceMonitor
 from toil.resource import ModuleDescriptor
-from toil.statsAndLogging import set_logging_from_options
+from toil.statsAndLogging import set_logging_from_options, StatsDict
 
 if TYPE_CHECKING:
     from optparse import OptionParser
@@ -210,7 +217,7 @@ class AcceleratorRequirement(TypedDict):
 
 
 def parse_accelerator(
-    spec: int | str | dict[str, str | int],
+    spec: ParseableSingleAcceleratorRequirement,
 ) -> AcceleratorRequirement:
     """
     Parse an AcceleratorRequirement specified by user code.
@@ -253,7 +260,9 @@ def parse_accelerator(
     APIS = {"cuda", "rocm", "opencl"}
 
     parsed: AcceleratorRequirement = {"count": 1, "kind": "gpu"}
-
+    
+    if isinstance(spec, bytes):
+        spec = spec.decode("utf-8")
     if isinstance(spec, int):
         parsed["count"] = spec
     elif isinstance(spec, str):
@@ -296,7 +305,8 @@ def parse_accelerator(
     elif isinstance(spec, dict):
         # It's a dict, so merge with the defaults.
         parsed.update(cast(AcceleratorRequirement, spec))
-        # TODO: make sure they didn't misspell keys or something
+        # TODO: make sure they didn't misspell keys or provide the wrong types
+        # of values for them.
     else:
         raise TypeError(
             f"Cannot parse value of type {type(spec)} as an AcceleratorRequirement"
@@ -337,7 +347,10 @@ def accelerator_satisfies(
     :returns: True if the given candidate at least partially satisfies the
               given requirement (i.e. check all fields other than count).
     """
-    for key in ["kind", "brand", "api", "model"]:
+    # MyPy needs a lot of cajoling to understand you're allowed to loop over
+    # TypedDict keys. TODO: Is there a better way to tell it the list contains
+    # only allowed keys without duplicating them all?
+    for key in cast(list[Literal["kind", "brand", "api", "model"]], ["kind", "brand", "api", "model"]):
         if key in ignore:
             # Skip this aspect.
             continue
@@ -414,15 +427,19 @@ REQUIREMENT_NAMES = ["disk", "memory", "cores", "accelerators", "preemptible"]
 ParsedRequirement = Union[int, float, bool, list[AcceleratorRequirement]]
 
 # We define some types for things we can parse into different kind of requirements
-ParseableIndivisibleResource = Union[str, int]
-ParseableDivisibleResource = Union[str, int, float]
-ParseableFlag = Union[str, int, bool]
-ParseableAcceleratorRequirement = Union[
+ParseableIndivisibleResource = Union[str, bytes, int]
+ParseableDivisibleResource = Union[str, bytes, int, float]
+ParseableFlag = Union[str, bytes, int, bool]
+ParseableSingleAcceleratorRequirement = Union[
     str,
+    bytes,
     int,
-    Mapping[str, Any],
-    AcceleratorRequirement,
-    Sequence[Union[str, int, Mapping[str, Any], AcceleratorRequirement]],
+    Mapping[str, int | str],
+    AcceleratorRequirement
+]
+ParseableAcceleratorRequirement = Union[
+    ParseableSingleAcceleratorRequirement,
+    Sequence[ParseableSingleAcceleratorRequirement]
 ]
 
 ParseableRequirement = Union[
@@ -442,7 +459,7 @@ class Requirer:
 
     _requirementOverrides: RequirementsDict
 
-    def __init__(self, requirements: Mapping[str, ParseableRequirement]) -> None:
+    def __init__(self, requirements: Mapping[str, ParseableRequirement | None]) -> None:
         """
         Parse and save the given requirements.
 
@@ -464,11 +481,11 @@ class Requirer:
 
         # Save requirements, parsing and validating anything that needs parsing
         # or validating. Don't save Nones.
-        self._requirementOverrides = {
+        self._requirementOverrides = cast(RequirementsDict, {
             k: Requirer._parseResource(k, v)
             for (k, v) in requirements.items()
             if v is not None
-        }
+        })
 
     def assignConfig(self, config: Config) -> None:
         """
@@ -528,7 +545,7 @@ class Requirer:
     @overload
     @staticmethod
     def _parseResource(
-        name: Literal["memory"] | Literal["disks"],
+        name: Literal["memory"] | Literal["disk"],
         value: ParseableIndivisibleResource,
     ) -> int: ...
 
@@ -543,6 +560,12 @@ class Requirer:
     def _parseResource(
         name: Literal["accelerators"], value: ParseableAcceleratorRequirement
     ) -> list[AcceleratorRequirement]: ...
+
+    @overload
+    @staticmethod
+    def _parseResource(
+        name: Literal["preemptible"], value: ParseableFlag
+    ) -> bool: ...
 
     @overload
     @staticmethod
@@ -589,7 +612,9 @@ class Requirer:
 
         if name in ("memory", "disk", "cores"):
             # These should be numbers that accept things like "5G".
-            if isinstance(value, (str, bytes)):
+            if isinstance(value, bytes):
+                value = value.decode("utf-8")
+            if isinstance(value, str):
                 value = human2bytes(value)
             if isinstance(value, int):
                 return value
@@ -626,9 +651,11 @@ class Requirer:
                     f"The '{name}' requirement does not accept values that are of type {type(value)}"
                 )
         elif name == "accelerators":
-            # The type checking for this is delegated to the
-            # AcceleratorRequirement class.
-            if isinstance(value, list):
+            if isinstance(value, float):
+                raise TypeError(
+                    f"The '{name}' requirement does not accept values that are of type {type(value)}"
+                )
+            if not isinstance(value, (str, bytes)) and isinstance(value, Sequence):
                 return [
                     parse_accelerator(v) for v in value
                 ]  # accelerators={'kind': 'gpu', 'brand': 'nvidia', 'count': 2}
@@ -649,14 +676,14 @@ class Requirer:
         :param requirement: The name of the resource
         """
         if requirement in self._requirementOverrides:
-            value = self._requirementOverrides[requirement]
+            value: ParsedRequirement | None = self._requirementOverrides[requirement]  # type: ignore[literal-required]
             if value is None:
                 raise AttributeError(
                     f"Encountered explicit None for '{requirement}' requirement of {self}"
                 )
             return value
         elif self._config is not None:
-            values = [
+            values: list[ParsedRequirement | None] = [
                 getattr(self._config, "default_" + requirement, None),
                 getattr(self._config, "default" + requirement.capitalize(), None),
             ]
@@ -675,7 +702,7 @@ class Requirer:
     @property
     def requirements(self) -> RequirementsDict:
         """Get dict containing all non-None, non-defaulted requirements."""
-        return dict(self._requirementOverrides)
+        return copy.copy(self._requirementOverrides)
 
     @property
     def disk(self) -> int:
@@ -743,7 +770,7 @@ class Requirer:
         # Make a shallow copy
         scaled = copy.copy(self)
         # But make sure it has its own override dictionary
-        scaled._requirementOverrides = dict(scaled._requirementOverrides)
+        scaled._requirementOverrides = copy.copy(scaled._requirementOverrides)
 
         original_value = getattr(scaled, requirement)
         if isinstance(original_value, (int, float)):
@@ -760,9 +787,9 @@ class Requirer:
 
     def requirements_string(self) -> str:
         """Get a nice human-readable string of our requirements."""
-        parts = []
+        parts: list[str] = []
         for k in REQUIREMENT_NAMES:
-            v = self._fetchRequirement(k)
+            v: str | ParsedRequirement | None = self._fetchRequirement(k)
             if v is not None:
                 if isinstance(v, (int, float)) and v > 1000:
                     # Make large numbers readable
@@ -780,8 +807,8 @@ class JobBodyReference(NamedTuple):
 
     file_store_id: str
     """File ID (or special shared file name for the root job) of the job's body."""
-    module_string: str
-    """Stringified description of the module needed to load the body."""
+    module_command: Sequence[str]
+    """Description of the module needed to load the body."""
 
 
 class JobDescription(Requirer):
@@ -804,7 +831,7 @@ class JobDescription(Requirer):
 
     def __init__(
         self,
-        requirements: Mapping[str, int | str | float | bool | list],
+        requirements: Mapping[str, ParseableRequirement | None],
         jobName: str,
         unitName: str | None = "",
         displayName: str | None = "",
@@ -869,11 +896,11 @@ class JobDescription(Requirer):
         # is reduced each time the job is run, until it is zero, and then no
         # further attempts to run the job are made. If None, taken as the
         # default value for this workflow execution.
-        self._remainingTryCount = None
+        self._remainingTryCount: int | None = None
 
         # The number of seconds to back off before retry.
         # Gets increased each time the job fails, and reset at workflow restart.
-        self._retry_backoff_seconds = None
+        self._retry_backoff_seconds: float | None = None
 
         # Holds FileStore FileIDs of the files that should be seen as deleted,
         # as part of a transaction with the writing of this version of the job
@@ -889,7 +916,9 @@ class JobDescription(Requirer):
         #
         # This will be empty at all times except when a new version of a job is
         # in the process of being committed.
-        self.filesToDelete = []
+        #
+        # TODO: We should probably refactor to use FileID here.
+        self.filesToDelete: list[str] = []
 
         # Holds job names and IDs of the jobs that have been chained into this
         # job, and which should be deleted when this job finally is deleted
@@ -912,7 +941,7 @@ class JobDescription(Requirer):
         # after the job is scheduled, so we don't have to worry about
         # conflicting updates from workers.
         # TODO: Move into ToilState itself so leader stops mutating us so much?
-        self.predecessorsFinished = set()
+        self.predecessorsFinished: set[str] = set()
 
         # Note that we don't hold IDs of our predecessors. Predecessors know
         # about us, and not the other way around. Otherwise we wouldn't be able
@@ -921,25 +950,25 @@ class JobDescription(Requirer):
 
         # The IDs of all child jobs of the described job.
         # Children which are done must be removed with filterSuccessors.
-        self.childIDs: set[str] = set()
+        self.childIDs: set[str | TemporaryID] = set()
 
         # The IDs of all follow-on jobs of the described job.
         # Follow-ons which are done must be removed with filterSuccessors.
-        self.followOnIDs: set[str] = set()
+        self.followOnIDs: set[str | TemporaryID] = set()
 
         # We keep our own children and follow-ons in a list of successor
         # phases, along with any successors adopted from jobs we have chained
         # from. When we finish our own children and follow-ons, we may have to
         # go back and finish successors for those jobs.
-        self.successor_phases: list[set[str]] = [self.followOnIDs, self.childIDs]
+        self.successor_phases: list[set[str | TemporaryID]] = [self.followOnIDs, self.childIDs]
 
         # Dict from ServiceHostJob ID to list of child ServiceHostJobs that start after it.
         # All services must have an entry, if only to an empty list.
-        self.serviceTree = {}
+        self.serviceTree: dict[str | TemporaryID, list[str | TemporaryID]] = {}
 
         # A jobStoreFileID of the log file for a job. This will be None unless
         # the job failed and the logging has been captured to be reported on the leader.
-        self.logJobStoreFileID = None
+        self.logJobStoreFileID: str | None = None
 
         # Every time we update a job description in place in the job store, we
         # increment this.
@@ -985,9 +1014,13 @@ class JobDescription(Requirer):
 
         (in the order they need to start in)
         """
+        # At this point, nothing in serviceTree should still have a TemporaryID.
+        # But we can't really explain that to MyPy with narrowing.
+        # TODO: Is there a way?
+        tree = cast(dict[str, list[str]], self.serviceTree)
         # First start all the jobs with no parent
-        roots = set(self.serviceTree.keys())
-        for _parent, children in self.serviceTree.items():
+        roots = set(tree.keys())
+        for parent, children in tree.items():
             for child in children:
                 roots.remove(child)
         batch = list(roots)
@@ -999,7 +1032,7 @@ class JobDescription(Requirer):
             nextBatch = []
             for started in batch:
                 # Go find all the children that can start now that we have started.
-                for child in self.serviceTree[started]:
+                for child in tree[started]:
                     nextBatch.append(child)
 
             batch = nextBatch
@@ -1009,8 +1042,11 @@ class JobDescription(Requirer):
 
     def successorsAndServiceHosts(self) -> Iterator[str]:
         """Get an iterator over all child, follow-on, and service job IDs."""
-
-        return itertools.chain(self.allSuccessors(), self.serviceTree.keys())
+        # At this point, nothing in serviceTree should still have a TemporaryID.
+        # But we can't really explain that to MyPy with narrowing.
+        # TODO: Is there a way?
+        tree = cast(dict[str, list[str]], self.serviceTree)
+        return itertools.chain(self.allSuccessors(), tree.keys())
 
     def allSuccessors(self) -> Iterator[str]:
         """
@@ -1020,7 +1056,9 @@ class JobDescription(Requirer):
         """
 
         for phase in self.successor_phases:
-            yield from phase
+            # At this point, TemporaryIDs should have been removed.
+            # TODO: enforce this
+            yield from cast(Iterable[str], phase)
 
     def successors_by_phase(self) -> Iterator[tuple[int, str]]:
         """
@@ -1031,17 +1069,25 @@ class JobDescription(Requirer):
 
         for i, phase in enumerate(self.successor_phases):
             for successor in phase:
+                assert not isinstance(successor, TemporaryID)
                 yield i, successor
 
     @property
-    def services(self):
+    def services(self) -> list[str]:
         """
         Get a collection of the IDs of service host jobs for this job, in arbitrary order.
 
         Will be empty if the job has no unfinished services.
         """
-        return list(self.serviceTree.keys())
+        # At this point, nothing in serviceTree should still have a TemporaryID.
+        # But we can't really explain that to MyPy with narrowing.
+        # TODO: Is there a way?
+        tree = cast(dict[str, list[str]], self.serviceTree)
+        return list(tree.keys())
 
+    # TODO: This should narrow _body to not-None, but we can't make this a
+    # TypeGuard or TypeIs because they aren't allowed to work on the self
+    # parameter.
     def has_body(self) -> bool:
         """
         Returns True if we have a job body associated, and False otherwise.
@@ -1079,9 +1125,10 @@ class JobDescription(Requirer):
 
         if not self.has_body():
             raise RuntimeError(f"Cannot load the body of a job {self} without one")
-
-        return self._body.file_store_id, ModuleDescriptor.fromCommand(
-            self._body.module_string
+        # TODO: We can't get has_body() to narrow _body for us.
+        body = cast(JobBodyReference, self._body)
+        return body.file_store_id, ModuleDescriptor.fromCommand(
+            body.module_command
         )
 
     def nextSuccessors(self) -> set[str] | None:
@@ -1103,7 +1150,9 @@ class JobDescription(Requirer):
             for phase in reversed(self.successor_phases):
                 if len(phase) > 0:
                     # Rightmost phase that isn't empty
-                    return phase
+                    # At this point, TemporaryIDs should have been removed.
+                    # TODO: enforce this
+                    return cast(set[str], phase)
         # If no phase isn't empty, we're done.
         return None
 
@@ -1118,6 +1167,8 @@ class JobDescription(Requirer):
 
         for phase in self.successor_phases:
             for successor_id in list(phase):
+                # At this point, TemporaryIDs should have been removed.
+                assert not isinstance(successor_id, TemporaryID)
                 if not predicate(successor_id):
                     phase.remove(successor_id)
         self.successor_phases = [p for p in self.successor_phases if len(p) > 0]
@@ -1273,15 +1324,15 @@ class JobDescription(Requirer):
 
         return True
 
-    def addChild(self, childID: str) -> None:
+    def addChild(self, childID: str | TemporaryID) -> None:
         """Make the job with the given ID a child of the described job."""
         self.childIDs.add(childID)
 
-    def addFollowOn(self, followOnID: str) -> None:
+    def addFollowOn(self, followOnID: str | TemporaryID) -> None:
         """Make the job with the given ID a follow-on of the described job."""
         self.followOnIDs.add(followOnID)
 
-    def addServiceHostJob(self, serviceID, parentServiceID=None):
+    def addServiceHostJob(self, serviceID: str | TemporaryID, parentServiceID: str | TemporaryID | None = None) -> None:
         """
         Make the ServiceHostJob with the given ID a service of the described job.
 
@@ -1295,15 +1346,15 @@ class JobDescription(Requirer):
         if parentServiceID is not None:
             self.serviceTree[parentServiceID].append(serviceID)
 
-    def hasChild(self, childID: str) -> bool:
+    def hasChild(self, childID: str | TemporaryID) -> bool:
         """Return True if the job with the given ID is a child of the described job."""
         return childID in self.childIDs
 
-    def hasFollowOn(self, followOnID: str) -> bool:
+    def hasFollowOn(self, followOnID: str | TemporaryID) -> bool:
         """Test if the job with the given ID is a follow-on of the described job."""
         return followOnID in self.followOnIDs
 
-    def hasServiceHostJob(self, serviceID) -> bool:
+    def hasServiceHostJob(self, serviceID: str | TemporaryID) -> bool:
         """Test if the ServiceHostJob is a service of the described job."""
         return serviceID in self.serviceTree
 
@@ -1323,9 +1374,17 @@ class JobDescription(Requirer):
                     # Replace each renamed item one at a time to preserve set identity
                     phase.remove(item)
                     phase.add(renames[item])
+        # TODO: MyPy won't let us .get() with types other than the dict key
+        # type, even though that sort of makes sense because only objects of
+        # the actual type can *be* in the dict. Apparently it thinks dict
+        # doesn't guarantee membership testing for arbitrary types. This makes
+        # applying the renames fiddly.
+        #
+        # We should see if we can find a way to get away from this terrible
+        # codegen'd code.
         self.serviceTree = {
-            renames.get(parent, parent): [
-                renames.get(child, child) for child in children
+            (renames[parent] if isinstance(parent, TemporaryID) and parent in renames else parent): [
+                (renames[child] if isinstance(child, TemporaryID) and child in renames else child) for child in children
             ]
             for parent, children in self.serviceTree.items()
         }
@@ -1354,8 +1413,11 @@ class JobDescription(Requirer):
 
         On completion, self.retry_backoff_seconds will be the time to wait
         before the next retry.
+
+        Can only be used once the config has been attached.
         """
         self.remainingTryCount = max(0, self.remainingTryCount - 1)
+        assert self._config is not None
         if self._retry_backoff_seconds is None:
             # This was the first retry
             self._retry_backoff_seconds = self._config.retry_backoff_seconds
@@ -1434,16 +1496,17 @@ class JobDescription(Requirer):
                 self.disk,
             )
 
-    def getLogFileHandle(self, jobStore):
+    def getLogFileHandle(self, jobStore: AbstractJobStore) -> Any:
         """
         Create a context manager that yields a file handle to the log file.
 
         Assumes logJobStoreFileID is set.
         """
+        assert self.logJobStoreFileID is not None
         return jobStore.read_file_stream(self.logJobStoreFileID)
 
     @property
-    def remainingTryCount(self):
+    def remainingTryCount(self) -> int:
         """
         Get the number of tries remaining.
 
@@ -1460,7 +1523,7 @@ class JobDescription(Requirer):
             raise AttributeError(f"Try count for {self} cannot be determined")
 
     @remainingTryCount.setter
-    def remainingTryCount(self, val):
+    def remainingTryCount(self, val: int) -> None:
         self._remainingTryCount = val
 
     @property
@@ -1508,7 +1571,7 @@ class JobDescription(Requirer):
     # There really should only ever be one true version of a JobDescription at
     # a time, keyed by jobStoreID.
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.__class__.__name__}( **{self.__dict__!r} )"
 
     def reserve_versions(self, count: int) -> None:
@@ -1533,7 +1596,7 @@ class JobDescription(Requirer):
 class ServiceJobDescription(JobDescription):
     """A description of a job that hosts a service."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Create a ServiceJobDescription to describe a ServiceHostJob."""
         # Make the base JobDescription
         super().__init__(*args, **kwargs)
@@ -1552,7 +1615,7 @@ class ServiceJobDescription(JobDescription):
         # should terminate signaling an error.
         self.errorJobStoreID: str | None = None
 
-    def onRegistration(self, jobStore):
+    def onRegistration(self, jobStore: AbstractJobStore) -> None:
         """
         Setup flag files.
 
@@ -1570,7 +1633,7 @@ class CheckpointJobDescription(JobDescription):
     A description of a job that is a checkpoint.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Create a CheckpointJobDescription to describe a checkpoint job."""
         # Make the base JobDescription
         super().__init__(*args, **kwargs)
@@ -1581,9 +1644,9 @@ class CheckpointJobDescription(JobDescription):
         self.checkpoint: JobBodyReference | None = None
 
         # Files that can not be deleted until the job and its successors have completed
-        self.checkpointFilesToDelete = []
+        self.checkpointFilesToDelete: list[str] = []
 
-    def set_checkpoint(self) -> str:
+    def set_checkpoint(self) -> None:
         """
         Save a body checkpoint into self.checkpoint
         """
@@ -1614,7 +1677,7 @@ class CheckpointJobDescription(JobDescription):
             raise RuntimeError(
                 "Cannot restart a checkpoint job. The checkpoint was never set."
             )
-        successorsDeleted = []
+        successorsDeleted: list[str] = []
         all_successors = list(self.allSuccessors())
         if len(all_successors) > 0 or self.serviceTree or self.has_body():
             if self.has_body():
@@ -1638,7 +1701,7 @@ class CheckpointJobDescription(JobDescription):
 
                 # Delete everything on the stack, as these represent successors to clean
                 # up as we restart the queue
-                def recursiveDelete(jobDesc):
+                def recursiveDelete(jobDesc: JobDescription) -> None:
                     # Recursive walk the stack to delete all remaining jobs
                     for otherJobID in jobDesc.successorsAndServiceHosts():
                         if jobStore.job_exists(otherJobID):
@@ -1651,6 +1714,7 @@ class CheckpointJobDescription(JobDescription):
                             "Checkpoint is deleting old successor job: %s",
                             jobDesc.jobStoreID,
                         )
+                        assert not isinstance(jobDesc.jobStoreID, TemporaryID)
                         jobStore.delete_job(jobDesc.jobStoreID)
                         successorsDeleted.append(jobDesc.jobStoreID)
 
@@ -1663,6 +1727,9 @@ class CheckpointJobDescription(JobDescription):
                 jobStore.update_job(self)
         return successorsDeleted
 
+# Job methods to add children/follow-ons return the child/follow-on again, so
+# we need a TypeVar to track that.
+JobType = TypeVar("JobType", bound="Job")
 
 class Job:
     """
@@ -1680,7 +1747,7 @@ class Job:
         unitName: str | None = "",
         checkpoint: bool | None = False,
         displayName: str | None = "",
-        descriptionClass: type | None = None,
+        descriptionClass: type[JobDescription] | None = None,
         local: bool | None = None,
         files: set[FileID] | None = None,
     ) -> None:
@@ -1743,7 +1810,7 @@ class Job:
         # Create the JobDescription that owns all the scheduling information.
         # Make it with a temporary ID until we can be assigned a real one by
         # the JobStore.
-        self._description = descriptionClass(
+        self._description: JobDescription | None = descriptionClass(
             requirements,
             jobName,
             unitName=unitName,
@@ -1767,7 +1834,7 @@ class Job:
         # while the user is creating the job graphs, to check for duplicate
         # relationships and to let EncapsulatedJob magically add itself as a
         # child. Note that this stores actual Job objects, to call addChild on.
-        self._directPredecessors = set()
+        self._directPredecessors: set[Job] = set()
 
         # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
         # defining the class self is an instance of, which may be a subclass of Job that may be
@@ -1780,11 +1847,11 @@ class Job:
         # traverses a nested data structure of lists, dicts, tuples or any other type supporting
         # the __getitem__() protocol.. The special key `()` (the empty tuple) represents the
         # entire return value.
-        self._rvs = collections.defaultdict(list)
-        self._promiseJobStore = None
-        self._fileStore = None
-        self._defer = None
-        self._tempDir = None
+        self._rvs: dict[tuple[Any, ...], list[str]] = collections.defaultdict(list)
+        self._promiseJobStore: AbstractJobStore | None = None
+        self._fileStore: AbstractFileStore | None = None
+        self._defer: Callable[[Any], None] | None = None
+        self._tempDir: str | None = None
 
         # Holds flags set by set_debug_flag()
         self._debug_flags: set[str] = set()
@@ -1818,11 +1885,13 @@ class Job:
     def jobStoreID(self) -> str | TemporaryID:
         """Get the ID of this Job."""
         # This is managed by the JobDescription.
+        assert self._description is not None
         return self._description.jobStoreID
 
     @property
     def description(self) -> JobDescription:
         """Expose the JobDescription that describes this job."""
+        assert self._description is not None
         return self._description
 
     # Instead of being a Requirer ourselves, we pass anything about
@@ -1861,21 +1930,23 @@ class Job:
         return self.description.accelerators
 
     @accelerators.setter
-    def accelerators(self, val: list[ParseableAcceleratorRequirement]) -> None:
+    def accelerators(self, val: ParseableAcceleratorRequirement) -> None:
         self.description.accelerators = val
 
     @property
     def preemptible(self) -> bool:
         """Whether the job can be run on a preemptible node."""
         return self.description.preemptible
-
-    @deprecated(new_function_name="preemptible")
-    def preemptable(self) -> bool:
-        return self.description.preemptible
-
+    
     @preemptible.setter
     def preemptible(self, val: bool) -> None:
         self.description.preemptible = val
+    
+    # Note that unless the two halves of a property are *immediately* adjacent,
+    # MyPy throws an error. So the old version has to come later.
+    @deprecated(new_function_name="preemptible")
+    def preemptable(self) -> bool:
+        return self.description.preemptible
 
     @property
     def checkpoint(self) -> bool:
@@ -1952,7 +2023,7 @@ class Job:
                     # Point all their jobs at the new combined registry
                     job._registry = self._registry
 
-    def addChild(self, childJob: Job) -> Job:
+    def addChild(self, childJob: JobType) -> JobType:
         """
         Add a childJob to be run as child of this job.
 
@@ -1971,7 +2042,7 @@ class Job:
         # Join the job graphs
         self._jobGraphsJoined(childJob)
         # Remember the child relationship
-        self._description.addChild(childJob.jobStoreID)
+        self.description.addChild(childJob.jobStoreID)
         # Record the temporary back-reference
         childJob._addPredecessor(self)
 
@@ -1983,9 +2054,9 @@ class Job:
 
         :return: True if childJob is a child of the job, else False.
         """
-        return self._description.hasChild(childJob.jobStoreID)
+        return self.description.hasChild(childJob.jobStoreID)
 
-    def addFollowOn(self, followOnJob: Job) -> Job:
+    def addFollowOn(self, followOnJob: JobType) -> JobType:
         """
         Add a follow-on job.
 
@@ -2003,7 +2074,7 @@ class Job:
         # Join the job graphs
         self._jobGraphsJoined(followOnJob)
         # Remember the follow-on relationship
-        self._description.addFollowOn(followOnJob.jobStoreID)
+        self.description.addFollowOn(followOnJob.jobStoreID)
         # Record the temporary back-reference
         followOnJob._addPredecessor(self)
 
@@ -2019,7 +2090,7 @@ class Job:
 
         :return: True if the followOnJob is a follow-on of this job, else False.
         """
-        return self._description.hasChild(followOnJob.jobStoreID)
+        return self.description.hasChild(followOnJob.jobStoreID)
 
     def addService(
         self, service: Job.Service, parentService: Job.Service | None = None
@@ -2056,7 +2127,7 @@ class Job:
         self._jobGraphsJoined(hostingJob)
 
         # Record the relationship to the hosting job, with its parent if any.
-        self._description.addServiceHostJob(
+        self.description.addServiceHostJob(
             hostingJob.jobStoreID,
             parentService.hostID if parentService is not None else None,
         )
@@ -2071,13 +2142,22 @@ class Job:
 
     def hasService(self, service: Job.Service) -> bool:
         """Return True if the given Service is a service of this job, and False otherwise."""
-        return service.hostID is None or self._description.hasServiceHostJob(
+        return service.hostID is None or self.description.hasServiceHostJob(
             service.hostID
         )
 
     # Convenience functions for creating jobs
 
-    def addChildFn(self, fn: Callable, *args, **kwargs) -> FunctionWrappingJob:
+    
+    # TODO: We want to take the Callable here, and accept all its arguments and
+    # keyword arguments *plus* the extra Toil keyword arguments the job types
+    # have, and also we need promised versions of the arguments to be allowed,
+    # with the promise inserted at any level of a recursive data structure.
+    # Neither of those is really possible in MyPy, and we're specifically not
+    # allowed to fiddle with the kwargs with Concatenate and ParamSpec (see
+    # https://peps.python.org/pep-0612/#concatenating-keyword-parameters)
+
+    def addChildFn(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> "Job":
         """
         Add a function as a child job.
 
@@ -2093,7 +2173,7 @@ class Job:
         else:
             return self.addChild(FunctionWrappingJob(fn, *args, **kwargs))
 
-    def addFollowOnFn(self, fn: Callable, *args, **kwargs) -> FunctionWrappingJob:
+    def addFollowOnFn(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> "Job":
         """
         Add a function as a follow-on job.
 
@@ -2109,7 +2189,7 @@ class Job:
         else:
             return self.addFollowOn(FunctionWrappingJob(fn, *args, **kwargs))
 
-    def addChildJobFn(self, fn: Callable, *args, **kwargs) -> FunctionWrappingJob:
+    def addChildJobFn(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> "Job":
         """
         Add a job function as a child job.
 
@@ -2127,7 +2207,7 @@ class Job:
         else:
             return self.addChild(JobFunctionWrappingJob(fn, *args, **kwargs))
 
-    def addFollowOnJobFn(self, fn: Callable, *args, **kwargs) -> FunctionWrappingJob:
+    def addFollowOnJobFn(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> "Job":
         """
         Add a follow-on job function.
 
@@ -2154,15 +2234,17 @@ class Job:
         :return: Path to tempDir. See `job.fileStore.getLocalTempDir`
         """
         if self._tempDir is None:
+            assert self._fileStore is not None
             self._tempDir = self._fileStore.getLocalTempDir()
         return self._tempDir
 
-    def log(self, text: str, level=logging.INFO) -> None:
+    def log(self, text: str, level: int = logging.INFO) -> None:
         """Log using :func:`fileStore.log_to_leader`."""
+        assert self._fileStore is not None
         self._fileStore.log_to_leader(text, level)
 
     @staticmethod
-    def wrapFn(fn, *args, **kwargs) -> FunctionWrappingJob:
+    def wrapFn(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Job:
         """
         Makes a Job out of a function.
 
@@ -2179,7 +2261,7 @@ class Job:
             return FunctionWrappingJob(fn, *args, **kwargs)
 
     @staticmethod
-    def wrapJobFn(fn, *args, **kwargs) -> JobFunctionWrappingJob:
+    def wrapJobFn(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Job:
         """
         Makes a Job out of a job function.
 
@@ -2211,7 +2293,7 @@ class Job:
     # job run functions
     ####################################################
 
-    def rv(self, *path) -> Promise:
+    def rv(self, *path: Any) -> Promise:
         """
         Create a *promise* (:class:`toil.job.Promise`).
 
@@ -2236,7 +2318,7 @@ class Job:
         """
         return Promise(self, path)
 
-    def registerPromise(self, path):
+    def registerPromise(self, path: tuple[Any, ...]) -> tuple[str, str]:
         if self._promiseJobStore is None:
             # We haven't had a job store set to put our return value into, so
             # we must not have been hit yet in job topological order.
@@ -2267,7 +2349,7 @@ class Job:
         """
         self._promiseJobStore = jobStore
 
-    def _disablePromiseRegistration(self):
+    def _disablePromiseRegistration(self) -> None:
         """
         Called when the job data is about to be saved in the JobStore.
 
@@ -2280,7 +2362,7 @@ class Job:
     # Cycle/connectivity checking
     ####################################################
 
-    def checkJobGraphForDeadlocks(self):
+    def checkJobGraphForDeadlocks(self) -> None:
         """
         Ensures that a graph of Jobs (that hasn't yet been saved to the
         JobStore) doesn't contain any pathological relationships between jobs
@@ -2361,11 +2443,11 @@ class Job:
         extraEdges = self._getImpliedEdges(roots)
 
         # Check for directed cycles in the augmented graph
-        visited = set()
+        visited: set[Job] = set()
         for root in roots:
             root._checkJobGraphAcylicDFS([], visited, extraEdges)
 
-    def _checkJobGraphAcylicDFS(self, stack, visited, extraEdges):
+    def _checkJobGraphAcylicDFS(self, stack: list[Job], visited: set[Job], extraEdges: dict[Job, list[Job]]) -> None:
         """DFS traversal to detect cycles in augmented job graph."""
         if self not in visited:
             visited.add(self)
@@ -2386,7 +2468,7 @@ class Job:
             )
 
     @staticmethod
-    def _getImpliedEdges(roots) -> dict[Job, list[Job]]:
+    def _getImpliedEdges(roots: set[Job]) -> dict[Job, list[Job]]:
         """
         Gets the set of implied edges (between children and follow-ons of a common job).
 
@@ -2397,14 +2479,14 @@ class Job:
         :returns: dict from Job object to list of Job objects that must be done before it can start.
         """
         # Get nodes (Job objects) in job graph
-        nodes = set()
+        nodes: set[Job] = set()
         for root in roots:
             root._collectAllSuccessors(nodes)
 
         ##For each follow-on edge calculate the extra implied edges
         # Adjacency list of implied edges, i.e. map of jobs to lists of jobs
         # connected by an implied edge
-        extraEdges = {n: [] for n in nodes}
+        extraEdges: dict[Job, list[Job]] = {n: [] for n in nodes}
         for job in nodes:
             # Get all the nonempty successor phases
             phases = [p for p in job.description.successor_phases if len(p) > 0]
@@ -2416,7 +2498,7 @@ class Job:
                 lower = phases[depth - 1]
 
                 # Find everything in the upper subtree
-                reacheable = set()
+                reacheable: set[Job] = set()
                 for upperID in upper:
                     if upperID in job._registry:
                         # This is a locally added job, not an already-saved job
@@ -2455,7 +2537,7 @@ class Job:
         )  # Roots jobs of component, these are preexisting jobs in the graph
 
         # All jobs in the component of the job graph containing self
-        jobs = set()
+        jobs: set[Job] = set()
         list(map(lambda x: x._collectAllSuccessors(jobs), roots))
 
         # Check for each job for which checkpoint is true that it is a cut vertex or leaf
@@ -2470,7 +2552,10 @@ class Job:
     # Deferred function system
     ####################################################
 
-    def defer(self, function, *args, **kwargs) -> None:
+    P = ParamSpec("P")
+    # TODO: sphinx-autodoc-typehints 3.0.1 can't understand P unquoted, and we
+    # can't upgrade until we drop Python 3.10.
+    def defer(self, function: Callable["P", Any], *args: "P.args", **kwargs: "P.kwargs") -> None:
         """
         Register a deferred function, i.e. a callable that will be invoked after the current
         attempt at running this job concludes. A job attempt is said to conclude when the job
@@ -2569,10 +2654,10 @@ class Job:
             :param parser: Options object to add toil options to.
             :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
             """
-            addOptions(parser, jobstore_as_flag=jobstore_as_flag)
+            addOptions(cast(ArgumentParser, parser), jobstore_as_flag=jobstore_as_flag)
 
         @staticmethod
-        def startToil(job: Job, options) -> Any:
+        def startToil(job: Job, options: Namespace) -> Any:
             """
             Run the toil workflow using the given options.
 
@@ -2632,7 +2717,7 @@ class Job:
             self.jobName = self.__class__.__name__
 
             # Record that we have as of yet no ServiceHostJob
-            self.hostID = None
+            self.hostID: str | TemporaryID | None = None
 
         @abstractmethod
         def start(self, job: ServiceHostJob) -> Any:
@@ -2657,6 +2742,7 @@ class Job:
                         the fileStore for creating temporary files.
             """
 
+        @abstractmethod
         def check(self) -> bool:
             """
             Checks the service is still running.
@@ -2667,28 +2753,30 @@ class Job:
                 RuntimeError, not return False!
             """
 
-    def _addPredecessor(self, predecessorJob):
+    def _addPredecessor(self, predecessorJob: Job) -> None:
         """Adds a predecessor job to the set of predecessor jobs."""
         if predecessorJob in self._directPredecessors:
             raise ConflictingPredecessorError(predecessorJob, self)
         self._directPredecessors.add(predecessorJob)
 
         # Record the need for the predecessor to finish
-        self._description.addPredecessor()
+        self.description.addPredecessor()
 
     @staticmethod
-    def _isLeafVertex(job):
+    def _isLeafVertex(job: Job) -> bool:
         return next(job.description.successorsAndServiceHosts(), None) is None
 
     @classmethod
-    def _loadUserModule(cls, userModule: ModuleDescriptor):
+    def _loadUserModule(cls, userModule: ModuleDescriptor) -> ModuleType:
         """
         Imports and returns the module object represented by the given module descriptor.
         """
-        return userModule.load()
+        result = userModule.load()
+        assert result is not None, f"Failed to load module {userModule}"
+        return result
 
     @classmethod
-    def _unpickle(cls, userModule, fileHandle, requireInstanceOf=None):
+    def _unpickle(cls, userModule: ModuleType, fileHandle: Any, requireInstanceOf: type | None = None) -> Any:
         """
         Unpickles an object graph from the given file handle while loading symbols \
         referencing the __main__ module from the given userModule instead.
@@ -2699,7 +2787,7 @@ class Job:
         :returns:
         """
 
-        def filter_main(module_name, class_name):
+        def filter_main(module_name: str, class_name: str) -> Any:
             try:
                 if module_name == "__main__":
                     return getattr(userModule, class_name)
@@ -2717,7 +2805,7 @@ class Job:
                 raise
 
         class FilteredUnpickler(pickle.Unpickler):
-            def find_class(self, module, name):
+            def find_class(self, module: str, name: str) -> Any:
                 return filter_main(module, name)
 
         unpickler = FilteredUnpickler(fileHandle)
@@ -2733,7 +2821,7 @@ class Job:
     def getUserScript(self) -> ModuleDescriptor:
         return self.userModule
 
-    def _fulfillPromises(self, returnValues, jobStore):
+    def _fulfillPromises(self, returnValues: Any, jobStore: AbstractJobStore) -> None:
         """
         Set the values for promises using the return values from this job's run() function.
         """
@@ -2784,7 +2872,7 @@ class Job:
     # Functions associated with Job.checkJobGraphAcyclic to establish that the job graph does not
     # contain any cycles of dependencies:
 
-    def _collectAllSuccessors(self, visited):
+    def _collectAllSuccessors(self, visited: set[Job]) -> None:
         """
         Add the job and all jobs reachable on a directed path from current node to the given set.
 
@@ -2852,7 +2940,7 @@ class Job:
     # Storing Jobs into the JobStore
     ####################################################
 
-    def _register(self, jobStore) -> list[tuple[TemporaryID, str]]:
+    def _register(self, jobStore: AbstractJobStore) -> list[tuple[TemporaryID, str]]:
         """
         If this job lacks a JobStore-assigned ID, assign this job an ID.
         Must be called for each job before it is saved to the JobStore for the first time.
@@ -2871,6 +2959,7 @@ class Job:
 
             # Replace it with a real ID
             jobStore.assign_job_id(self.description)
+            assert not isinstance(self.description.jobStoreID, TemporaryID)
 
             # Make sure the JobDescription can do its JobStore-related setup.
             self.description.onRegistration(jobStore)
@@ -2893,7 +2982,7 @@ class Job:
         """
 
         # Do renames in the description
-        self._description.renameReferences(renames)
+        self.description.renameReferences(renames)
 
     def saveBody(self, jobStore: AbstractJobStore) -> None:
         """
@@ -2922,6 +3011,7 @@ class Job:
 
         # Remember fields we will overwrite
         description = self._description
+        assert description is not None
         registry = self._registry
         directPredecessors = self._directPredecessors
 
@@ -2936,6 +3026,7 @@ class Job:
                 self._directPredecessors = set()
 
                 # Save the body of the job
+                assert not isinstance(description.jobStoreID, TemporaryID)
                 with jobStore.write_file_stream(
                     description.jobStoreID, cleanup=True
                 ) as (fileHandle, fileStoreID):
@@ -2962,14 +3053,14 @@ class Job:
         userScript = self.getUserScript().globalize()
 
         # Connect the body of the job to the JobDescription
-        self._description.attach_body(fileStoreID, userScript)
+        self.description.attach_body(fileStoreID, userScript)
 
     def _saveJobGraph(
         self,
         jobStore: AbstractJobStore,
         saveSelf: bool = False,
-        returnValues: bool = None,
-    ):
+        returnValues: Any = None,
+    ) -> None:
         """
         Save job data and new JobDescriptions to the given job store for this
         job and all descending jobs, including services.
@@ -2992,7 +3083,7 @@ class Job:
         # and has an ID. Also rewrite ID references.
         allJobs = list(self._registry.values())
         # We use one big dict from fake ID to corresponding real ID to rewrite references.
-        fakeToReal = {}
+        fakeToReal: dict[TemporaryID, str] = {}
         for job in allJobs:
             # Register the job, get the old ID to new ID pair if any, and save that in the fake to real mapping
             fakeToReal.update(job._register(jobStore))
@@ -3092,6 +3183,7 @@ class Job:
 
         # Store the name of the first job in a file in case of restart. Up to this point the
         # root job is not recoverable. FIXME: "root job" or "first job", which one is it?
+        assert not isinstance(self.jobStoreID, TemporaryID)
         jobStore.set_root_job(self.jobStoreID)
 
         # Assign the config from the JobStore as if we were loaded.
@@ -3116,17 +3208,16 @@ class Job:
         logger.debug("Loading user module %s.", user_module_descriptor)
         user_module = cls._loadUserModule(user_module_descriptor)
 
-        # Loads context manager using file stream
         if file_store_id == "firstJob":
             # This one is actually a shared file name and not a file ID.
-            manager = job_store.read_shared_file_stream(file_store_id)
+            stream: ContextManager[IO[bytes]] = job_store.read_shared_file_stream(file_store_id)
         else:
-            manager = job_store.read_file_stream(file_store_id)
+            stream = job_store.read_file_stream(file_store_id)
 
-        # Open and unpickle
-        with manager as file_handle:
+        # Enter closing context and unpickle
+        with stream as file_handle:
 
-            job = cls._unpickle(user_module, file_handle, requireInstanceOf=Job)
+            job: Job = cls._unpickle(user_module, file_handle, requireInstanceOf=Job)
             # Fill in the current description
             job._description = job_description
 
@@ -3135,7 +3226,7 @@ class Job:
 
         return job
 
-    def _run(self, jobGraph=None, fileStore=None, **kwargs):
+    def _run(self, jobGraph: Any = None, fileStore: AbstractFileStore | None = None, **kwargs: Any) -> Any:
         """
         Function which worker calls to ultimately invoke
         a job's Job.run method, and then handle created
@@ -3157,10 +3248,13 @@ class Job:
         :param toil.fileStores.abstractFileStore.AbstractFileStore fileStore: the
                FileStore to use to access files when running the job. Required.
         """
+        # TODO: Can't we drop compatibility with extremely old Cactus and make
+        # fileStore positional and non-nullably typed?
+        assert fileStore is not None
         return self.run(fileStore)
 
     @contextmanager
-    def _executor(self, stats, fileStore):
+    def _executor(self, stats: StatsDict, fileStore: AbstractFileStore) -> Iterator[None]:
         """
         This is the core wrapping method for running the job within a worker.  It sets up the stats
         and logging before yielding. After completion of the body, the function will finish up the
@@ -3193,6 +3287,7 @@ class Job:
                     fileStore.deleteGlobalFile(FileID(jobStoreFileID, 0))
             else:
                 # Else copy them to the job description to delete later
+                assert isinstance(self.description, CheckpointJobDescription)
                 self.description.checkpointFilesToDelete = list(Promise.filesToDelete)
             Promise.filesToDelete.clear()
             # Now indicate the asynchronous update of the job can happen
@@ -3248,7 +3343,7 @@ class Job:
         jobStore: AbstractJobStore,
         fileStore: AbstractFileStore,
         defer: Callable[[Any], None],
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """
         Run the job, and serialise the next jobs.
@@ -3293,11 +3388,11 @@ class Job:
         # That and the new child/follow-on relationships will need to be
         # recorded later by an update() of the JobDescription.
 
-    def _jobName(self):
+    def _jobName(self) -> str:
         """
         :rtype : string, used as identifier of the job class in the stats report.
         """
-        return self._description.displayName
+        return self.description.displayName
 
     def set_debug_flag(self, flag: str) -> None:
         """
@@ -3347,7 +3442,7 @@ class JobGraphDeadlockException(JobException):
     dependency, such as a cycle. See :func:`toil.job.Job.checkJobGraphForDeadlocks`.
     """
 
-    def __init__(self, string):
+    def __init__(self, string: str) -> None:
         super().__init__(string)
 
 
@@ -3357,7 +3452,7 @@ class FunctionWrappingJob(Job):
     """
 
     def __init__(
-        self, userFunction: Callable[[...], Any], *args: Any, **kwargs: Any
+        self, userFunction: Callable[..., Any], *args: Any, **kwargs: Any
     ) -> None:
         """
         :param callable userFunction: The function to wrap. It will be called with ``*args`` and
@@ -3381,7 +3476,7 @@ class FunctionWrappingJob(Job):
                 list(zip(argSpec.args[-len(argSpec.defaults) :], argSpec.defaults))
             )
 
-        def resolve(key, default: Any | None = None, dehumanize: bool = False) -> Any:
+        def resolve(key: str, default: Any | None = None, dehumanize: bool = False) -> Any:
             try:
                 # First, try constructor arguments, ...
                 value = kwargs.pop(key)
@@ -3422,13 +3517,16 @@ class FunctionWrappingJob(Job):
             self.userFunctionModule,
         )
         userFunctionModule = self._loadUserModule(self.userFunctionModule)
-        return getattr(userFunctionModule, self.userFunctionName)
+        user_function = getattr(userFunctionModule, self.userFunctionName)
+        assert callable(user_function)
+        # TODO: The assert dhould narrow, but doesn't. See https://github.com/python/mypy/issues/20748
+        return cast(Callable[..., Any], user_function)
 
     def run(self, fileStore: AbstractFileStore) -> Any:
         userFunction = self._getUserFunction()
         return userFunction(*self._args, **self._kwargs)
 
-    def getUserScript(self) -> str:
+    def getUserScript(self) -> ModuleDescriptor:
         return self.userFunctionModule
 
     def _jobName(self) -> str:
@@ -3470,6 +3568,7 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
 
     @property
     def fileStore(self) -> AbstractFileStore:
+        assert self._fileStore is not None
         return self._fileStore
 
     def run(self, fileStore: AbstractFileStore) -> Any:
@@ -3485,7 +3584,7 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
     resource requirements.
     """
 
-    def __init__(self, userFunction, *args, **kwargs):
+    def __init__(self, userFunction: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
         self._promisedKwargs = kwargs.copy()
         # Replace resource requirements in intermediate job with small values.
         kwargs.update(
@@ -3501,7 +3600,7 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
         super().__init__(userFunction, *args, **kwargs)
 
     @classmethod
-    def create(cls, userFunction, *args, **kwargs):
+    def create(cls, userFunction: Callable[..., Any], *args: Any, **kwargs: Any) -> EncapsulatedJob:
         """
         Creates an encapsulated Toil job function with unfulfilled promised resource
         requirements. After the promises are fulfilled, a child job function is created
@@ -3511,13 +3610,13 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
         """
         return EncapsulatedJob(cls(userFunction, *args, **kwargs))
 
-    def run(self, fileStore):
+    def run(self, fileStore: AbstractFileStore) -> Any:
         # Assumes promises are fulfilled when parent job is run
         self.evaluatePromisedRequirements()
         userFunction = self._getUserFunction()
         return self.addChildFn(userFunction, *self._args, **self._promisedKwargs).rv()
 
-    def evaluatePromisedRequirements(self):
+    def evaluatePromisedRequirements(self) -> None:
         # Fulfill resource requirement promises
         for requirement in REQUIREMENT_NAMES:
             try:
@@ -3535,7 +3634,7 @@ class PromisedRequirementJobFunctionWrappingJob(PromisedRequirementFunctionWrapp
     See :class:`toil.job.JobFunctionWrappingJob`
     """
 
-    def run(self, fileStore):
+    def run(self, fileStore: AbstractFileStore) -> Any:
         self.evaluatePromisedRequirements()
         userFunction = self._getUserFunction()
         return self.addChildJobFn(
@@ -3574,6 +3673,9 @@ class EncapsulatedJob(Job):
         :param str unitName: human-readable name to identify this job instance.
         """
 
+        self.encapsulatedJob: Job | None
+        self.encapsulatedFollowOn: Job | None
+
         if job is not None:
             # Initial construction, when encapsulating a job
 
@@ -3602,14 +3704,14 @@ class EncapsulatedJob(Job):
             self.encapsulatedJob = None
             self.encapsulatedFollowOn = None
 
-    def addChild(self, childJob: Job) -> Job:
+    def addChild(self, childJob: JobType) -> JobType:
         if self.encapsulatedFollowOn is None:
             raise RuntimeError(
                 "Children cannot be added to EncapsulatedJob while it is running"
             )
         return Job.addChild(self.encapsulatedFollowOn, childJob)
 
-    def addService(self, service, parentService=None):
+    def addService(self, service: Job.Service, parentService: Job.Service | None = None) -> Promise:
         if self.encapsulatedFollowOn is None:
             raise RuntimeError(
                 "Services cannot be added to EncapsulatedJob while it is running"
@@ -3618,19 +3720,19 @@ class EncapsulatedJob(Job):
             self.encapsulatedFollowOn, service, parentService=parentService
         )
 
-    def addFollowOn(self, followOnJob: Job) -> Job:
+    def addFollowOn(self, followOnJob: JobType) -> JobType:
         if self.encapsulatedFollowOn is None:
             raise RuntimeError(
                 "Follow-ons cannot be added to EncapsulatedJob while it is running"
             )
         return Job.addFollowOn(self.encapsulatedFollowOn, followOnJob)
 
-    def rv(self, *path) -> Promise:
+    def rv(self, *path: Any) -> Promise:
         if self.encapsulatedJob is None:
             raise RuntimeError("The encapsulated job was not set.")
         return self.encapsulatedJob.rv(*path)
 
-    def prepareForPromiseRegistration(self, jobStore):
+    def prepareForPromiseRegistration(self, jobStore: AbstractJobStore) -> None:
         # This one will be called after execution when re-serializing the
         # (unchanged) graph of jobs rooted here.
         super().prepareForPromiseRegistration(jobStore)
@@ -3638,13 +3740,13 @@ class EncapsulatedJob(Job):
             # Running where the job was created.
             self.encapsulatedJob.prepareForPromiseRegistration(jobStore)
 
-    def _disablePromiseRegistration(self):
+    def _disablePromiseRegistration(self) -> None:
         if self.encapsulatedJob is None:
             raise RuntimeError("The encapsulated job was not set.")
         super()._disablePromiseRegistration()
         self.encapsulatedJob._disablePromiseRegistration()
 
-    def __reduce__(self):
+    def __reduce__(self) -> tuple[type, tuple[None]]:
         """
         Called during pickling to define the pickled representation of the job.
 
@@ -3655,7 +3757,7 @@ class EncapsulatedJob(Job):
 
         return self.__class__, (None,)
 
-    def getUserScript(self):
+    def getUserScript(self) -> ModuleDescriptor:
         if self.encapsulatedJob is None:
             raise RuntimeError("The encapsulated job was not set.")
         return self.encapsulatedJob.getUserScript()
@@ -3666,7 +3768,7 @@ class ServiceHostJob(Job):
     Job that runs a service. Used internally by Toil. Users should subclass Service instead of using this.
     """
 
-    def __init__(self, service):
+    def __init__(self, service: Job.Service) -> None:
         """
         This constructor should not be called by a user.
 
@@ -3698,47 +3800,49 @@ class ServiceHostJob(Job):
         # The service to run, or None if it is still pickled.
         # We can't just pickle as part of ourselves because we may need to load
         # an additional module.
-        self.service = service
+        self.service: Job.Service | None = service
         # The pickled service, or None if it isn't currently pickled.
         # We can't just pickle right away because we may owe promises from it.
-        self.pickledService = None
+        self.pickledService: bytes | None = None
 
         # Pick up our name from the service.
         self.description.jobName = service.jobName
 
     @property
-    def fileStore(self):
+    def fileStore(self) -> AbstractFileStore:
         """
         Return the file store, which the Service may need.
         """
+        assert self._fileStore is not None
         return self._fileStore
 
-    def _renameReferences(self, renames):
+    def _renameReferences(self, renames: dict[TemporaryID, str]) -> None:
         # When the job store finally hads out IDs we have to fix up the
         # back-reference from our Service to us.
         super()._renameReferences(renames)
         if self.service is not None:
+            assert isinstance(self.service.hostID, TemporaryID)
             self.service.hostID = renames[self.service.hostID]
 
     # Since the running service has us, make sure they don't try to tack more
     # stuff onto us.
 
-    def addChild(self, child):
+    def addChild(self, child: Job) -> NoReturn:
         raise RuntimeError(
             "Service host jobs cannot have children, follow-ons, or services"
         )
 
-    def addFollowOn(self, followOn):
+    def addFollowOn(self, followOn: Job) -> NoReturn:
         raise RuntimeError(
             "Service host jobs cannot have children, follow-ons, or services"
         )
 
-    def addService(self, service, parentService=None):
+    def addService(self, service: Job.Service, parentService: Job.Service | None = None) -> NoReturn:
         raise RuntimeError(
             "Service host jobs cannot have children, follow-ons, or services"
         )
 
-    def saveBody(self, jobStore):
+    def saveBody(self, jobStore: AbstractJobStore) -> None:
         """
         Serialize the service itself before saving the host job's body.
         """
@@ -3756,10 +3860,13 @@ class ServiceHostJob(Job):
         self.service = service
         self.pickledService = None
 
-    def run(self, fileStore):
+    def run(self, fileStore: AbstractFileStore) -> None:
+        # Narrow the description type for access to service-specific fields
+        assert isinstance(self.description, ServiceJobDescription)
         # Unpickle the service
         logger.debug("Loading service module %s.", self.serviceModule)
         userModule = self._loadUserModule(self.serviceModule)
+        assert self.pickledService is not None
         service = self._unpickle(
             userModule, BytesIO(self.pickledService), requireInstanceOf=Job.Service
         )
@@ -3773,7 +3880,7 @@ class ServiceHostJob(Job):
             # the service, to do this while the run method is running we
             # cheat and set the return value promise within the run method
             self._fulfillPromises(startCredentials, fileStore.jobStore)
-            self._rvs = (
+            self._rvs = cast(dict[tuple[Any, ...], list[str]],
                 {}
             )  # Set this to avoid the return values being updated after the
             # run method has completed!
@@ -3801,6 +3908,7 @@ class ServiceHostJob(Job):
                     logger.debug(
                         "Detected that the terminate jobStoreID has been removed so exiting"
                     )
+                    assert self.description.errorJobStoreID is not None
                     if not fileStore.jobStore.file_exists(
                         self.description.errorJobStoreID
                     ):
@@ -3835,7 +3943,7 @@ class ServiceHostJob(Job):
             # The stop function is always called
             service.stop(self)
 
-    def getUserScript(self):
+    def getUserScript(self) -> ModuleDescriptor:
         return self.serviceModule
 
 
@@ -3929,7 +4037,6 @@ def potential_absolute_uris(
 
 def get_file_sizes(
     filenames: list[str],
-    file_source: AbstractJobStore,
     search_paths: list[str] | None = None,
     include_remote_files: bool = True,
     execution_dir: str | None = None,
@@ -3939,7 +4046,6 @@ def get_file_sizes(
     to a tuple of the normalized URI, parent directory ID, and size of the file. The size of the file may be None, which means unknown size.
 
     :param filenames: list of filenames to evaluate on
-    :param file_source: Context to search for files with
     :param task_path: Dotted WDL name of the user-level code doing the
         importing (probably the workflow name).
     :param search_paths: If set, try resolving input location relative to the URLs or
@@ -3959,13 +4065,13 @@ def get_file_sizes(
             try:
                 if not include_remote_files and is_remote_url(candidate_uri):
                     # Use remote URIs in place. But we need to find the one that exists.
-                    if not file_source.url_exists(candidate_uri):
+                    if not URLAccess.url_exists(candidate_uri):
                         # Wasn't found there
                         continue
 
                 # Now we know this exists, so pass it through
                 # Get filesizes
-                filesize = file_source.get_size(candidate_uri)
+                filesize = URLAccess.get_size(candidate_uri)
             except UnimplementedURLException as e:
                 # We can't find anything that can even support this URL scheme.
                 # Report to the user, they are probably missing an extra.
@@ -4032,7 +4138,7 @@ class CombineImportsJob(Job):
     Combine the outputs of multiple WorkerImportJobs into one promise
     """
 
-    def __init__(self, d: Sequence[Promised[dict[str, FileID]]], **kwargs):
+    def __init__(self, d: Sequence[Promised[dict[str, FileID]]], **kwargs: Any) -> None:
         """
         :param d: Sequence of dictionaries to merge
         """
@@ -4107,14 +4213,16 @@ class ImportsJob(Job):
     """
     Job to organize and delegate files to individual WorkerImportJobs.
 
+    Only works on files of known size.
+
     For the CWL/WDL runners, this is only used when runImportsOnWorkers is enabled
     """
 
     def __init__(
         self,
         file_to_data: dict[str, FileMetadata],
-        max_batch_size: ParseableIndivisibleResource,
-        import_worker_disk: ParseableIndivisibleResource,
+        max_batch_size: int,
+        import_worker_disk: int,
         **kwargs: Any,
     ):
         """
@@ -4123,7 +4231,10 @@ class ImportsJob(Job):
         This class is only used when runImportsOnWorkers is enabled.
 
         :param file_to_data: mapping of file source name to file metadata
-        :param max_batch_size: maximum cumulative file size of a batched import
+        :param max_batch_size: maximum cumulative file size of a batched
+            import, in bytes. To parse this from a string, see human2bytes().
+        :param import_worker_disk: bytes of disk to allocate for each worker
+            import job.
         """
         super().__init__(local=True, **kwargs)
         self._file_to_data = file_to_data
@@ -4146,11 +4257,9 @@ class ImportsJob(Job):
             to FileMetadata mapping). The candidate URI is stored in
             FileMetadata.source.
         """
-        max_batch_size = self._max_batch_size
-        file_to_data = self._file_to_data
         # Run WDL imports on a worker instead
 
-        filenames = list(file_to_data.keys())
+        filenames = list(self._file_to_data.keys())
 
         import_jobs = []
 
@@ -4158,13 +4267,14 @@ class ImportsJob(Job):
         file_batches = []
 
         # List of filenames for each batch
-        per_batch_files = []
+        per_batch_files: list[str] = []
         per_batch_size = 0
         while len(filenames) > 0:
             filename = filenames.pop(0)
-            # See if adding this to the queue will make the batch job too big
-            filesize = file_to_data[filename][2]
-            if per_batch_size + filesize >= max_batch_size:
+            # See if adding this to the queue will make the batch job too big.
+            filesize = self._file_to_data[filename][2]
+            assert filesize is not None
+            if per_batch_size + filesize >= self._max_batch_size:
                 # batch is too big now, store to schedule the batch
                 if len(per_batch_files) == 0:
                     # schedule the individual file
@@ -4182,7 +4292,7 @@ class ImportsJob(Job):
 
         # Create batch import jobs for each group of files
         for batch in file_batches:
-            candidate_uris = [file_to_data[filename][0] for filename in batch]
+            candidate_uris = [self._file_to_data[filename][0] for filename in batch]
             import_jobs.append(
                 WorkerImportJob(candidate_uris, disk=self._import_worker_disk)
             )
@@ -4195,7 +4305,7 @@ class ImportsJob(Job):
             job.addFollowOn(combine_imports_job)
         self.addChild(combine_imports_job)
 
-        return combine_imports_job.rv(), file_to_data
+        return combine_imports_job.rv(), self._file_to_data
 
 
 class Promise:
@@ -4219,7 +4329,7 @@ class Promise:
     for each promise
     """
 
-    filesToDelete = set()
+    filesToDelete: set[str] = set()
     """
     A set of IDs of files containing promised values when we know we won't need them anymore
     """
@@ -4239,7 +4349,7 @@ class Promise:
         self.job = job
         self.path = path
 
-    def __reduce__(self):
+    def __reduce__(self) -> tuple[type, tuple[str, str]]:
         """
         Return the Promise class and construction arguments.
 
@@ -4260,7 +4370,7 @@ class Promise:
         return self.__class__, (jobStoreLocator, jobStoreFileID)
 
     @staticmethod
-    def __new__(cls, *args) -> Promise:
+    def __new__(cls, *args: Any) -> Any:
         """Instantiate this Promise."""
         if len(args) != 2:
             raise RuntimeError(
@@ -4274,7 +4384,7 @@ class Promise:
             return cls._resolve(*args)
 
     @classmethod
-    def _resolve(cls, jobStoreLocator, jobStoreFileID):
+    def _resolve(cls, jobStoreLocator: str, jobStoreFileID: str) -> Any:
         # Initialize the cached job store if it was never initialized in the current process or
         # if it belongs to a different workflow that was run earlier in the current process.
         if cls._jobstore is None or cls._jobstore.config.jobStore != jobStoreLocator:
@@ -4325,7 +4435,7 @@ def unwrap_all(p: Sequence[Promised[T]]) -> Sequence[T]:
             raise TypeError(
                 f"Attempted to unwrap a value at index {i} that is still a Promise: {item}"
             )
-    return p
+    return cast(Sequence[T], p)
 
 
 class PromisedRequirement:
@@ -4345,14 +4455,14 @@ class PromisedRequirement:
     C = B.addChildFn(h, cores=PromisedRequirement(lambda x: 2*x, B.rv()))
     """
 
+    # TODO: Type this whole class better so it understands Promised[]
     def __init__(self, valueOrCallable: Any, *args: Any) -> None:
         """
         Initialize this Promised Requirement.
 
         :param valueOrCallable: A single Promise instance or a function that
                                 takes args as input parameters.
-        :param args: variable length argument list
-        :type args: int or .Promise
+        :param args: variable length argument list for a callable first argument
         """
         if hasattr(valueOrCallable, "__call__"):
             if len(args) == 0:
@@ -4364,7 +4474,7 @@ class PromisedRequirement:
                     "Define a PromisedRequirement function to handle multiple arguments."
                 )
             func = lambda x: x
-            args = [valueOrCallable]
+            args = (valueOrCallable,)
 
         self._func = dill.dumps(func)
         self._args = list(args)

@@ -15,7 +15,7 @@ import logging
 import time
 
 from toil.bus import JobUpdatedMessage, MessageBus
-from toil.job import CheckpointJobDescription, JobDescription
+from toil.job import CheckpointJobDescription, JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
 
 logger = logging.getLogger(__name__)
@@ -352,6 +352,9 @@ class ToilState:
             def processSuccessorWithMultiplePredecessors(
                 successor: JobDescription,
             ) -> None:
+                # TODO: Can we hide the fact that TemporaryID exists better
+                # from the type system???
+                assert not isinstance(jobDesc.jobStoreID, TemporaryID) 
                 # If jobDesc is not reported as complete by the successor
                 if jobDesc.jobStoreID not in successor.predecessorsFinished:
 

@@ -49,18 +49,11 @@ from toil.job import (
     JobDescription,
 )
 from toil.jobStores.abstractJobStore import AbstractJobStore
-from toil.lib.expando import MagicExpando
 from toil.lib.io import make_public_dir, path_union
 from toil.lib.resources import ResourceMonitor
-from toil.statsAndLogging import configure_root_logger, install_log_color, set_log_level
+from toil.statsAndLogging import StatsDict, configure_root_logger, install_log_color, set_log_level
 
 logger = logging.getLogger(__name__)
-
-
-class StatsDict(MagicExpando):
-    """Subclass of MagicExpando for type-checking purposes."""
-
-    jobs: list[MagicExpando]
 
 
 def nextChainable(
@@ -455,7 +448,7 @@ def workerScript(
     jobAttemptFailed = False
     failure_exit_code = 1
     first_job_cores = None
-    statsDict = StatsDict()  # type: ignore[no-untyped-call]
+    statsDict = StatsDict()
     statsDict.jobs = []
     statsDict.workers.logs_to_leader = []
     statsDict.workers.logging_user_streams = []
@@ -702,7 +695,8 @@ def workerScript(
         max_bytes = 0
         for job_stats in statsDict.jobs:
             if "disk" in job_stats:
-                max_bytes = max(max_bytes, int(job_stats.disk))
+                # TODO: MyPy doesn't know this type-narrows our Expando to something that has .disk
+                max_bytes = max(max_bytes, int(job_stats.disk)) # type:ignore[attr-defined]
         statsDict.workers.disk = str(max_bytes)
         # Count the jobs executed.
         # TODO: toil stats could compute this but its parser is too general to hook into simply.
