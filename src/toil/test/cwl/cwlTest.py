@@ -2305,6 +2305,96 @@ def test_missing_tmpdir_and_tmp_outdir(tmp_path: Path) -> None:
         assert p.returncode == 0
 
 
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_leave_tmpdir(tmp_path: Path) -> None:
+    """
+    Test that --leave-tmpdir leaves intermediate temporary directories behind.
+    """
+    tmpdir_prefix = os.path.join(tmp_path, "tmpdir", "prefix_")
+
+    # Create the parent directory for tmpdir_prefix
+    os.makedirs(os.path.dirname(tmpdir_prefix), exist_ok=True)
+
+    with get_data("test/cwl/echo_string.cwl") as cwl_file:
+        # We need to bypass the file store or else we use --workDir and not
+        # --tmpdir-prefix, and then the workers always clean up at the Toil
+        # level.
+        cmd = [
+            "toil-cwl-runner",
+            f"--jobStore=file:{tmp_path / 'jobstore'}",
+            "--bypass-file-store",
+            "--leave-tmpdir",
+            f"--tmpdir-prefix={tmpdir_prefix}",
+            f"--outdir={tmp_path / 'outdir'}",
+            "--retryCount=0",
+            str(cwl_file),
+        ]
+        p = subprocess.run(cmd)
+        assert p.returncode == 0
+
+    # Check that temp directories were left behind
+    tmpdir_parent = os.path.dirname(tmpdir_prefix)
+    leftover_dirs = os.listdir(tmpdir_parent)
+    assert len(leftover_dirs) > 0, "Expected temp directories to be left behind with --leave-tmpdir"
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_rm_tmpdir(tmp_path: Path, subtests: pytest.Subtests) -> None:
+    """
+    Test that --rm-tmpdir removes intermediate temporary directories.
+    """
+
+    subtest_num = 0
+    for bypass_filestore in (False, True):
+        for successful_workflow in (True, False):
+            with subtests.test(msg=f"Bypass filestore: {bypass_filestore} Successful workflow: {successful_workflow}"):
+                
+                # Each run needs a separate root
+                base_dir = tmp_path / str(subtest_num)
+                subtest_num += 1
+
+                # Use the same tree for all sorts of temp file so we can check for
+                # any leftovers
+                to_clean = base_dir / "tmpdir"
+                os.makedirs(to_clean, exist_ok=True)
+
+                workflow_path = "test/cwl/echo_string.cwl" if successful_workflow else "test/cwl/echo_string_and_fail.cwl"
+
+                
+                with get_data(workflow_path) as cwl_file:
+                    # We set both tmpdir-prefix and workDir to be extra special sure
+                    # the files go in there. When not bypassing the filestore,
+                    # we ignore the tmpdir-prefix and work in workDir.
+                    cmd = [
+                        "toil-cwl-runner",
+                        f"--jobStore=file:{base_dir / 'jobstore'}",
+                        "--rm-tmpdir",
+                        f"--tmpdir-prefix={to_clean / 'prefix'}",
+                        f"--workDir={to_clean}",
+                        f"--tmp-outdir-prefix={to_clean / 'out_prefix'}",
+                        f"--outdir={base_dir / 'outdir'}",
+                        "--retryCount=0",
+                    ]
+                    if bypass_filestore:
+                        cmd.append("--bypass-file-store")
+                    cmd.append(str(cwl_file))
+                    p = subprocess.run(cmd)
+                    if successful_workflow:
+                        assert p.returncode == 0
+                    else:
+                        # The workflow should fail but we should still do the
+                        # cleanup, because the cleanup should be per task.
+                        assert p.returncode != 0
+
+                # Check that temp directories were cleaned up
+                leftover_dirs = os.listdir(to_clean)
+                assert len(leftover_dirs) == 0, f"Expected temp directories to be removed with --rm-tmpdir, but found: {leftover_dirs}"
+
+
 # StreamHandler is generic, _typeshed doesn't exist at runtime, do a bit of typing trickery, see https://github.com/python/typeshed/issues/5680
 if TYPE_CHECKING:
     from _typeshed import SupportsWrite

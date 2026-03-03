@@ -2791,6 +2791,12 @@ class CWLJob(CWLNamedJob):
                 get_file=getattr(runtime_context, "toil_get_file"),
                 streaming_allowed=runtime_context.streaming_allowed,
             )
+        else:
+            if runtime_context.outdir is not None:
+                # Multiple jobs may be racing to create the workflow outdir,
+                # and cwltool's creation code doesn't handle that, so create it
+                # now.
+                os.makedirs(runtime_context.outdir, exist_ok=True)
 
         # Collect standard output and standard error somewhere if they don't go to files.
         # We need to keep two FDs to these because cwltool will close what we give it.
@@ -4368,7 +4374,7 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
     setattr(runtime_context, "cwl_default_ram", options.cwl_default_ram)
     setattr(runtime_context, "cwl_min_ram", options.cwl_min_ram)
     runtime_context.move_outputs = "leave"
-    runtime_context.rm_tmpdir = False
+    runtime_context.rm_tmpdir = options.rm_tmpdir
     runtime_context.streaming_allowed = not options.disable_streaming
     if options.cachedir is not None:
         runtime_context.cachedir = os.path.abspath(options.cachedir)
@@ -4563,6 +4569,13 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
                 # If we're using the file store we need to start moving output
                 # files now.
                 runtime_context.move_outputs = "move"
+            elif options.rm_tmpdir:
+                # If bypassing the file store but wanting to clean up temp
+                # directories, we need to copy outputs out of tmpdir before
+                # deletion. Otherwise, downstream steps that reference files
+                # in the tmpdir will fail.
+                # TODO: "move" doesn't work here. Why?
+                runtime_context.move_outputs = "copy"
 
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need
@@ -4683,6 +4696,7 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
             stdout.write(json.dumps(outobj, indent=4, default=str))
             stdout.write("\n")
             logger.info("CWL run complete!")
+
     # Don't expose tracebacks to the user for exceptions that may be expected
     except FailedJobsException as err:
         if err.exit_code == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:

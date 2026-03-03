@@ -193,6 +193,24 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         help=suppress_help or "Path prefix for intermediate output directories",
         default=None,
     )
+    tmpdirgroup = (
+        parser.add_mutually_exclusive_group()
+        if not suppress_help
+        else parser.add_argument_group()
+    )
+    tmpdirgroup.add_argument(
+        "--rm-tmpdir",
+        action="store_true",
+        default=True,
+        help=suppress_help or "Delete intermediate temporary directories (default)",
+        dest="rm_tmpdir",
+    )
+    tmpdirgroup.add_argument(
+        "--leave-tmpdir",
+        action="store_false",
+        help=suppress_help or "Do not delete intermediate temporary directories",
+        dest="rm_tmpdir",
+    )
     parser.add_argument(
         "--force-docker-pull",
         action="store_true",
@@ -259,7 +277,6 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         default=False,
         help=suppress_help or SUPPRESS,
     )
-    # same workaround as dockergroup
     checkgroup = (
         parser.add_mutually_exclusive_group()
         if not suppress_help
