@@ -1,3 +1,4 @@
+import http.client
 import json
 import logging
 import os
@@ -136,8 +137,9 @@ def flatcar_release_feed_ami(
             # Try again
             try_number += 1
             continue
-        except URLError:
-            # Could be a connection timeout
+        except (URLError, http.client.HTTPException):
+            # Could be a connection timeout, dropped connection, or other
+            # misbehavior from a broken server
             logger.exception(f"Failed to retrieve {source} Flatcar release feed JSON")
             # Try again
             try_number += 1
