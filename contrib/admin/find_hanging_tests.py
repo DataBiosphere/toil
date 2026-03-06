@@ -66,27 +66,8 @@ def fetch_url(url: str, token: Optional[str] = None) -> str:
         sys.exit(1)
 
 
-# pytest flags that consume the next token as their value.
-# Needed so we can correctly skip over non-collection arguments.
-_PYTEST_FLAGS_WITH_VALUE = frozenset([
-    '-m', '-k', '-n', '--numprocesses', '--dist',
-    '--timeout', '--timeout-method', '--maxfail',
-    '--log-level', '--log-cli-level', '--log-format', '--log-cli-format',
-    '--log-date-format', '--log-cli-date-format',
-    '--log-file', '--log-file-level', '--log-file-format',
-    '--cov', '--cov-report', '--cov-config', '--cov-source',
-    '--junit-xml', '--junit-prefix', '--junit-logging',
-    '--ignore', '--ignore-glob', '--rootdir', '--confcutdir',
-    '-o', '--override-ini', '-p', '--capture', '--tb',
-    '--durations', '--durations-min', '-c', '--color', '--import-mode',
-    '--cwl-badgedir', '--cwl-args', '--cwl-runner',
-    '--randomly-seed', '--deselect',
-    '-W', '--pythonwarnings', '--basetemp',
-])
-
-# The subset of the above that are relevant to test collection and should be
-# forwarded to `pytest --collect-only`.
-_PYTEST_COLLECT_FLAGS = frozenset(['-m', '-k', '--ignore', '--ignore-glob'])
+# Matches verbose flags (-v, -vv, --verbose) that conflict with -q.
+_VERBOSE_RE = re.compile(r'^-v+$|^--verbose$')
 
 
 def extract_pytest_commands_from_log(log_text: str) -> list[list[str]]:
@@ -124,59 +105,13 @@ def extract_pytest_commands_from_log(log_text: str) -> list[list[str]]:
 
 def build_collect_from_pytest_args(pytest_args: list[str]) -> list[str]:
     """
-    Build a `pytest --collect-only -q --no-header` command from the argument
-    list of a `python -m pytest` invocation found in the log.
+    Build a collect-only command from a pytest arg list found in the log.
 
-    Keeps args relevant to test collection:
-        - positional test paths
-        - -m  (marker filter)
-        - -k  (keyword filter)
-        - --ignore / --ignore-glob
-
-    Drops everything else: parallelism (-n, --dist), logging, coverage,
-    verbosity, timing, random ordering, plugin-specific flags, etc.
+    Uses the args as-is, except verbose flags (-v, -vv, --verbose) are removed
+    because they conflict with -q. --collect-only and -q are appended.
     """
-    out = [sys.executable, '-m', 'pytest', '--collect-only', '-q', '--no-header']
-
-    i = 0
-    while i < len(pytest_args):
-        arg = pytest_args[i]
-
-        # --flag=value form
-        if arg.startswith('-') and '=' in arg:
-            flag = arg.split('=', 1)[0]
-            if flag in _PYTEST_COLLECT_FLAGS:
-                out.append(arg)
-            i += 1
-            continue
-
-        # Compact -mVALUE or -kVALUE (e.g. -mnot_slow)
-        matched_short = False
-        for short in ('-m', '-k'):
-            if arg.startswith(short) and len(arg) > len(short):
-                if short in _PYTEST_COLLECT_FLAGS:
-                    out += [short, arg[len(short):]]
-                i += 1
-                matched_short = True
-                break
-        if matched_short:
-            continue
-
-        if arg in _PYTEST_FLAGS_WITH_VALUE:
-            # Flag + separate value token
-            val = pytest_args[i + 1] if i + 1 < len(pytest_args) else ''
-            if arg in _PYTEST_COLLECT_FLAGS:
-                out += [arg, val]
-            i += 2
-        elif arg.startswith('-'):
-            # Boolean flag — skip
-            i += 1
-        else:
-            # Positional argument (test path)
-            out.append(arg)
-            i += 1
-
-    return out
+    filtered = [arg for arg in pytest_args if not _VERBOSE_RE.match(arg)]
+    return [sys.executable, '-m', 'pytest'] + filtered + ['--collect-only', '-q']
 
 
 def collect_expected_tests(cmd: list[str], verbose: bool = False) -> set[str]:
