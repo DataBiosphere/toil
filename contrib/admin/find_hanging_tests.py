@@ -7,14 +7,9 @@ Useful for identifying tests that may be hanging and causing a CI job to time ou
 Usage:
     python contrib/admin/find_hanging_tests.py https://ucsc-ci.com/databiosphere/toil/-/jobs/105237
 
-The script:
-1. Retrieves the raw job log from the GitLab job URL.
-2. Scans the log for `python -m pytest` commands echoed by make before executing
-   them. All arguments are already fully substituted at this point.
-3. Runs 'pytest --collect-only -q' using the same test-selection arguments
-   (paths, -m marker, -k filter, --ignore) to enumerate the expected tests.
-4. Compares those against tests that appear completed in the log.
-5. Prints tests that were expected but did not complete.
+We turn all the pytest commands in the log into collect-only commands to get
+the names of tests that should have run, and compare that to the names of tests
+that actually finish.
 
 Assumes the correct git commit is already checked out locally.
 """
@@ -29,61 +24,35 @@ import urllib.error
 import urllib.request
 from typing import Optional
 
+from strip_ansi import strip_ansi
 
-# Matches ANSI CSI escape sequences (colors, cursor movement, erase-in-line, etc.)
-_ANSI_CSI_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
-# Matches GitLab CI section markers embedded in the log
-_GITLAB_SECTION_RE = re.compile(r'\x1b\[0Ksection_\w+:[^\r\n]*\r?')
-# Matches other standalone ESC sequences (e.g. \x1b(B)
-_ANSI_OTHER_RE = re.compile(r'\x1b[^[]')
-
-
-def strip_ansi(text: str) -> str:
-    """Remove ANSI escape codes and GitLab CI section markers from text."""
-    text = _GITLAB_SECTION_RE.sub('', text)
-    text = _ANSI_CSI_RE.sub('', text)
-    text = _ANSI_OTHER_RE.sub('', text)
-    return text
-
-
-def fetch_url(url: str, token: Optional[str] = None) -> str:
-    """Fetch a URL and return its decoded text content."""
+def fetch_url(url: str) -> str:
+    """
+    Fetch a URL and return its decoded text content.
+    """
     req = urllib.request.Request(url)
-    if token:
-        req.add_header('PRIVATE-TOKEN', token)
+    # We could add a Gitlab token here, but this script is Toil-specific and
+    # the Toil logs are public.
     try:
         with urllib.request.urlopen(req) as response:
             return response.read().decode('utf-8', errors='replace')
     except urllib.error.HTTPError as e:
         print(f"HTTP {e.code} fetching {url}: {e.reason}", file=sys.stderr)
-        if e.code == 401:
-            print("Authentication required. Provide a token with --token.", file=sys.stderr)
-        elif e.code == 403:
-            print("Access denied. Try providing a token with --token.", file=sys.stderr)
         sys.exit(1)
     except urllib.error.URLError as e:
         print(f"Failed to fetch {url}: {e.reason}", file=sys.stderr)
         sys.exit(1)
 
 
-# Matches verbose flags (-v, -vv, --verbose) that conflict with -q.
-_VERBOSE_RE = re.compile(r'^-v+$|^--verbose$')
-
-
 def extract_pytest_commands_from_log(log_text: str) -> list[list[str]]:
     """
     Find `python -m pytest` invocations echoed by make in the CI log.
 
-    make prints each recipe command before executing it. After ANSI stripping,
-    these appear as lines containing 'python -m pytest <args...>', possibly
-    preceded by environment variable assignments (TOIL_OWNER_TAG=... etc.).
-
-    Returns a deduplicated list of arg lists, where each list contains the
+    Returns a list of arg lists, where each list contains the
     arguments that appeared after 'pytest' on that line.
     """
     clean_log = strip_ansi(log_text)
     results = []
-    seen: set[tuple] = set()
 
     for line in clean_log.splitlines():
         m = re.search(r'\bpython\d*(?:\.\d+)?\s+-m\s+pytest\b(.*)', line)
@@ -95,13 +64,13 @@ def extract_pytest_commands_from_log(log_text: str) -> list[list[str]]:
         except ValueError:
             args = rest.split()
 
-        key = tuple(args)
-        if key not in seen:
-            seen.add(key)
-            results.append(args)
+        results.append(args)
 
     return results
 
+
+# Matches verbose flags (-v, -vv, --verbose) that conflict with -q.
+_VERBOSE_RE = re.compile(r'^-v+$|^--verbose$')
 
 def build_collect_from_pytest_args(pytest_args: list[str]) -> list[str]:
     """
@@ -130,17 +99,14 @@ def collect_expected_tests(cmd: list[str], verbose: bool = False) -> set[str]:
 
     if result.returncode not in (0, 5):  # 5 = no tests collected
         if verbose and result.stderr.strip():
-            print(f"  pytest stderr: {result.stderr.strip()[:500]}", file=sys.stderr)
+            print(f"  pytest stderr: {result.stderr.strip()}", file=sys.stderr)
 
-    tests: set[str] = set()
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        # pytest --collect-only -q outputs one test ID per line, e.g.:
-        #   src/toil/test/wdl/wdltoil_test.py::TestWDL::test_MD5sum
-        # Skip summary lines like "3 tests collected in 1.23s" or errors.
-        if '::' in line and not line.startswith('=') and not line.startswith('ERROR'):
-            tests.add(line.split()[0])
-    return tests
+    # pytest --collect-only -q outputs test IDs one per line, e.g.:
+    #   src/toil/test/wdl/wdltoil_test.py::TestWDL::test_MD5sum
+    # Skip summary lines like "3 tests collected in 1.23s", errors,
+    # coverage reports, anything after each test name, and other stuff in
+    # the log that isn't test names.
+    return {line.strip().split()[0] for line in result.stdout.splitlines() if '::' in line and not line.startswith('=') and not line.startswith('ERROR')}
 
 
 def parse_completed_tests(log_text: str) -> set[str]:
@@ -161,29 +127,27 @@ def parse_completed_tests(log_text: str) -> set[str]:
 
     STATUS = r'(?:PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)'
     TEST_ID = r'(\S+::\S+)'
-
-    # pytest-xdist: [gw0] [XX%] STATUS test_id  (possibly "- reason" after)
-    xdist_re = re.compile(
-        r'\[gw\d+\]\s+(?:\[\s*\d+%\]\s+)?' + STATUS + r'\s+' + TEST_ID
+    # All these match the test name as group 1.
+    regexes = (
+        # pytest-xdist: [gw0] [XX%] STATUS test_id  (possibly "- reason" after)
+        re.compile(
+            r'\[gw\d+\]\s+(?:\[\s*\d+%\]\s+)?' + STATUS + r'\s+' + TEST_ID
+        ),
+        # Standard verbose: test_id STATUS
+        re.compile(TEST_ID + r'\s+' + STATUS + r'(?:\s|$)'),
+        # Reversed (some reporters): STATUS test_id
+        re.compile(STATUS + r'\s+' + TEST_ID),
     )
-    # Standard verbose: test_id STATUS
-    standard_re = re.compile(TEST_ID + r'\s+' + STATUS + r'(?:\s|$)')
-    # Reversed (some reporters): STATUS test_id
-    reversed_re = re.compile(STATUS + r'\s+' + TEST_ID)
 
     completed: set[str] = set()
     for line in log_text.splitlines():
-        m = xdist_re.search(line)
-        if m:
-            completed.add(m.group(1))
-            continue
-        m = standard_re.search(line)
-        if m:
-            completed.add(m.group(1))
-            continue
-        m = reversed_re.search(line)
-        if m:
-            completed.add(m.group(1))
+        for option in regexes:
+            # Try each regex against the line
+            m = option.search(line)
+            if m:
+                # It's this one
+                completed.add(m.group(1))
+                break
 
     return completed
 
@@ -196,10 +160,6 @@ def main() -> int:
     parser.add_argument(
         'job_url',
         help='GitLab job URL, e.g. https://ucsc-ci.com/databiosphere/toil/-/jobs/105237',
-    )
-    parser.add_argument(
-        '--token', '-t',
-        help='Token for fetching the log if the job page requires authentication',
     )
     parser.add_argument(
         '--show-extra', action='store_true',
@@ -216,7 +176,7 @@ def main() -> int:
     # --- Fetch raw log ---
     raw_url = job_url + '/raw'
     print(f"Fetching raw log ...", file=sys.stderr)
-    log_text = fetch_url(raw_url, args.token)
+    log_text = fetch_url(raw_url)
     print(f"Log: {len(log_text):,} bytes", file=sys.stderr)
 
     # --- Find pytest invocations from make's command echo in the log ---
@@ -265,7 +225,7 @@ def main() -> int:
     missing = sorted(expected_tests - completed_tests)
     print()
     if missing:
-        print(f"{len(missing)} test(s) expected but not completed (possible hangers):")
+        print(f"{len(missing)} test(s) expected but not completed:")
         for t in missing:
             print(f"  {t}")
     else:
