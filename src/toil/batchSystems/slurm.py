@@ -171,9 +171,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         Set of available partitions detected on the slurm batch system
         """
 
-        default_gpu_partition: SlurmBatchSystem.PartitionInfo | None
-        all_partitions: list[SlurmBatchSystem.PartitionInfo]
-        gpu_partitions: set[str]
+        default_gpu_partition: SlurmBatchSystem.PartitionInfo | None = None
+        all_partitions: list[SlurmBatchSystem.PartitionInfo] | None = None
+        gpu_partitions: set[str] | None = None
 
         def __init__(self) -> None:
             try:
@@ -248,7 +248,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             :param time_limit: Time limit in seconds.
             """
 
-            if time_limit is None:
+            if time_limit is None or self.all_partitions is None:
                 # Just use Slurm's default
                 return None
 
