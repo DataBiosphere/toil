@@ -764,7 +764,8 @@ class SlurmTest(ToilTest):
         ):
             partition_set = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
 
-            self.assertFalse(mock_fn.called, "GPU partitions function called regardless of sinfo error!")
+
+        assert partition_set.get_partition(120.0) is None
 
         # NOTE: This is by design. The class has a type definition, but not variable declaration;
         #       so upon a failure, nothing is created. Maybe it would be better to always have a
