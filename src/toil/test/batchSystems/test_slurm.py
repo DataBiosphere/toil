@@ -4,6 +4,7 @@ import sys
 import textwrap
 from datetime import datetime, timedelta
 from queue import Queue
+from unittest import mock
 
 import pytest
 
@@ -749,6 +750,28 @@ class SlurmTest(ToilTest):
         self.assertTrue(detector("-B"))
         self.assertFalse(detector("--no-bazz"))
         self.assertFalse(detector("--foo-bar=--bazz-only"))
+
+    def test_sinfo_not_permitted(self):
+        """Test when ``sinfo`` is not available.
+
+        Certain HPC platforms may prohibit Slurm commands that give access to
+        other users' jobs. E.g., BSC MN4, MN5. See issue #5461.
+        """
+        error_raised = CalledProcessErrorStderr(1, 'sinfo')
+        with (
+            mock.patch("toil.batchSystems.slurm.call_command", side_effect=error_raised),
+            mock.patch("toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet._get_gpu_partitions") as mock_fn
+        ):
+            partition_set = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+
+
+        assert partition_set.get_partition(120.0) is None
+
+        # NOTE: This is by design. The class has a type definition, but not variable declaration;
+        #       so upon a failure, nothing is created. Maybe it would be better to always have a
+        #       variable with a type (even if Optional[Any]).
+        self.assertFalse(hasattr(partition_set, 'all_partitions'))
+
 
     ###
     ### Tests for parse_slurm_time
