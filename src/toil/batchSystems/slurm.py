@@ -187,6 +187,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             Get all available GPU partitions. Also get the default GPU partition.
             :return: None
             """
+            if not self.all_partitions:
+                return
+
             gpu_partitions = [
                 partition for partition in self.all_partitions if partition.gres
             ]
@@ -1019,7 +1022,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if gpus:
                 # Generate GPU assignment argument
                 sbatch_line.append(f"--gres=gpu:{gpus}")
-                if (
+                if self.boss.partitions.gpu_partitions is None:
+                    logger.warning(
+                        f"Job {jobName} needs GPUs, but specified partition {partition} does not have them. This job may not work."
+                        f"Try specifying a different partition"
+                    )
+                elif (
                     partition is not None
                     and partition not in self.boss.partitions.gpu_partitions
                 ):
