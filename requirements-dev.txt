@@ -34,3 +34,4 @@ pyupgrade
 pytest-xdist
 build
 check-jsonschema
+strip_ansi==0.1.1
