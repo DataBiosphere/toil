@@ -1024,7 +1024,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 sbatch_line.append(f"--gres=gpu:{gpus}")
                 if self.boss.partitions.gpu_partitions is None:
                     logger.warning(
-                        f"Job {jobName} needs GPUs, but specified partition {partition} does not have them. This job may not work."
+                        f"Job {jobName} needs GPUs, but specified partition {partition} might not have them. This job may not work."
                         f"Try specifying a different partition"
                     )
                 elif (
