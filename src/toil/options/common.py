@@ -453,10 +453,10 @@ def add_base_toil_options(
     )
     move_exports = file_store_options.add_mutually_exclusive_group()
     move_exports_help = (
-        "When using a filesystem based job store, output files are by default moved to the "
-        "output directory, and a symlink to the moved exported file is created at the initial "
-        "location.  Setting this option to True instead copies the files into the output directory.  "
-        "Applies to filesystem-based job stores only. "
+        "Applies to filesystem-based job stores only. Setting this option to "
+        "True moves output files to the output directory, and creates a symlink "
+        "to the moved exported file at the initial location. Setting this option "
+        "to False instead copies the files into the output directory. "
         "default=%(default)s"
     )
     move_exports.add_argument(
