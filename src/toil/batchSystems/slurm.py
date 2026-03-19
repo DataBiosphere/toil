@@ -171,19 +171,25 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         Set of available partitions detected on the slurm batch system
         """
 
-        default_gpu_partition: SlurmBatchSystem.PartitionInfo | None
-        all_partitions: list[SlurmBatchSystem.PartitionInfo]
-        gpu_partitions: set[str]
+        default_gpu_partition: SlurmBatchSystem.PartitionInfo | None = None
+        all_partitions: list[SlurmBatchSystem.PartitionInfo] | None = None
+        gpu_partitions: set[str] | None = None
 
         def __init__(self) -> None:
-            self._get_partition_info()
-            self._get_gpu_partitions()
+            try:
+                self._get_partition_info()
+                self._get_gpu_partitions()
+            except CalledProcessErrorStderr as e:
+                logger.warning("Could not retrieve Slurm partition info due to: '%s'.", e)
 
         def _get_gpu_partitions(self) -> None:
             """
             Get all available GPU partitions. Also get the default GPU partition.
             :return: None
             """
+            if not self.all_partitions:
+                return
+
             gpu_partitions = [
                 partition for partition in self.all_partitions if partition.gres
             ]
@@ -245,7 +251,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             :param time_limit: Time limit in seconds.
             """
 
-            if time_limit is None:
+            if time_limit is None or self.all_partitions is None:
                 # Just use Slurm's default
                 return None
 
@@ -1016,7 +1022,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if gpus:
                 # Generate GPU assignment argument
                 sbatch_line.append(f"--gres=gpu:{gpus}")
-                if (
+                if self.boss.partitions.gpu_partitions is None:
+                    logger.warning(
+                        f"Job {jobName} needs GPUs, but specified partition {partition} might not have them. This job may not work."
+                        f"Try specifying a different partition"
+                    )
+                elif (
                     partition is not None
                     and partition not in self.boss.partitions.gpu_partitions
                 ):
