@@ -67,7 +67,6 @@ WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     "test_transpose",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/699
     "test_as_map_fail",  # miniwdl bug, evalerror, see https://github.com/chanzuckerberg/miniwdl/issues/700
     "test_collect_by_key",  # same as test_as_map_
-    "serde_pair",  # miniwdl and toil bug
 ]
 
 WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + [
@@ -227,14 +226,23 @@ class TestWDLConformance:
 
     @slow
     def test_single_unit_test(self, wdl_conformance_test_repo: Path) -> None:
+        """
+        Run a single WDL spec unit test.  Defaults to ``glob_task`` on WDL
+        1.1, but both can be overridden via environment variables:
+
+        - ``WDL_UNIT_TEST_ID``: id of the test to run (e.g. ``serde_pair``)
+        - ``WDL_UNIT_TEST_VERSION``: WDL version to use (e.g. ``1.2``)
+        """
+        test_id = os.environ.get("WDL_UNIT_TEST_ID", "glob_task")
+        wdl_version = os.environ.get("WDL_UNIT_TEST_VERSION", "1.1")
         os.chdir(wdl_conformance_test_repo)
         repo_url = "https://github.com/openwdl/wdl.git"
-        repo_branch = "wdl-1.1"
+        repo_branch = f"wdl-{wdl_version}"
         commands1 = [
             exactPython,
             "setup_unit_tests.py",
             "-v",
-            "1.1",
+            wdl_version,
             "--extra-patch-data",
             "unit_tests_patch_data.yaml",
             "--repo",
@@ -251,10 +259,10 @@ class TestWDLConformance:
             "-r",
             "toil-wdl-runner",
             "-v",
-            "1.1",
+            wdl_version,
             "--progress",
             "--id",
-            ",".join("glob_task"),
+            test_id,
         ]
         p2 = subprocess.run(commands2, capture_output=True)
         self.check(p2)
@@ -503,6 +511,33 @@ class TestWDL:
                 result = json.loads(result_json)
 
                 assert "StringFileCoercion.output_file" in result
+
+    def test_cromwell_pair_input(self, tmp_path: Path) -> None:
+        """
+        Test that Cromwell-style Pair inputs using capitalised Left/Right keys
+        are accepted. Cromwell allows ``{"Left": x, "Right": y}`` in input JSON.
+        """
+        with get_data("test/wdl/testfiles/cromwell_pair.wdl") as wdl:
+            inputs = json.dumps(
+                {
+                    "cromwell_pair.p": {"Left": 1, "Right": 2},
+                    "cromwell_pair.nested": {
+                        "Left": "hello",
+                        "Right": {"Left": 3, "Right": 4},
+                    },
+                }
+            )
+            result_json = subprocess.check_output(
+                self.base_command
+                + [str(wdl), inputs, "-o", str(tmp_path), "--retryCount=0"]
+            )
+            result = json.loads(result_json)
+
+            assert result["cromwell_pair.left_out"] == 1
+            assert result["cromwell_pair.right_out"] == 2
+            assert result["cromwell_pair.nested_left_out"] == "hello"
+            assert result["cromwell_pair.nested_inner_left_out"] == 3
+            assert result["cromwell_pair.nested_inner_right_out"] == 4
 
     @needs_docker
     def test_gather(self, tmp_path: Path) -> None:

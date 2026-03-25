@@ -25,3 +25,18 @@ Tests use pytest. Example commands:
 # Run tests with a keyword filter
 ./venv/bin/python -m pytest src/toil/test -k "safe" -v
 ```
+
+## Running Individual WDL Spec Unit Tests
+
+The WDL spec embeds example workflows as unit tests (under the `wdl-1.1` and `wdl-1.2` branches of `https://github.com/openwdl/wdl`). `TestWDLConformance.test_single_unit_test` in `src/toil/test/wdl/wdltoil_test.py` runs one such test at a time and is controlled by environment variables:
+
+- `WDL_UNIT_TEST_ID`: which test to run (default: `glob_task`)
+- `WDL_UNIT_TEST_VERSION`: WDL version (default: `1.1`)
+
+```bash
+WDL_UNIT_TEST_ID=serde_pair ./venv/bin/python -m pytest \
+  src/toil/test/wdl/wdltoil_test.py::TestWDLConformance::test_single_unit_test \
+  --timeout=300 -v -s
+```
+
+This test clones remote git repos and may be slow. Many WDL spec tasks run inside containers, so **Docker must be running** — if the test fails with a Docker connection error, ask the user to start Docker before retrying.
