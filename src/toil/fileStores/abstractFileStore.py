@@ -299,7 +299,7 @@ class AbstractFileStore(ABC):
 
     # Functions related to reading, writing and removing files to/from the job store
     @abstractmethod
-    def writeGlobalFile(self, localFileName: str, cleanup: bool = False) -> FileID:
+    def writeGlobalFile(self, localFileName: str, cleanup: bool = False, hints: list[str] | None = None) -> FileID:
         """
         Upload a file (as a path) to the job store.
 
@@ -319,6 +319,8 @@ class AbstractFileStore(ABC):
         :param cleanup: if True then the copy of the global file will be deleted once
                the job and all its successors have completed running.  If not the global
                file must be deleted manually.
+        :param hints: String values such as a workflow names or task names that
+               should be used to store the file at a human-findable location.
 
         :return: an ID that can be used to retrieve the file.
         """
@@ -329,6 +331,7 @@ class AbstractFileStore(ABC):
         self,
         cleanup: bool = False,
         basename: str | None = None,
+        hints: list[str] | None = None,
         encoding: str | None = None,
         errors: str | None = None,
     ) -> Iterator[tuple[WriteWatchingStream, FileID]]:
@@ -349,12 +352,20 @@ class AbstractFileStore(ABC):
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
 
+        :param hints: String values such as a workflow names or task names that
+               should be used to store the file at a human-findable location.
+
         :return: A context manager yielding a tuple of
                   1) a file handle which can be written to and
                   2) the toil.fileStores.FileID of the resulting file in the job store.
         """
         with self.jobStore.write_file_stream(
-            str(self.jobDesc.jobStoreID), cleanup, basename, encoding, errors
+            str(self.jobDesc.jobStoreID),
+            cleanup=cleanup,
+            basename=basename,
+            hints=hints,
+            encoding=encoding,
+            errors=errors,
         ) as (backingStream, fileStoreID):
             # We have a string version of the file ID, and the backing stream.
             # We need to yield a stream the caller can write to, and a FileID

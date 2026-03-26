@@ -1088,6 +1088,7 @@ class AbstractJobStore(ABC):
     # associated with a given job.
     ##########################################
 
+    # Don't add any new arguments to this old version; make people use the new one!
     @deprecated(new_function_name="write_file")
     def writeFile(
         self,
@@ -1095,11 +1096,19 @@ class AbstractJobStore(ABC):
         jobStoreID: str | None = None,
         cleanup: bool = False,
     ) -> str:
-        return self.write_file(localFilePath, jobStoreID, cleanup)
+        return self.write_file(
+            localFilePath,
+            job_id=jobStoreID,
+            cleanup=cleanup
+        )
 
     @abstractmethod
     def write_file(
-        self, local_path: str, job_id: str | None = None, cleanup: bool = False
+        self,
+        local_path: str,
+        job_id: str | None = None,
+        cleanup: bool = False,
+        hints: list[str] | None = None,
     ) -> str:
         """
         Takes a file (as a path) and places it in this job store. Returns an ID that can be used
@@ -1118,6 +1127,11 @@ class AbstractJobStore(ABC):
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
 
+        :param hints: String values such as a workflow names or task names that
+               should be used to store the file at a human-findable location.
+               Two files with the same basename and same hints are still
+               guaranteed to never collide and to have distinct assigned IDs.
+
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
 
@@ -1131,6 +1145,7 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
+    # Don't add any new arguments to this old version; make people use the new one!
     @deprecated(new_function_name="write_file_stream")
     def writeFileStream(
         self,
@@ -1140,7 +1155,13 @@ class AbstractJobStore(ABC):
         encoding: str | None = None,
         errors: str | None = None,
     ) -> ContextManager[tuple[IO[bytes], str]]:
-        return self.write_file_stream(jobStoreID, cleanup, basename, encoding, errors)
+        return self.write_file_stream(
+            jobStoreID,
+            cleanup=cleanup,
+            basename=basename,
+            encoding=encoding,
+            errors=errors
+        )
 
     @abstractmethod
     @contextmanager
@@ -1148,6 +1169,7 @@ class AbstractJobStore(ABC):
         self,
         job_id: str | None = None,
         cleanup: bool = False,
+        hints: list[str] | None = None,
         basename: str | None = None,
         encoding: str | None = None,
         errors: str | None = None,
@@ -1171,6 +1193,11 @@ class AbstractJobStore(ABC):
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
 
+        :param hints: String values such as a workflow names or task names that
+               should be used to store the file at a human-findable location.
+               Two files with the same basename and same hints are still
+               guaranteed to never collide and to have distinct assigned IDs.
+
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
                 as for encode(). Defaults to None which represents binary mode.
 
@@ -1189,7 +1216,8 @@ class AbstractJobStore(ABC):
         :rtype: Iterator[Tuple[IO[bytes], str]]
         """
         raise NotImplementedError()
-
+    
+    # Don't add any new arguments to this old version; make people use the new one!
     @deprecated(new_function_name="get_empty_file_store_id")
     def getEmptyFileStoreID(
         self,
@@ -1197,7 +1225,11 @@ class AbstractJobStore(ABC):
         cleanup: bool = False,
         basename: str | None = None,
     ) -> str:
-        return self.get_empty_file_store_id(jobStoreID, cleanup, basename)
+        return self.get_empty_file_store_id(
+            job_id=jobStoreID,
+            cleanup=cleanup,
+            basename=basename
+        )
 
     @abstractmethod
     def get_empty_file_store_id(
@@ -1205,6 +1237,7 @@ class AbstractJobStore(ABC):
         job_id: str | None = None,
         cleanup: bool = False,
         basename: str | None = None,
+        hints: list[str] | None = None,
     ) -> str:
         """
         Creates an empty file in the job store and returns its ID.
@@ -1220,6 +1253,11 @@ class AbstractJobStore(ABC):
         :param basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
+
+        :param hints: String values such as a workflow names or task names that
+               should be used to store the file at a human-findable location.
+               Two files with the same basename and same hints are still
+               guaranteed to never collide and to have distinct assigned IDs.
 
         :return: a jobStoreFileID that references the newly created file and can be used to reference the
                  file in the future.
