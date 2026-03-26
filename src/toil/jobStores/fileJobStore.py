@@ -67,6 +67,14 @@ class FileJobStore(AbstractJobStore, URLAccess):
     # 10Mb RAM chunks when reading/writing files
     BUFFER_SIZE = 10485760  # 10Mb
 
+    # Characters allowed in sanitized hints (survive quote() unchanged and
+    # are safe in filesystem paths on all platforms we target).
+    HINT_SAFE_RE = re.compile(r"[^a-zA-Z0-9_\-.]")
+    # Maximum length of a single sanitized hint path component.
+    MAX_HINT_LENGTH = 40
+    # Maximum total length of the hints portion of the path (joined with /).
+    MAX_HINTS_PATH_LENGTH = 120
+
     # When a log file is still being written, what will its name end with?
     LOG_TEMP_SUFFIX = ".new"
     # All log files start with this prefix
@@ -504,19 +512,19 @@ class FileJobStore(AbstractJobStore, URLAccess):
         # Glue it all together, and truncate to length
         return "_".join(parts)[:maxLength]
 
-    def write_file(self, local_path, job_id=None, cleanup=False):
-        absPath = self._get_unique_file_path(local_path, job_id, cleanup)
+    def write_file(self, local_path, job_id=None, cleanup=False, hints=None):
+        absPath = self._get_unique_file_path(local_path, job_id, cleanup, hints=hints)
         relPath = self._get_file_id_from_path(absPath)
         atomic_copy(local_path, absPath)
         return relPath
 
     @contextmanager
     def write_file_stream(
-        self, job_id=None, cleanup=False, basename=None, encoding=None, errors=None
+        self, job_id=None, cleanup=False, hints=None, basename=None, encoding=None, errors=None
     ):
         if not basename:
             basename = "stream"
-        absPath = self._get_unique_file_path(basename, job_id, cleanup)
+        absPath = self._get_unique_file_path(basename, job_id, cleanup, hints=hints)
         relPath = self._get_file_id_from_path(absPath)
 
         with open(
@@ -530,8 +538,8 @@ class FileJobStore(AbstractJobStore, URLAccess):
             # to clean ourselves up, somehow, for certain workloads.
             yield f, relPath
 
-    def get_empty_file_store_id(self, jobStoreID=None, cleanup=False, basename=None):
-        with self.write_file_stream(jobStoreID, cleanup, basename) as (
+    def get_empty_file_store_id(self, jobStoreID=None, cleanup=False, basename=None, hints=None):
+        with self.write_file_stream(jobStoreID, cleanup, hints=hints, basename=basename) as (
             fileHandle,
             jobStoreFileID,
         ):
@@ -1267,7 +1275,100 @@ class FileJobStore(AbstractJobStore, URLAccess):
 
         return self._walk_dynamic_spray_dir(self.stats_archive)
 
-    def _get_unique_file_path(self, fileName, jobStoreID=None, cleanup=False):
+    def _sanitize_hints(self, hints: list[str] | None) -> list[str]:
+        """
+        Turn user-supplied hints into path-safe directory name components.
+
+        Drops empty hints and hints that become empty after sanitization.
+        Truncates individual hints and the overall joined path to bounded
+        lengths so that the resulting file ID stays under a usable size.
+        """
+        if not hints:
+            return []
+        result: list[str] = []
+        total_length = 0
+        for hint in hints:
+            sanitized = self.HINT_SAFE_RE.sub("", hint)
+            sanitized = sanitized[: self.MAX_HINT_LENGTH]
+            if not sanitized:
+                continue
+            # +1 for the '/' separator between components
+            if total_length + len(sanitized) + (1 if result else 0) > self.MAX_HINTS_PATH_LENGTH:
+                break
+            total_length += len(sanitized) + (1 if result else 0)
+            result.append(sanitized)
+        return result
+
+    def _get_unique_file_path_with_hints(self, fileName, jobStoreID, cleanup, hints):
+        """
+        Get a unique file path for a file stored under a human-readable
+        hint-derived directory hierarchy.
+
+        The first file for a given set of hints and basename gets placed
+        directly in the hints directory. Subsequent files with the same hints
+        and basename are placed in incrementing numbered subdirectories (0/,
+        1/, ...) to disambiguate. Slot claiming is atomic via O_CREAT|O_EXCL
+        (first file) or os.mkdir (numbered directories), so concurrent writers
+        on a shared filesystem will never collide.
+
+        :param fileName: A file name or path; only the basename is used.
+        :param jobStoreID: If given, the file is stored under the job's file area.
+        :param cleanup: If True and jobStoreID is set, the file is stored in
+            the job's cleanup area.
+        :param hints: Already-sanitized list of hint strings to use as
+            directory components.
+        :return: Absolute path for the new file.
+        """
+        basename = os.path.basename(fileName)
+
+        # Determine the root under which hint directories are placed.
+        if jobStoreID is not None:
+            self._check_job_store_id_assigned(jobStoreID)
+            if cleanup:
+                root = self._get_job_files_cleanup_dir(jobStoreID)
+            else:
+                root = self._get_job_files_dir(jobStoreID)
+        else:
+            root = self.filesDir
+
+        hints_dir = os.path.join(root, *hints)
+        os.makedirs(hints_dir, exist_ok=True)
+
+        # Try the un-disambiguated slot: place the file directly in hints_dir.
+        target = os.path.join(hints_dir, basename)
+        try:
+            fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+            os.close(fd)
+            return target
+        except FileExistsError:
+            pass
+
+        # The un-disambiguated slot is taken. Find the next numbered
+        # subdirectory. We list once, compute the next number, and try to
+        # mkdir it. On collision from a concurrent writer, we retry.
+        while True:
+            try:
+                existing = os.listdir(hints_dir)
+            except FileNotFoundError:
+                existing = []
+            next_n = 0
+            for entry in existing:
+                try:
+                    n = int(entry)
+                except ValueError:
+                    continue
+                if n >= next_n:
+                    next_n = n + 1
+
+            numbered_dir = os.path.join(hints_dir, str(next_n))
+            try:
+                os.mkdir(numbered_dir)
+                return os.path.join(numbered_dir, basename)
+            except FileExistsError:
+                # Another writer claimed this slot; retry.
+                continue
+
+    def _get_unique_file_path(self, fileName, jobStoreID=None, cleanup=False, hints=None):
         """
         Create unique file name within a jobStore directory or tmp directory.
 
@@ -1276,8 +1377,13 @@ class FileJobStore(AbstractJobStore, URLAccess):
         :param jobStoreID: If given, the path returned will be in a directory including the job's ID as part of its path.
         :param bool cleanup: If True and jobStoreID is set, the path will be in
             a place such that it gets deleted when the job is deleted.
+        :param hints: Optional list of hint strings for human-findable placement.
         :return: The full path with a unique file name.
         """
+
+        sanitized = self._sanitize_hints(hints)
+        if sanitized:
+            return self._get_unique_file_path_with_hints(fileName, jobStoreID, cleanup, sanitized)
 
         # Give the file a unique directory that either will be cleaned up with a job or won't.
         directory = self._get_file_directory(jobStoreID, cleanup)
