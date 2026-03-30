@@ -32,7 +32,7 @@ class CactusIntegrationTest(AbstractClusterTest):
 
         CACTUS_COMMIT_SHA = (
             os.environ["CACTUS_COMMIT_SHA"]
-            or "f5adf4013326322ae58ef1eccb8409b71d761583"
+            or "15bfa7cb5f27dc9ede75256fc75dba4b2f42509c"
         )  # default cactus commit
 
         # command to install and run cactus on the cluster

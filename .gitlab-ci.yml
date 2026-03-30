@@ -772,6 +772,7 @@ cactus_integration:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+    - if: $CI_COMMIT_BRANCH =~ /.*cactus.*/
     - if: $CI_COMMIT_BRANCH
       changes:
         compare_to: 'refs/heads/master'
@@ -783,7 +784,6 @@ cactus_integration:
     paths:
       - .cache/pip
   script:
-    - export CACTUS_COMMIT_SHA=b51ff106fa8510d33b09551d338ace48b5c5fa5a
     - set -e
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
