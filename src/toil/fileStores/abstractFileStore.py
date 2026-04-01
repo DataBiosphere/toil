@@ -321,6 +321,9 @@ class AbstractFileStore(ABC):
                file must be deleted manually.
         :param hints: String values such as a workflow names or task names that
                should be used to store the file at a human-findable location.
+               Large numbers of files stored under the same non-empty hints
+               may be inefficient; hints are intended for human-navigable
+               categorization, not for high-throughput bulk file creation.
 
         :return: an ID that can be used to retrieve the file.
         """
@@ -354,6 +357,9 @@ class AbstractFileStore(ABC):
 
         :param hints: String values such as a workflow names or task names that
                should be used to store the file at a human-findable location.
+               Large numbers of files stored under the same non-empty hints
+               may be inefficient; hints are intended for human-navigable
+               categorization, not for high-throughput bulk file creation.
 
         :return: A context manager yielding a tuple of
                   1) a file handle which can be written to and

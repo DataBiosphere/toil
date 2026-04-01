@@ -28,11 +28,11 @@ Tests use pytest. Example commands:
 
 ## Running Make Targets (mypy, tests, etc.)
 
-The `Makefile` targets require the virtualenv to be activated. Some targets (like `test_debug`) enforce this with a `check_venv` guard. Use `source ./venv/bin/activate &&` before `make`:
+The `Makefile` targets require the virtualenv to be activated. Some targets (like `test_debug`) enforce this with a `check_venv` guard that checks for `VIRTUAL_ENV` in the environment. Set `PATH` and `VIRTUAL_ENV` to satisfy this without needing `source`:
 
 ```bash
-source ./venv/bin/activate && make mypy
-source ./venv/bin/activate && make test_debug tests='src/toil/test/path/to/test.py::TestClass::test_name'
+PATH="./venv/bin:$PATH" VIRTUAL_ENV=./venv make mypy
+PATH="./venv/bin:$PATH" VIRTUAL_ENV=./venv make test_debug tests='src/toil/test/path/to/test.py::TestClass::test_name'
 ```
 
 ## Running Individual WDL Spec Unit Tests

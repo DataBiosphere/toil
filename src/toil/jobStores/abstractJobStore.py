@@ -1164,6 +1164,10 @@ class AbstractJobStore(ABC):
                should be used to store the file at a human-findable location.
                Two files with the same basename and same hints are still
                guaranteed to never collide and to have distinct assigned IDs.
+               Large numbers of files stored under the same non-empty hints
+               may be inefficient, as slot allocation scans existing entries;
+               hints are intended for human-navigable categorization, not for
+               high-throughput bulk file creation.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -1230,6 +1234,10 @@ class AbstractJobStore(ABC):
                should be used to store the file at a human-findable location.
                Two files with the same basename and same hints are still
                guaranteed to never collide and to have distinct assigned IDs.
+               Large numbers of files stored under the same non-empty hints
+               may be inefficient, as slot allocation scans existing entries;
+               hints are intended for human-navigable categorization, not for
+               high-throughput bulk file creation.
 
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
                 as for encode(). Defaults to None which represents binary mode.
@@ -1291,6 +1299,10 @@ class AbstractJobStore(ABC):
                should be used to store the file at a human-findable location.
                Two files with the same basename and same hints are still
                guaranteed to never collide and to have distinct assigned IDs.
+               Large numbers of files stored under the same non-empty hints
+               may be inefficient, as slot allocation scans existing entries;
+               hints are intended for human-navigable categorization, not for
+               high-throughput bulk file creation.
 
         :return: a jobStoreFileID that references the newly created file and can be used to reference the
                  file in the future.

@@ -637,6 +637,56 @@ class AbstractJobStoreTest:
             assert "tigers" in many_hint_id_job
             assert "bears" in many_hint_id_job
 
+        def test_hinted_file_ids_not_reused_after_deletion(self) -> None:
+            """
+            Verify that deleting a hinted file and creating a new one with the
+            same hints never reuses the old file ID. Toil journals deletions
+            and may replay them; a reused ID would cause a replayed delete to
+            destroy the wrong file.
+            """
+            tmp_path = Path(self._createTempDir())
+
+            file_num = 0
+
+            def get_a_file() -> Path:
+                nonlocal file_num
+                dir_path = tmp_path / str(file_num)
+                file_num += 1
+                os.mkdir(dir_path)
+                to_upload = dir_path / "file.txt"
+                open(to_upload, "w").write("Hello!\n")
+                return to_upload
+
+            hints = ["alpha", "beta"]
+
+            # Create a file with hints, note its ID, then delete it.
+            first_id = self.jobstore_initialized.write_file(
+                str(get_a_file()), hints=hints
+            )
+            assert self.jobstore_initialized.file_exists(first_id)
+            self.jobstore_initialized.delete_file(first_id)
+            assert not self.jobstore_initialized.file_exists(first_id)
+
+            # Create a new file with the same hints.
+            second_id = self.jobstore_initialized.write_file(
+                str(get_a_file()), hints=hints
+            )
+            assert second_id != first_id, (
+                f"Hinted file ID {first_id} was reused after deletion"
+            )
+            assert self.jobstore_initialized.file_exists(second_id)
+
+            # Delete again and create a third to make sure tombstones
+            # accumulate correctly.
+            self.jobstore_initialized.delete_file(second_id)
+            third_id = self.jobstore_initialized.write_file(
+                str(get_a_file()), hints=hints
+            )
+            assert third_id not in (first_id, second_id), (
+                f"Hinted file ID {third_id} was reused after deletion"
+            )
+            assert self.jobstore_initialized.file_exists(third_id)
+
         def testStatsAndLogging(self):
             """Tests behavior of reading and writing stats and logging."""
             jobstore1 = self.jobstore_initialized

@@ -1272,12 +1272,14 @@ class FileJobStore(AbstractJobStore, URLAccess):
         Get a unique file path for a file stored under a human-readable
         hint-derived directory hierarchy.
 
-        The first file for a given set of hints and basename gets placed
-        directly in the hints directory. Subsequent files with the same hints
-        and basename are placed in incrementing numbered subdirectories (0/,
-        1/, ...) to disambiguate. Slot claiming is atomic via O_CREAT|O_EXCL
-        (first file) or os.mkdir (numbered directories), so concurrent writers
-        on a shared filesystem will never collide.
+        Each file is placed in a numbered subdirectory (0/, 1/, ...) under
+        the hints directory. Slot claiming is atomic via os.mkdir, so
+        concurrent writers on a shared filesystem will never collide.
+
+        After deletion, the empty numbered directory persists as a tombstone
+        that prevents the slot from being reallocated. This is critical
+        because Toil journals file deletions and may replay them; if a slot
+        were reused, a replayed deletion could destroy the wrong file.
 
         :param fileName: A file name or path; only the basename is used.
         :param jobStoreID: If given, the file is stored under the job's file area.
@@ -1302,18 +1304,9 @@ class FileJobStore(AbstractJobStore, URLAccess):
         hints_dir = os.path.join(root, *hints)
         os.makedirs(hints_dir, exist_ok=True)
 
-        # Try the un-disambiguated slot: place the file directly in hints_dir.
-        target = os.path.join(hints_dir, basename)
-        try:
-            fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
-            os.close(fd)
-            return target
-        except FileExistsError:
-            pass
-
-        # The un-disambiguated slot is taken. Find the next numbered
-        # subdirectory. We list once, compute the next number, and try to
-        # mkdir it. On collision from a concurrent writer, we retry.
+        # Find the next available numbered subdirectory. We list once,
+        # compute the next number, and try to mkdir it. On collision from
+        # a concurrent writer, we retry.
         while True:
             try:
                 existing = os.listdir(hints_dir)

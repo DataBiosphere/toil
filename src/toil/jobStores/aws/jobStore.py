@@ -146,6 +146,11 @@ class AWSJobStore(AbstractJobStore, URLAccess):
        version.
     """
 
+    # Key suffix used to mark a deleted hinted-file slot as permanently
+    # occupied, preventing the slot number from being reused. Only written
+    # for hinted (non-UUID) file IDs.
+    TOMBSTONE_SUFFIX = ".tombstone"
+
     def __init__(self, locator: str, partSize: int = DEFAULT_AWS_PART_SIZE) -> None:
         super().__init__(locator)
         # TODO: parsing of user options seems like it should be done outside of this class;
@@ -168,7 +173,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         # system could be used, because each file should belong to at most one
         # job. This should be changed to a hierarchical layout.
         self.job_associations_key_prefix = "job-associations/"
-        # input/output files named with uuid4
+        # input/output files named with uuid4 or hint paths
         self.content_key_prefix = "files/"
         # these are special files, like 'environment.pickle'; place them in root
         self.shared_key_prefix = ""
@@ -564,6 +569,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             for s3_item in list_s3_items(
                 self.s3_resource, bucket=self.bucket_name, prefix=prefix
             )
+            if not s3_item["Key"].endswith(self.TOMBSTONE_SUFFIX)
         ]
         if len(s3_keys) == 0:
             raise NoSuchFileException(file_id)
@@ -783,12 +789,39 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             else:
                 raise
 
+    def _is_hinted_file_id(self, file_id: str) -> bool:
+        """Check if a file_id was produced by the hinted-file allocation scheme."""
+        last_component = file_id.rsplit("/", 1)[-1]
+        try:
+            int(last_component)
+            return True
+        except ValueError:
+            return False
+
     def delete_file(self, file_id: str) -> None:
         try:
             full_s3_key = self.find_s3_key_from_file_id(file_id)
         except NoSuchFileException:
             # The file is gone. That's great, we're idempotent.
             return
+
+        if self._is_hinted_file_id(file_id):
+            # Write a tombstone BEFORE deleting so the slot can never be
+            # reused, even if we crash between the two operations. This is
+            # necessary because Toil journals deletions and may replay them;
+            # a reused slot would cause a replayed delete to destroy the
+            # wrong file.
+            tombstone_key = self._key_in_bucket(
+                identifier=file_id + "/" + self.TOMBSTONE_SUFFIX,
+                prefix=self.content_key_prefix,
+            )
+            put_s3_object(
+                s3_resource=self.s3_resource,
+                bucket=self.bucket_name,
+                key=tombstone_key,
+                body=b"",
+            )
+
         self.s3_client.delete_object(Bucket=self.bucket_name, Key=full_s3_key)
 
         ###################################### URI API ######################################
