@@ -459,6 +459,55 @@ class hidden:
 
             return job.fileStore.writeGlobalFile(testFile.name, hints=hints), testFile
 
+        # writeGlobalFileStream tests
+
+        @staticmethod
+        def _global_file_stream_writer(job, hints: list[str] | None = None):
+            with job.fileStore.writeGlobalFileStream(hints=hints) as (writable, file_id):
+                writable.write(b"Cats")
+
+            return file_id
+
+        def test_write_global_file_stream_with_hints(self):
+            """
+            Write a file to the job store as a stream using hints.
+            Make sure the hints show up in the ID.
+            """
+            A = Job.wrapJobFn(
+                self._global_file_stream_writer,
+                hints=["Hint", "OtherHint"],
+            )
+            result = Job.Runner.startToil(A, self.options())
+            assert "Hint" in result, f"Can't find Hint in {result}"
+            assert "OtherHint" in result, f"Can't find OtherHint in {result}"
+
+        # writeGlobalFile tests
+
+        @staticmethod
+        def _global_file_writer(job, hints: list[str] | None = None):
+            cls = hidden.AbstractFileStoreTest
+            file_id, fp = cls._writeFileToJobStore(
+                job,
+                isLocalFile=True,
+                hints=["Hint", "OtherHint"],
+            )
+            fp.close()
+
+            return file_id
+
+        def test_write_file_to_job_store_with_hints(self):
+            """
+            Write a file to the job store using hints.
+            Make sure the hints show up in the ID.
+            """
+            A = Job.wrapJobFn(
+                self._global_file_writer,
+                hints=["Hint", "OtherHint"],
+            )
+            result = Job.Runner.startToil(A, self.options())
+            assert "Hint" in result, f"Can't find Hint in {result}"
+            assert "OtherHint" in result, f"Can't find OtherHint in {result}"
+
     class AbstractNonCachingFileStoreTest(AbstractFileStoreTest, metaclass=ABCMeta):
         """
         Abstract tests for the the various functions in
@@ -832,42 +881,6 @@ class hidden:
             """
             A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True)
             Job.Runner.startToil(A, self.options())
-
-        def test_write_file_to_job_store_with_hints(self):
-            """
-            Write a file to the job store using hints.
-            Make sure the hints show up in the ID.
-            """
-            A = Job.wrapJobFn(
-                self._writeFileToJobStoreWithAsserts,
-                hints=["Hint", "OtherHint"],
-                isLocalFile=True,
-            )
-            result = Job.Runner.startToil(A, self.options())
-            assert "Hint" in result, f"Can't find Hint in {result}"
-            assert "OtherHint" in result, f"Can't find OtherHint in {result}"
-
-        # write_global_file_stream tests
-
-        @staticmethod
-        def _global_file_stream_writer(job, hints: list[str] | None = None):
-            with job.fileStore.writeGlobalFileStream(hints=hints) as (writable, file_id):
-                writable.write(b"Cats")
-
-            return file_id
-
-        def test_write_global_file_stream_with_hints(self):
-            """
-            Write a file to the job store as a stream using hints.
-            Make sure the hints show up in the ID.
-            """
-            A = Job.wrapJobFn(
-                self._global_file_stream_writer,
-                hints=["Hint", "OtherHint"],
-            )
-            result = Job.Runner.startToil(A, self.options())
-            assert "Hint" in result, f"Can't find Hint in {result}"
-            assert "OtherHint" in result, f"Can't find OtherHint in {result}"
 
         # readGlobalFile tests
 
