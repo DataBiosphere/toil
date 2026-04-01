@@ -530,8 +530,8 @@ class FileJobStore(AbstractJobStore, URLAccess):
             # to clean ourselves up, somehow, for certain workloads.
             yield f, relPath
 
-    def get_empty_file_store_id(self, jobStoreID=None, cleanup=False, basename=None, hints=None):
-        with self.write_file_stream(jobStoreID, cleanup, hints=hints, basename=basename) as (
+    def get_empty_file_store_id(self, job_id=None, cleanup=False, basename=None, hints=None):
+        with self.write_file_stream(job_id, cleanup, hints=hints, basename=basename) as (
             fileHandle,
             jobStoreFileID,
         ):

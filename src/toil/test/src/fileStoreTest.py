@@ -430,14 +430,24 @@ class hidden:
                 assert "foo" == stream2.read()
 
         @staticmethod
-        def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
+        def _writeFileToJobStore(
+            job: Job,
+            isLocalFile: bool,
+            nonLocalDir: str | None = None,
+            fileMB: int = 1, 
+            hints: list[str] | None = None,
+        ):
             """
             This function creates a file and writes it to the jobstore.
 
-            :param bool isLocalFile: Is the file local(T) or Non-Local(F)?
-            :param str nonLocalDir: A dir to write the file to.  If unspecified, a local directory
+            Note that this *cannot* be used as a Toil job because it returns
+            not only a file ID but also an open file.
+
+            :param isLocalFile: Is the file local(T) or Non-Local(F)?
+            :param nonLocalDir: A dir to write the file to.  If unspecified, a local directory
                                     is created.
-            :param int fileMB: Size of the created file in MB
+            :param fileMB: Size of the created file in MB
+            :param hints: Hints to tell the file store when writing the file 
             """
             if isLocalFile:
                 work_dir = job.fileStore.getLocalTempDir()
@@ -447,7 +457,7 @@ class hidden:
             with open(os.path.join(work_dir, str(uuid4())), "wb") as testFile:
                 testFile.write(os.urandom(fileMB * 1024 * 1024))
 
-            return job.fileStore.writeGlobalFile(testFile.name), testFile
+            return job.fileStore.writeGlobalFile(testFile.name, hints=hints), testFile
 
     class AbstractNonCachingFileStoreTest(AbstractFileStoreTest, metaclass=ABCMeta):
         """
@@ -609,7 +619,12 @@ class hidden:
 
         @staticmethod
         def _writeFileToJobStoreWithAsserts(
-            job, isLocalFile, nonLocalDir=None, fileMB=1, expectAsyncUpload=True
+            job: Job,
+            isLocalFile: bool,
+            nonLocalDir: str | None =None,
+            fileMB: int = 1, 
+            hints: list[str] | None = None,
+            expectAsyncUpload: bool = True,
         ):
             """
             This function creates a file and writes it to the jobstore.
@@ -620,12 +635,13 @@ class hidden:
             :param str nonLocalDir: A dir to write the file to.  If unspecified, a local directory
                                     is created.
             :param int fileMB: Size of the created file in MB
+            :param hints: Hints to tell the file store when writing the file
             :param bool expectAsyncUpload: Whether we expect the upload to hit
                                            the job store later(T) or immediately(F)
             """
             cls = hidden.AbstractNonCachingFileStoreTest
             fsID, testFile = cls._writeFileToJobStore(
-                job, isLocalFile, nonLocalDir, fileMB
+                job, isLocalFile, nonLocalDir, fileMB, hints
             )
             actual = os.stat(testFile.name).st_nlink
 
@@ -816,6 +832,42 @@ class hidden:
             """
             A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True)
             Job.Runner.startToil(A, self.options())
+
+        def test_write_file_to_job_store_with_hints(self):
+            """
+            Write a file to the job store using hints.
+            Make sure the hints show up in the ID.
+            """
+            A = Job.wrapJobFn(
+                self._writeFileToJobStoreWithAsserts,
+                hints=["Hint", "OtherHint"],
+                isLocalFile=True,
+            )
+            result = Job.Runner.startToil(A, self.options())
+            assert "Hint" in result, f"Can't find Hint in {result}"
+            assert "OtherHint" in result, f"Can't find OtherHint in {result}"
+
+        # write_global_file_stream tests
+
+        @staticmethod
+        def _global_file_stream_writer(job, hints: list[str] | None = None):
+            with job.fileStore.writeGlobalFileStream(hints=hints) as (writable, file_id):
+                writable.write(b"Cats")
+
+            return file_id
+
+        def test_write_global_file_stream_with_hints(self):
+            """
+            Write a file to the job store as a stream using hints.
+            Make sure the hints show up in the ID.
+            """
+            A = Job.wrapJobFn(
+                self._global_file_stream_writer,
+                hints=["Hint", "OtherHint"],
+            )
+            result = Job.Runner.startToil(A, self.options())
+            assert "Hint" in result, f"Can't find Hint in {result}"
+            assert "OtherHint" in result, f"Can't find OtherHint in {result}"
 
         # readGlobalFile tests
 
@@ -1634,11 +1686,26 @@ class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreT
 class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = "aws"
 
+    @pytest.mark.skip(reason="Google job store does not use file hints")
+    def test_write_file_to_job_store_with_hints(self):
+        pass
+
+    @pytest.mark.skip(reason="Google job store does not use file hints")
+    def test_write_global_file_stream_with_hints(self):
+        pass
 
 @needs_google_project
 @needs_google_storage
 class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = "google"
+
+    @pytest.mark.skip(reason="Google job store does not use file hints")
+    def test_write_file_to_job_store_with_hints(self):
+        pass
+
+    @pytest.mark.skip(reason="Google job store does not use file hints")
+    def test_write_global_file_stream_with_hints(self):
+        pass
 
 
 @slow
