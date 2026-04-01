@@ -26,6 +26,14 @@ Tests use pytest. Example commands:
 ./venv/bin/python -m pytest src/toil/test -k "safe" -v
 ```
 
+## Running Mypy
+
+The `Makefile` has a `mypy` target. It expects `mypy` and `python` to be on `PATH`, which they will be if the virtualenv is activated. If it isn't, prepend the venv `bin`:
+
+```bash
+PATH="./venv/bin:$PATH" make mypy
+```
+
 ## Running Individual WDL Spec Unit Tests
 
 The WDL spec embeds example workflows as unit tests (under the `wdl-1.1` and `wdl-1.2` branches of `https://github.com/openwdl/wdl`). `TestWDLConformance.test_single_unit_test` in `src/toil/test/wdl/wdltoil_test.py` runs one such test at a time and is controlled by environment variables:

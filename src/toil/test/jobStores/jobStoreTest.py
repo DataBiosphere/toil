@@ -1492,6 +1492,10 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = os.getenv("TOIL_GOOGLE_PROJECTID")
     headers = {"x-goog-project-id": projectID}
 
+    @pytest.mark.skip(reason="Google job store does not use file hints")
+    def test_file_hints(self):
+        pass
+
     def _createJobStore(self):
         from toil.jobStores.googleJobStore import GoogleJobStore
 

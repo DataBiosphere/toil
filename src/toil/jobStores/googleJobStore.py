@@ -388,7 +388,7 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
             ):  # 'job-' + uuid length
                 yield self.load_job(jobStoreID)
 
-    def write_file(self, local_path, job_id=None, cleanup=False):
+    def write_file(self, local_path, job_id=None, cleanup=False, hints=None):
         fileID = self._new_id(isFile=True, jobStoreID=job_id if cleanup else None)
         with open(local_path, "rb") as f:
             self._write_file(fileID, f)
@@ -396,7 +396,7 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
 
     @contextmanager
     def write_file_stream(
-        self, job_id=None, cleanup=False, basename=None, encoding=None, errors=None
+        self, job_id=None, cleanup=False, hints=None, basename=None, encoding=None, errors=None
     ):
         fileID = self._new_id(isFile=True, jobStoreID=job_id if cleanup else None)
         with self._upload_stream(
@@ -409,6 +409,7 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
         job_id=None,
         cleanup=False,
         basename=None,
+        hints=None,
     ):
         fileID = self._new_id(isFile=True, jobStoreID=job_id if cleanup else None)
         self._write_file(fileID, BytesIO(b""))

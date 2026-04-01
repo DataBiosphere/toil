@@ -121,10 +121,10 @@ class NonCachingFileStore(AbstractFileStore):
                     self.jobStateFile,
                 )
 
-    def writeGlobalFile(self, localFileName: str, cleanup: bool = False) -> FileID:
+    def writeGlobalFile(self, localFileName: str, cleanup: bool = False, hints: list[str] | None = None) -> FileID:
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
         creatorID = str(self.jobDesc.jobStoreID)
-        fileStoreID = self.jobStore.write_file(absLocalFileName, creatorID, cleanup)
+        fileStoreID = self.jobStore.write_file(absLocalFileName, creatorID, cleanup, hints=hints)
         if absLocalFileName.startswith(self.localTempDir):
             # Only files in the appropriate directory should become local files
             # we can delete with deleteLocalFile
