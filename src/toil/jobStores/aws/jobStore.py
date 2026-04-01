@@ -450,8 +450,69 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
         ###################################### FILES API ######################################
 
+    def _claim_hinted_s3_slot(self, sanitized_hints: list[str], basename: str) -> str:
+        """
+        Atomically claim a numbered slot for a hinted file in S3.
+
+        Uses S3 conditional writes (``IfNoneMatch: *``) so that concurrent
+        writers on different nodes racing for the same hint+basename will
+        each land in a distinct numbered slot.
+
+        :param sanitized_hints: Already-sanitized hint path components.
+        :param basename: The file basename.
+        :returns: The file_id (e.g. ``lions/tigers/bears/0``).
+        """
+        hints_prefix = "/".join(sanitized_hints)
+        # List existing objects to find the next available number.
+        list_prefix = self._key_in_bucket(
+            identifier=hints_prefix + "/", prefix=self.content_key_prefix
+        )
+        existing = list_s3_items(
+            self.s3_resource, bucket=self.bucket_name, prefix=list_prefix
+        )
+        next_n = 0
+        for item in existing:
+            relative = item["Key"][len(list_prefix):]
+            parts = relative.split("/")
+            try:
+                n = int(parts[0])
+                if n >= next_n:
+                    next_n = n + 1
+            except (ValueError, IndexError):
+                continue
+
+        encryption_args = self._get_encryption_args()
+        while True:
+            file_id = f"{hints_prefix}/{next_n}"
+            s3_key = self._key_in_bucket(
+                identifier=f"{file_id}/{basename}",
+                prefix=self.content_key_prefix,
+            )
+            try:
+                # Atomically create the key only if it doesn't exist yet.
+                self.s3_resource.meta.client.put_object(
+                    Bucket=self.bucket_name,
+                    Key=s3_key,
+                    Body=b"",
+                    IfNoneMatch="*",
+                    **encryption_args,
+                )
+                return file_id
+            except ClientError as e:
+                if e.response["Error"]["Code"] in (
+                    "PreconditionFailed",
+                    "412",
+                ):
+                    next_n += 1
+                    continue
+                raise
+
     def write_file(
-        self, local_path: str, job_id: str | None = None, cleanup: bool = False
+        self,
+        local_path: str,
+        job_id: str | None = None,
+        cleanup: bool = False,
+        hints: list[str] | None = None,
     ) -> FileID:
         """
         Write a local file into the jobstore and return a file_id referencing it.
@@ -466,7 +527,13 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             TODO: we don't need cleanup; remove it and only use job_id
         """
         # TODO: etag = compute_checksum_for_file(local_path, algorithm='etag')[len('etag$'):]
-        file_id = str(uuid.uuid4())  # mint a new file_id
+        basename = os.path.basename(local_path)
+        sanitized = self._sanitize_hints(hints)
+        if sanitized:
+            file_id = self._claim_hinted_s3_slot(sanitized, basename)
+        else:
+            file_id = str(uuid.uuid4())
+
         file_attributes = os.stat(local_path)
         size = file_attributes.st_size
         executable = file_attributes.st_mode & stat.S_IXUSR != 0
@@ -483,14 +550,15 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             s3_resource=self.s3_resource,
             local_file_path=local_path,
             dst_bucket=self.bucket_name,
-            dst_key=f"{prefix}/{os.path.basename(local_path)}",
+            dst_key=f"{prefix}/{basename}",
             extra_args=self._get_encryption_args(),
         )
         return FileID(file_id, size, executable)
 
     def find_s3_key_from_file_id(self, file_id: str) -> str:
         """This finds an s3 key for which file_id is the prefix, and which already exists."""
-        prefix = self._key_in_bucket(identifier=file_id, prefix=self.content_key_prefix)
+        # Trailing / prevents e.g. file_id "path/0" matching key "path/00/x"
+        prefix = self._key_in_bucket(identifier=file_id + "/", prefix=self.content_key_prefix)
         s3_keys = [
             s3_item
             for s3_item in list_s3_items(
@@ -511,11 +579,18 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         self,
         job_id: str | None = None,
         cleanup: bool = False,
+        hints: list[str] | None = None,
         basename: str | None = None,
         encoding: str | None = None,
         errors: str | None = None,
     ) -> Iterator[tuple[IO[bytes], str]]:
-        file_id = str(uuid.uuid4())
+        if not basename:
+            basename = "stream"
+        sanitized = self._sanitize_hints(hints)
+        if sanitized:
+            file_id = self._claim_hinted_s3_slot(sanitized, str(basename))
+        else:
+            file_id = str(uuid.uuid4())
         if job_id and cleanup:
             self.associate_job_with_file(job_id, file_id)
         prefix = self._key_in_bucket(identifier=file_id, prefix=self.content_key_prefix)
@@ -907,15 +982,23 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         job_id: str | None = None,
         cleanup: bool = False,
         basename: str | None = None,
+        hints: list[str] | None = None,
     ) -> str:
         """Create an empty file in s3 and return a bare string file ID."""
-        file_id = str(uuid.uuid4())
-        self.write_to_bucket(
-            identifier=f"{file_id}/0/{basename}",
-            prefix=self.content_key_prefix,
-            data=None,
-            bucket=self.bucket_name,
-        )
+        if not basename:
+            basename = "0"
+        sanitized = self._sanitize_hints(hints)
+        if sanitized:
+            # _claim_hinted_s3_slot already creates the empty object.
+            file_id = self._claim_hinted_s3_slot(sanitized, basename)
+        else:
+            file_id = str(uuid.uuid4())
+            self.write_to_bucket(
+                identifier=f"{file_id}/0/{basename}",
+                prefix=self.content_key_prefix,
+                data=None,
+                bucket=self.bucket_name,
+            )
         if job_id and cleanup:
             self.associate_job_with_file(job_id, file_id)
         return file_id

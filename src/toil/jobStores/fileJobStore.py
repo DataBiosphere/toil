@@ -67,14 +67,6 @@ class FileJobStore(AbstractJobStore, URLAccess):
     # 10Mb RAM chunks when reading/writing files
     BUFFER_SIZE = 10485760  # 10Mb
 
-    # Characters allowed in sanitized hints (survive quote() unchanged and
-    # are safe in filesystem paths on all platforms we target).
-    HINT_SAFE_RE = re.compile(r"[^a-zA-Z0-9_\-.]")
-    # Maximum length of a single sanitized hint path component.
-    MAX_HINT_LENGTH = 40
-    # Maximum total length of the hints portion of the path (joined with /).
-    MAX_HINTS_PATH_LENGTH = 120
-
     # When a log file is still being written, what will its name end with?
     LOG_TEMP_SUFFIX = ".new"
     # All log files start with this prefix
@@ -1274,30 +1266,6 @@ class FileJobStore(AbstractJobStore, URLAccess):
         """
 
         return self._walk_dynamic_spray_dir(self.stats_archive)
-
-    def _sanitize_hints(self, hints: list[str] | None) -> list[str]:
-        """
-        Turn user-supplied hints into path-safe directory name components.
-
-        Drops empty hints and hints that become empty after sanitization.
-        Truncates individual hints and the overall joined path to bounded
-        lengths so that the resulting file ID stays under a usable size.
-        """
-        if not hints:
-            return []
-        result: list[str] = []
-        total_length = 0
-        for hint in hints:
-            sanitized = self.HINT_SAFE_RE.sub("", hint)
-            sanitized = sanitized[: self.MAX_HINT_LENGTH]
-            if not sanitized:
-                continue
-            # +1 for the '/' separator between components
-            if total_length + len(sanitized) + (1 if result else 0) > self.MAX_HINTS_PATH_LENGTH:
-                break
-            total_length += len(sanitized) + (1 if result else 0)
-            result.append(sanitized)
-        return result
 
     def _get_unique_file_path_with_hints(self, fileName, jobStoreID, cleanup, hints):
         """

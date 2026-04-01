@@ -1088,6 +1088,39 @@ class AbstractJobStore(ABC):
     # associated with a given job.
     ##########################################
 
+    # Characters allowed in sanitized hints: these survive quote() unchanged
+    # and are safe in filesystem paths and S3 keys.
+    HINT_SAFE_RE = re.compile(r"[^a-zA-Z0-9_\-.]")
+    # Maximum length of a single sanitized hint path component.
+    MAX_HINT_LENGTH = 40
+    # Maximum total length of the hints portion of the path (joined with /).
+    MAX_HINTS_PATH_LENGTH = 120
+
+    def _sanitize_hints(self, hints: list[str] | None) -> list[str]:
+        """
+        Turn user-supplied hints into path-safe components usable as
+        directory names on a filesystem or key segments in an object store.
+
+        Drops empty hints and hints that become empty after sanitization.
+        Truncates individual hints and the overall joined path to bounded
+        lengths so that the resulting file ID stays under a usable size.
+        """
+        if not hints:
+            return []
+        result: list[str] = []
+        total_length = 0
+        for hint in hints:
+            sanitized = self.HINT_SAFE_RE.sub("", hint)
+            sanitized = sanitized[: self.MAX_HINT_LENGTH]
+            if not sanitized:
+                continue
+            # +1 for the separator between components
+            if total_length + len(sanitized) + (1 if result else 0) > self.MAX_HINTS_PATH_LENGTH:
+                break
+            total_length += len(sanitized) + (1 if result else 0)
+            result.append(sanitized)
+        return result
+
     # Don't add any new arguments to this old version; make people use the new one!
     @deprecated(new_function_name="write_file")
     def writeFile(
