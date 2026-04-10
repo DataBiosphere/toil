@@ -31,7 +31,7 @@ class CactusIntegrationTest(AbstractClusterTest):
         self.leader = self.cluster.getLeader()
 
         CACTUS_COMMIT_SHA = (
-            os.environ["CACTUS_COMMIT_SHA"]
+            os.environ.get("CACTUS_COMMIT_SHA")
             or "15bfa7cb5f27dc9ede75256fc75dba4b2f42509c"
         )  # default cactus commit
 
