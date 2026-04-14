@@ -83,7 +83,7 @@ def create_s3_bucket(
     bucket_name: str,
     region: BucketLocationConstraintType | Literal["us-east-1"],
     tags: dict[str, str] | None = None,
-    public: bool = True,
+    public: bool = False,
     encryptable: bool = False,
 ) -> "Bucket":
     """
@@ -97,8 +97,8 @@ def create_s3_bucket(
     :param public: If True, objects in the bucket can be made publicly
         accessible. If False, they cannot. Historically, the default setting
         was to allow public access, but in 2023, Amazon made not allowing
-        public access to any objects their default. This function keeps a
-        default value of True to match historical behavior.
+        public access to any objects their default. This function uses the new
+        default value of False.
 
     :param encryptable: If True, allow server-side encryption with
         customer-managed keys (SSE-C) in the bucket. Historically, all buckets

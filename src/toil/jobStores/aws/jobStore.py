@@ -193,6 +193,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             self.s3_resource,
             self.bucket_name,
             region=self.region,
+            public=True,
             encryptable=True,
         )  # type: ignore
         super().initialize(config)
