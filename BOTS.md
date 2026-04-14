@@ -49,3 +49,7 @@ WDL_UNIT_TEST_ID=serde_pair ./venv/bin/python -m pytest \
 ```
 
 This test clones remote git repos and may be slow. Many WDL spec tasks run inside containers, so **Docker must be running** — if the test fails with a Docker connection error, ask the user to start Docker before retrying.
+
+## Code Style
+
+Docstrings state the contract (what, not how). Implementation strategy goes in comments on the relevant code. Explain a concept once in a canonical docstring; reference it elsewhere. Names must be precise: no redundant qualifiers, invented terms, overclaiming, or test content as examples.
