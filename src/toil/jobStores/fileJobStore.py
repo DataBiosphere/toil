@@ -1269,17 +1269,7 @@ class FileJobStore(AbstractJobStore, URLAccess):
 
     def _get_unique_file_path_with_hints(self, fileName, jobStoreID, cleanup, hints):
         """
-        Get a unique file path for a file stored under a human-readable
-        hint-derived directory hierarchy.
-
-        Each file is placed in a numbered subdirectory (0/, 1/, ...) under
-        the hints directory. Slot claiming is atomic via os.mkdir, so
-        concurrent writers on a shared filesystem will never collide.
-
-        After deletion, the empty numbered directory persists as a tombstone
-        that prevents the slot from being reallocated. This is critical
-        because Toil journals file deletions and may replay them; if a slot
-        were reused, a replayed deletion could destroy the wrong file.
+        Get a unique file path under a directory tree built from hints.
 
         :param fileName: A file name or path; only the basename is used.
         :param jobStoreID: If given, the file is stored under the job's file area.
@@ -1304,9 +1294,11 @@ class FileJobStore(AbstractJobStore, URLAccess):
         hints_dir = os.path.join(root, *hints)
         os.makedirs(hints_dir, exist_ok=True)
 
-        # Find the next available numbered subdirectory. We list once,
-        # compute the next number, and try to mkdir it. On collision from
-        # a concurrent writer, we retry.
+        # Each file gets its own numbered subdirectory (0/, 1/, ...).
+        # We use os.mkdir to claim a slot — it is atomic even on NFS, so
+        # concurrent writers on a shared filesystem won't collide.  After
+        # a file is deleted, the empty directory remains as a tombstone
+        # that prevents the slot number from being reallocated.
         while True:
             try:
                 existing = os.listdir(hints_dir)

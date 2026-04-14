@@ -92,12 +92,29 @@ class AWSJobStore(AbstractJobStore, URLAccess):
     1. Jobs: These are pickled as files, and contain the information necessary to run a job when unpickled.
        A job's file is deleted when finished, and its absence means it completed.
 
-    2. Files: The inputs and outputs of jobs.  Each file is written in s3 with the file pattern:
-       "files/{uuid4}/{original_filename}", where the file prefix
-       "files/{uuid4}" should only point to one file.
+    2. Files: The inputs and outputs of jobs.  Stored under the ``files/``
+       prefix using one of two file ID schemes:
+
+       * **UUID-based** (default): ``files/{uuid4}/{filename}``.
+         The file ID is a UUID string.  These are used when no hints are
+         provided and support an unlimited number of files.
+
+       * **Hinted**: ``files/{hint1}/{hint2}/.../{N}/{filename}``.
+         The file ID is the path up to and including the numbered
+         directory, e.g. ``workflow/task/0``.  The numbered slot is
+         claimed atomically via ``IfNoneMatch`` conditional writes.
+         When a hinted file is deleted, a tombstone key
+         (``.../{N}/.tombstone``) is written *before* the real object is
+         removed so the slot number is never reused — this is required
+         because Toil may journal and replay deletions.
+
+       The two schemes are distinguished by checking the last path
+       component: numeric means hinted, anything else means UUID-based
+       (since UUID strings never end in a bare integer).
+
     3. Logs: The written log files of jobs that have run, plus the log file for the main Toil process.
 
-    4. Shared Files: Files with himan=-readable names, used by Toil itself or Python workflows.
+    4. Shared Files: Files with human-readable names, used by Toil itself or Python workflows.
        These include:
 
        * environment.pickle   (environment variables)
@@ -146,10 +163,9 @@ class AWSJobStore(AbstractJobStore, URLAccess):
        version.
     """
 
-    # Key suffix used to mark a deleted hinted-file slot as permanently
-    # occupied, preventing the slot number from being reused. Only written
-    # for hinted (non-UUID) file IDs.
-    TOMBSTONE_SUFFIX = ".tombstone"
+    # Child key written under a hinted file's numbered directory to mark
+    # the slot as permanently occupied after deletion, preventing reuse.
+    TOMBSTONE_KEY = ".tombstone"
 
     def __init__(self, locator: str, partSize: int = DEFAULT_AWS_PART_SIZE) -> None:
         super().__init__(locator)
@@ -455,23 +471,38 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
         ###################################### FILES API ######################################
 
-    def _claim_hinted_s3_slot(self, sanitized_hints: list[str], basename: str) -> str:
+    def _is_hinted_file_id(self, file_id: str) -> bool:
         """
-        Atomically claim a numbered slot for a hinted file in S3.
+        Check whether a file_id uses the hinted allocation scheme.
 
-        Uses S3 conditional writes (``IfNoneMatch: *``) so that concurrent
-        writers on different nodes racing for the same hint+basename will
-        each land in a distinct numbered slot.
+        Hinted file IDs end with a numeric slot number (e.g. ``wf/task/0``);
+        UUID-based IDs never end in a bare integer.
+        """
+        last_component = file_id.rsplit("/", 1)[-1]
+        try:
+            int(last_component)
+            return True
+        except ValueError:
+            return False
+
+    def _claim_hinted_slot(self, sanitized_hints: list[str], basename: str) -> str:
+        """
+        Claim the next available numbered slot for a hinted file.
+
+        Creates a placeholder object at the slot's key and returns the
+        file_id (e.g. ``workflowname/taskname/0``).
 
         :param sanitized_hints: Already-sanitized hint path components.
         :param basename: The file basename.
-        :returns: The file_id (e.g. ``lions/tigers/bears/0``).
+        :returns: The new file_id.
         """
         hints_prefix = "/".join(sanitized_hints)
-        # List existing objects to find the next available number.
+        # List everything under the hints prefix to find the highest
+        # numbered slot already taken.  We append "/" so that hints
+        # ["a", "b"] won't match keys belonging to ["a", "bc"].
         list_prefix = self._key_in_bucket(
-            identifier=hints_prefix + "/", prefix=self.content_key_prefix
-        )
+            identifier=hints_prefix, prefix=self.content_key_prefix
+        ) + "/"
         existing = list_s3_items(
             self.s3_resource, bucket=self.bucket_name, prefix=list_prefix
         )
@@ -486,6 +517,9 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             except (ValueError, IndexError):
                 continue
 
+        # Try to create the object with IfNoneMatch: * so that only one
+        # writer can claim each slot.  On PreconditionFailed (another
+        # writer got there first), increment and retry.
         encryption_args = self._get_encryption_args()
         while True:
             file_id = f"{hints_prefix}/{next_n}"
@@ -494,7 +528,6 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 prefix=self.content_key_prefix,
             )
             try:
-                # Atomically create the key only if it doesn't exist yet.
                 self.s3_resource.meta.client.put_object(
                     Bucket=self.bucket_name,
                     Key=s3_key,
@@ -504,13 +537,22 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 )
                 return file_id
             except ClientError as e:
-                if e.response["Error"]["Code"] in (
-                    "PreconditionFailed",
-                    "412",
-                ):
+                if e.response["Error"]["Code"] == "PreconditionFailed":
                     next_n += 1
                     continue
                 raise
+
+    def _allocate_file_id(self, basename: str, hints: list[str] | None) -> str:
+        """
+        Choose a file ID for a new file.
+
+        If *hints* are provided and any survive sanitization, claim a
+        numbered hinted slot.  Otherwise mint a fresh UUID.
+        """
+        sanitized = self._sanitize_hints(hints)
+        if sanitized:
+            return self._claim_hinted_slot(sanitized, basename)
+        return str(uuid.uuid4())
 
     def write_file(
         self,
@@ -533,11 +575,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         """
         # TODO: etag = compute_checksum_for_file(local_path, algorithm='etag')[len('etag$'):]
         basename = os.path.basename(local_path)
-        sanitized = self._sanitize_hints(hints)
-        if sanitized:
-            file_id = self._claim_hinted_s3_slot(sanitized, basename)
-        else:
-            file_id = str(uuid.uuid4())
+        file_id = self._allocate_file_id(basename, hints)
 
         file_attributes = os.stat(local_path)
         size = file_attributes.st_size
@@ -562,14 +600,14 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
     def find_s3_key_from_file_id(self, file_id: str) -> str:
         """This finds an s3 key for which file_id is the prefix, and which already exists."""
-        # Trailing / prevents e.g. file_id "path/0" matching key "path/00/x"
-        prefix = self._key_in_bucket(identifier=file_id + "/", prefix=self.content_key_prefix)
+        # Trailing / scopes the listing to exact children of this file_id.
+        prefix = self._key_in_bucket(identifier=file_id, prefix=self.content_key_prefix) + "/"
         s3_keys = [
             s3_item
             for s3_item in list_s3_items(
                 self.s3_resource, bucket=self.bucket_name, prefix=prefix
             )
-            if not s3_item["Key"].endswith(self.TOMBSTONE_SUFFIX)
+            if not s3_item["Key"].endswith(self.TOMBSTONE_KEY)
         ]
         if len(s3_keys) == 0:
             raise NoSuchFileException(file_id)
@@ -592,11 +630,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
     ) -> Iterator[tuple[IO[bytes], str]]:
         if not basename:
             basename = "stream"
-        sanitized = self._sanitize_hints(hints)
-        if sanitized:
-            file_id = self._claim_hinted_s3_slot(sanitized, str(basename))
-        else:
-            file_id = str(uuid.uuid4())
+        file_id = self._allocate_file_id(str(basename), hints)
         if job_id and cleanup:
             self.associate_job_with_file(job_id, file_id)
         prefix = self._key_in_bucket(identifier=file_id, prefix=self.content_key_prefix)
@@ -789,15 +823,6 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             else:
                 raise
 
-    def _is_hinted_file_id(self, file_id: str) -> bool:
-        """Check if a file_id was produced by the hinted-file allocation scheme."""
-        last_component = file_id.rsplit("/", 1)[-1]
-        try:
-            int(last_component)
-            return True
-        except ValueError:
-            return False
-
     def delete_file(self, file_id: str) -> None:
         try:
             full_s3_key = self.find_s3_key_from_file_id(file_id)
@@ -807,12 +832,9 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
         if self._is_hinted_file_id(file_id):
             # Write a tombstone BEFORE deleting so the slot can never be
-            # reused, even if we crash between the two operations. This is
-            # necessary because Toil journals deletions and may replay them;
-            # a reused slot would cause a replayed delete to destroy the
-            # wrong file.
+            # reused, even if we crash between the two operations.
             tombstone_key = self._key_in_bucket(
-                identifier=file_id + "/" + self.TOMBSTONE_SUFFIX,
+                identifier=file_id + "/" + self.TOMBSTONE_KEY,
                 prefix=self.content_key_prefix,
             )
             put_s3_object(
@@ -1020,12 +1042,10 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         """Create an empty file in s3 and return a bare string file ID."""
         if not basename:
             basename = "0"
-        sanitized = self._sanitize_hints(hints)
-        if sanitized:
-            # _claim_hinted_s3_slot already creates the empty object.
-            file_id = self._claim_hinted_s3_slot(sanitized, basename)
-        else:
-            file_id = str(uuid.uuid4())
+        file_id = self._allocate_file_id(basename, hints)
+        if not self._is_hinted_file_id(file_id):
+            # _allocate_file_id minted a UUID but didn't write anything;
+            # _claim_hinted_slot already wrote the empty placeholder.
             self.write_to_bucket(
                 identifier=f"{file_id}/0/{basename}",
                 prefix=self.content_key_prefix,

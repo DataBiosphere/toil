@@ -176,6 +176,18 @@ class AbstractJobStore(ABC):
 
     To actually get ahold of a :class:`toil.job.Job`, use
     :meth:`toil.job.Job.loadJob` with a JobStore and the relevant JobDescription.
+
+    .. rubric:: File Hints
+
+    File-writing methods accept an optional ``hints`` parameter: a list of
+    strings (e.g. workflow name, task name) that are incorporated into the
+    stored file's path or key so a human browsing the job store can locate
+    it.  Each hint becomes a path component after sanitization.  Two files
+    written with the same hints and basename are guaranteed distinct IDs;
+    disambiguation is handled by appending a numbered directory (``0/``,
+    ``1/``, ...).  Deleted slots are never reused (the empty directory or a
+    tombstone object prevents reallocation), which is required because Toil
+    may journal and replay file deletions.
     """
 
     def __init__(self, locator: str) -> None:
@@ -1084,13 +1096,14 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     ##########################################
-    # The following provide an way of creating/reading/writing/updating files
-    # associated with a given job.
+    # The following provide a way of creating/reading/writing/updating files
+    # associated with a given job.  See the "File Hints" section in the
+    # class docstring for the hints system.
     ##########################################
 
-    # Characters allowed in sanitized hints: these survive quote() unchanged
-    # and are safe in filesystem paths and S3 keys.
-    HINT_SAFE_RE = re.compile(r"[^a-zA-Z0-9_\-.]")
+    # Strips everything except characters safe in filesystem paths, S3 keys,
+    # and urllib quote() output: ASCII letters, digits, underscore, dot, hyphen.
+    HINT_SAFE_RE = re.compile(r"[^a-zA-Z0-9_.-]")
     # Maximum length of a single sanitized hint path component.
     MAX_HINT_LENGTH = 40
     # Maximum total length of the hints portion of the path (joined with /).
@@ -1098,27 +1111,26 @@ class AbstractJobStore(ABC):
 
     def _sanitize_hints(self, hints: list[str] | None) -> list[str]:
         """
-        Turn user-supplied hints into path-safe components usable as
-        directory names on a filesystem or key segments in an object store.
+        Produce path-safe components from user-supplied hint strings.
 
-        Drops empty hints and hints that become empty after sanitization.
-        Truncates individual hints and the overall joined path to bounded
-        lengths so that the resulting file ID stays under a usable size.
+        Each hint is stripped of unsafe characters and truncated to
+        :attr:`MAX_HINT_LENGTH`.  Hints are collected in order until
+        adding the next one (plus a ``/`` separator) would exceed
+        :attr:`MAX_HINTS_PATH_LENGTH`, then the rest are dropped.
         """
         if not hints:
             return []
         result: list[str] = []
-        total_length = 0
+        total = 0
         for hint in hints:
-            sanitized = self.HINT_SAFE_RE.sub("", hint)
-            sanitized = sanitized[: self.MAX_HINT_LENGTH]
-            if not sanitized:
+            cleaned = self.HINT_SAFE_RE.sub("", hint)[: self.MAX_HINT_LENGTH]
+            if not cleaned:
                 continue
-            # +1 for the separator between components
-            if total_length + len(sanitized) + (1 if result else 0) > self.MAX_HINTS_PATH_LENGTH:
+            needed = len(cleaned) + (1 if result else 0)
+            if total + needed > self.MAX_HINTS_PATH_LENGTH:
                 break
-            total_length += len(sanitized) + (1 if result else 0)
-            result.append(sanitized)
+            total += needed
+            result.append(cleaned)
         return result
 
     # Don't add any new arguments to this old version; make people use the new one!
@@ -1160,14 +1172,8 @@ class AbstractJobStore(ABC):
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
 
-        :param hints: String values such as a workflow names or task names that
-               should be used to store the file at a human-findable location.
-               Two files with the same basename and same hints are still
-               guaranteed to never collide and to have distinct assigned IDs.
-               Large numbers of files stored under the same non-empty hints
-               may be inefficient, as slot allocation scans existing entries;
-               hints are intended for human-navigable categorization, not for
-               high-throughput bulk file creation.
+        :param hints: Optional human-readable path hints; see the file
+               operations section comment on this class for details.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -1230,14 +1236,8 @@ class AbstractJobStore(ABC):
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
 
-        :param hints: String values such as a workflow names or task names that
-               should be used to store the file at a human-findable location.
-               Two files with the same basename and same hints are still
-               guaranteed to never collide and to have distinct assigned IDs.
-               Large numbers of files stored under the same non-empty hints
-               may be inefficient, as slot allocation scans existing entries;
-               hints are intended for human-navigable categorization, not for
-               high-throughput bulk file creation.
+        :param hints: Optional human-readable path hints; see the file
+               operations section comment on this class for details.
 
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
                 as for encode(). Defaults to None which represents binary mode.
@@ -1295,14 +1295,8 @@ class AbstractJobStore(ABC):
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
 
-        :param hints: String values such as a workflow names or task names that
-               should be used to store the file at a human-findable location.
-               Two files with the same basename and same hints are still
-               guaranteed to never collide and to have distinct assigned IDs.
-               Large numbers of files stored under the same non-empty hints
-               may be inefficient, as slot allocation scans existing entries;
-               hints are intended for human-navigable categorization, not for
-               high-throughput bulk file creation.
+        :param hints: Optional human-readable path hints; see the file
+               operations section comment on this class for details.
 
         :return: a jobStoreFileID that references the newly created file and can be used to reference the
                  file in the future.

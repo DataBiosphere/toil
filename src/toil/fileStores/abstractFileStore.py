@@ -319,11 +319,9 @@ class AbstractFileStore(ABC):
         :param cleanup: if True then the copy of the global file will be deleted once
                the job and all its successors have completed running.  If not the global
                file must be deleted manually.
-        :param hints: String values such as a workflow names or task names that
-               should be used to store the file at a human-findable location.
-               Large numbers of files stored under the same non-empty hints
-               may be inefficient; hints are intended for human-navigable
-               categorization, not for high-throughput bulk file creation.
+        :param hints: Optional human-readable path hints; see
+               :class:`~toil.jobStores.abstractJobStore.AbstractJobStore` for
+               details.
 
         :return: an ID that can be used to retrieve the file.
         """
@@ -355,11 +353,9 @@ class AbstractFileStore(ABC):
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
 
-        :param hints: String values such as a workflow names or task names that
-               should be used to store the file at a human-findable location.
-               Large numbers of files stored under the same non-empty hints
-               may be inefficient; hints are intended for human-navigable
-               categorization, not for high-throughput bulk file creation.
+        :param hints: Optional human-readable path hints; see
+               :class:`~toil.jobStores.abstractJobStore.AbstractJobStore` for
+               details.
 
         :return: A context manager yielding a tuple of
                   1) a file handle which can be written to and
