@@ -2226,7 +2226,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             if not os.path.exists(abs_filename):
                 raise FileNotFoundError(abs_filename)
 
-            file_id = self._file_store.writeGlobalFile(abs_filename)
+            file_id = self._file_store.writeGlobalFile(
+                abs_filename, hints=self.task_path.split(".")
+            )
 
             file_dir = os.path.dirname(abs_filename)
             result = pack_toil_uri(
