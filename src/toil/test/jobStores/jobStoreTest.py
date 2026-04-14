@@ -1479,13 +1479,15 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             unitName="onJobStore",
         )
 
-        # Make the pickled size of the job larger than 256K
+        # Make the pickled size of the job larger than 256K by sticking a field on it
         with open("/dev/urandom", "rb") as random:
-            overlargeJob.jobName = str(random.read(512 * 1024))
+            random_data = str(random.read(512 * 1024))
+        setattr(overlargeJob, "giant_field", random_data)
         jobstore.assign_job_id(overlargeJob)
         jobstore.create_job(overlargeJob)
         self.assertTrue(jobstore.job_exists(overlargeJob.jobStoreID))
         overlargeJobDownloaded = jobstore.load_job(overlargeJob.jobStoreID)
+        assert getattr(overlargeJobDownloaded, "giant_field") == random_data
         # Because jobs lack equality comparison, we stringify for comparison.
         jobsInJobStore = [str(job) for job in jobstore.jobs()]
         self.assertEqual(jobsInJobStore, [str(overlargeJob)])
