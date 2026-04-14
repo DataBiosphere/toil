@@ -1584,7 +1584,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _cleanUpExternalStore(self, bucket):
         from toil.jobStores.aws.jobStore import establish_boto3_session
-        from toil.lib.aws.utils import delete_s3_bucket
+        from toil.lib.aws.s3 import delete_s3_bucket
 
         resource = establish_boto3_session().resource(
             "s3", region_name=self.awsRegion()
