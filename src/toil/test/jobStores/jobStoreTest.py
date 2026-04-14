@@ -460,7 +460,7 @@ class AbstractJobStoreTest:
 
             class FakeError(RuntimeError):
                 pass
-            
+
             try:
                 with jobstore.update_file_stream(fileID, encoding="utf-8") as f:
                     f.write(bar)
