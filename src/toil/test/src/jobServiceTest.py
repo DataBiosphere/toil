@@ -241,6 +241,7 @@ class TestJobService:
         options.logLevel = "DEBUG"
 
         options.retryCount = retryCount
+        options.retry_backoff_seconds = 0
         options.badWorker = badWorker
         options.badWorkerFailInterval = badWorkedFailInterval
         options.servicePollingInterval = 1

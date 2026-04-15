@@ -124,6 +124,7 @@ class SortTest(ToilTest, MesosTestSupport):
                 options.retryCount = retryCount
                 options.batchSystem = batchSystem
                 options.clean = "never"
+                options.retry_backoff_seconds = 0
                 options.badWorker = badWorker
                 options.badWorkerFailInterval = 0.05
                 options.caching = caching
