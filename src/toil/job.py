@@ -665,7 +665,7 @@ class Requirer:
             # Anything else we just pass along without opinons
             return cast(ParsedRequirement, value)
 
-    def _fetchRequirement(self, requirement: str) -> ParsedRequirement | None:
+    def _fetchRequirement(self, requirement: str) -> ParsedRequirement:
         """
         Get the value of the specified requirement ('blah').
 
@@ -3333,7 +3333,7 @@ class Job:
                         requested_cores=str(
                             self.cores
                         ),  # TODO: Isn't this really consumed cores?
-                        disk=str(fileStore.get_disk_usage()),
+                        disk=str(fileStore.get_disk_usage() or 0),
                         succeeded=str(succeeded),
                     )
                 )

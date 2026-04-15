@@ -311,9 +311,13 @@ class TestUtils:
             "--badWorkerFailInterval=0.01",
         ]
 
+        logger.info("Run command: %s", " ".join(toilCommand))
+
         # Run the script for the first time
         system(toilCommand)
         assert jobstore.exists()
+
+        logger.debug("Run stats")
 
         # Check we can run 'toil stats'
         system(self.statsCommand(jobstore))

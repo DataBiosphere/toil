@@ -198,7 +198,11 @@ def main() -> int:
 
     # --- Collect expected tests ---
     expected_tests: set[str] = set()
-    for pytest_args in pytest_arg_lists:
+    for i, pytest_args in enumerate(pytest_arg_lists):
+            print(
+            f"Collecting exp[ected tests locally for invocation {i}...",
+            file=sys.stderr,
+        )
         cmd = build_collect_from_pytest_args(pytest_args)
         if args.verbose:
             print(f"  Collecting: {' '.join(cmd)}", file=sys.stderr)
