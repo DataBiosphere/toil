@@ -25,7 +25,7 @@ from urllib.parse import unquote, urlparse
 
 if TYPE_CHECKING:
     # This module needs to be importable even if cwltool is not installed.
-    from cwltool.utils import CWLObjectType, CWLOutputType
+    from cwl_utils.types import CWLObjectType, CWLOutputType
 
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -288,7 +288,7 @@ def trim_mounts_op_up(
             # one of the children was detected as not redundant
             return True
         for secondary in cast(
-            MutableSequence[MutableMapping[str, "CWLOutputType"]],
+            MutableSequence[MutableMapping[str, Union["CWLOutputType", None]]],
             file_or_directory.get("secondaryFiles", []),
         ):
             # secondary files should already be flagged nonredundant if they don't have either a path or location
@@ -302,7 +302,7 @@ def trim_mounts_op_up(
                 return True
     else:
         listings = cast(
-            MutableSequence[MutableMapping[str, "CWLOutputType"]],
+            MutableSequence[MutableMapping[str, Union["CWLOutputType", None]]],
             file_or_directory.get("listing", []),
         )
         if len(listings) == 0:

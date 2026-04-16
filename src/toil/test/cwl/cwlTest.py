@@ -31,7 +31,7 @@ from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 
 if TYPE_CHECKING:
-    from cwltool.utils import CWLObjectType
+    from cwl_utils.types import CWLObjectType
 
 import pytest
 
