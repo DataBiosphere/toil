@@ -75,15 +75,21 @@ from cwltool.software_requirements import (
 )
 from cwltool.stdfsaccess import StdFsAccess, abspath
 from cwltool.utils import (
-    CWLObjectType,
-    CWLOutputType,
-    DirectoryType,
     adjustDirObjs,
     aslist,
     downloadHttpFile,
     get_listing,
     normalizeFilesDirs,
     visit_class,
+)
+from cwl_utils.types import (
+    CWLDirectoryType,
+    CWLFileType,
+    CWLObjectType,
+    CWLOutputType,
+    is_directory,
+    is_file,
+    is_file_or_directory,
 )
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from schema_salad.avro.schema import Names
@@ -222,7 +228,7 @@ def _filter_skip_null(value: Any, err_flag: list[bool]) -> Any:
 
 
 def ensure_no_collisions(
-    directory: DirectoryType, dir_description: str | None = None
+    directory: CWLDirectoryType, dir_description: str | None = None
 ) -> None:
     """
     Make sure no items in the given CWL Directory have the same name.
@@ -241,7 +247,7 @@ def ensure_no_collisions(
     for child in directory.get("listing", []):
         if "basename" in child:
             # For each child that actually has a path to go at in its parent
-            wanted_name = cast(str, child["basename"])
+            wanted_name = child["basename"]
             if wanted_name in seen_names:
                 # We used this name already so bail out
                 raise cwl_utils.errors.WorkflowException(
@@ -709,7 +715,7 @@ class ToilPathMapper(PathMapper):
 
     def __init__(
         self,
-        referenced_files: list[CWLObjectType],
+        referenced_files: MutableSequence[CWLFileType | CWLDirectoryType],
         basedir: str,
         stagedir: str,
         separateDirs: bool = True,
@@ -739,7 +745,7 @@ class ToilPathMapper(PathMapper):
 
     def visit(
         self,
-        obj: CWLObjectType,
+        obj: CWLFileType | CWLDirectoryType,
         stagedir: str,
         basedir: str,
         copy: bool = False,
@@ -828,7 +834,7 @@ class ToilPathMapper(PathMapper):
             # We only handle files and directories; only they have locations.
             return
 
-        location = cast(str, obj["location"])
+        location = obj["location"]
         if location in self:
             # If we've already mapped this, map it consistently.
             tgt = self._pathmap[location].target
@@ -841,7 +847,7 @@ class ToilPathMapper(PathMapper):
             # Decide where to put the file or directory, as an absolute path.
             tgt = os.path.join(
                 stagedir,
-                cast(str, obj["basename"]),
+                obj["basename"],
             )
             if self.reversemap(tgt) is not None:
                 # If the target already exists in the pathmap, but we haven't yet
@@ -858,182 +864,179 @@ class ToilPathMapper(PathMapper):
                 )
                 tgt = new_tgt
 
-        match obj:
-            case {"class": "Directory"}:
-                # Whether or not we've already mapped this path, we need to map all
-                # children recursively.
+        if is_directory(obj):
+            # Whether or not we've already mapped this path, we need to map all
+            # children recursively.
 
-                logger.debug("ToilPathMapper visiting directory %s", location)
+            logger.debug("ToilPathMapper visiting directory %s", location)
 
-                # We want to check the directory to make sure it is not
-                # self-contradictory in its immediate children and their names.
-                ensure_no_collisions(cast(DirectoryType, obj))
+            # We want to check the directory to make sure it is not
+            # self-contradictory in its immediate children and their names.
+            ensure_no_collisions(obj)
 
-                # We may need to copy this directory even if we don't copy things inside it.
-                copy_here = False
+            # We may need to copy this directory even if we don't copy things inside it.
+            copy_here = False
 
-                # Try and resolve the location to a local path
-                if location.startswith("file://"):
-                    # This is still from the local machine, so go find where it is
-                    resolved = schema_salad.ref_resolver.uri_file_path(location)
-                elif location.startswith("toildir:"):
-                    # We need to download this directory (or subdirectory)
-                    if self.get_file:
-                        # We can actually go get it and its contents
-                        resolved = schema_salad.ref_resolver.uri_file_path(
-                            self.get_file(location)
-                        )
-                    else:
-                        # We are probably staging final outputs on the leader. We
-                        # can't go get the directory. Just pass it through.
-                        resolved = location
-                elif location.startswith("_:"):
-                    # cwltool made this up for an empty/synthetic directory it
-                    # wants to make.
-
-                    # If we let cwltool make the directory and stage it, and then
-                    # stage files inside it, we can end up with Docker creating
-                    # root-owned files in whatever we mounted for the Docker work
-                    # directory, somehow. So make a directory ourselves instead.
-                    if self.get_file:
-                        # Ask for an empty directory
-                        new_dir_uri = self.get_file("_:")
-                        # And get a path for it
-                        resolved = schema_salad.ref_resolver.uri_file_path(new_dir_uri)
-
-                        if "listing" in obj and obj["listing"] != []:
-                            # If there's stuff inside here to stage, we need to copy
-                            # this directory here, because we can't Docker mount things
-                            # over top of immutable directories.
-                            copy_here = True
-                    else:
-                        # We can't really make the directory. Maybe we are
-                        # exporting from the leader and it doesn't matter.
-                        resolved = location
-                elif location.startswith("/"):
-                    # Test if path is an absolute local path
-                    # Does not check if the path is relative
-                    # While Toil encodes paths into a URL with ToilPathMapper,
-                    # something called internally in cwltool may return an absolute path
-                    # ex: if cwltool calls itself internally in command_line_tool.py,
-                    # it collects outputs with collect_output, and revmap_file will use its own internal pathmapper
-                    resolved = location
-                else:
-                    raise RuntimeError("Unsupported location: " + location)
-
-                if location in self._pathmap:
-                    # Don't map the same directory twice
-                    logger.debug(
-                        "ToilPathMapper stopping recursion because we have already "
-                        "mapped directory: %s",
-                        location,
+            # Try and resolve the location to a local path
+            if location.startswith("file://"):
+                # This is still from the local machine, so go find where it is
+                resolved = schema_salad.ref_resolver.uri_file_path(location)
+            elif location.startswith("toildir:"):
+                # We need to download this directory (or subdirectory)
+                if self.get_file:
+                    # We can actually go get it and its contents
+                    resolved = schema_salad.ref_resolver.uri_file_path(
+                        self.get_file(location)
                     )
-                    return
+                else:
+                    # We are probably staging final outputs on the leader. We
+                    # can't go get the directory. Just pass it through.
+                    resolved = location
+            elif location.startswith("_:"):
+                # cwltool made this up for an empty/synthetic directory it
+                # wants to make.
 
+                # If we let cwltool make the directory and stage it, and then
+                # stage files inside it, we can end up with Docker creating
+                # root-owned files in whatever we mounted for the Docker work
+                # directory, somehow. So make a directory ourselves instead.
+                if self.get_file:
+                    # Ask for an empty directory
+                    new_dir_uri = self.get_file("_:")
+                    # And get a path for it
+                    resolved = schema_salad.ref_resolver.uri_file_path(new_dir_uri)
+
+                    if is_directory(obj) and obj["listing"] != []:
+                        # If there's stuff inside here to stage, we need to copy
+                        # this directory here, because we can't Docker mount things
+                        # over top of immutable directories.
+                        copy_here = True
+                else:
+                    # We can't really make the directory. Maybe we are
+                    # exporting from the leader and it doesn't matter.
+                    resolved = location
+            elif location.startswith("/"):
+                # Test if path is an absolute local path
+                # Does not check if the path is relative
+                # While Toil encodes paths into a URL with ToilPathMapper,
+                # something called internally in cwltool may return an absolute path
+                # ex: if cwltool calls itself internally in command_line_tool.py,
+                # it collects outputs with collect_output, and revmap_file will use its own internal pathmapper
+                resolved = location
+            else:
+                raise RuntimeError("Unsupported location: " + location)
+
+            if location in self._pathmap:
+                # Don't map the same directory twice
                 logger.debug(
-                    "ToilPathMapper adding directory mapping %s -> %s", resolved, tgt
+                    "ToilPathMapper stopping recursion because we have already "
+                    "mapped directory: %s",
+                    location,
                 )
+                return
+
+            logger.debug(
+                "ToilPathMapper adding directory mapping %s -> %s", resolved, tgt
+            )
+            self._pathmap[location] = MapperEnt(
+                resolved,
+                tgt,
+                "WritableDirectory" if (copy or copy_here) else "Directory",
+                staged,
+            )
+
+            if not location.startswith("_:") and not self.stage_listing:
+                # Don't stage anything below here separately, since we are able
+                # to copy the whole directory from somewhere and and we can't
+                # stage files over themselves.
+                staged = False
+
+            # Keep recursing
+            self.visitlisting(
+                obj.get("listing", []),
+                tgt,
+                basedir,
+                copy=copy,
+                staged=staged,
+            )
+
+        if is_file(obj):
+            logger.debug("ToilPathMapper visiting file %s", location)
+
+            if location in self._pathmap:
+                # Don't map the same file twice
+                logger.debug(
+                    "ToilPathMapper stopping recursion because we have already "
+                    "mapped file: %s",
+                    location,
+                )
+                return
+
+            ab = abspath(location, basedir)
+            if "contents" in obj and location.startswith("_:"):
+                # We are supposed to create this file
                 self._pathmap[location] = MapperEnt(
-                    resolved,
+                    obj["contents"],
                     tgt,
-                    "WritableDirectory" if (copy or copy_here) else "Directory",
+                    "CreateWritableFile" if copy else "CreateFile",
                     staged,
                 )
-
-                if not location.startswith("_:") and not self.stage_listing:
-                    # Don't stage anything below here separately, since we are able
-                    # to copy the whole directory from somewhere and and we can't
-                    # stage files over themselves.
-                    staged = False
-
-                # Keep recursing
-                self.visitlisting(
-                    cast(list[CWLObjectType], obj.get("listing", [])),
-                    tgt,
-                    basedir,
-                    copy=copy,
-                    staged=staged,
-                )
-
-            case {"class": "File"}:
-                logger.debug("ToilPathMapper visiting file %s", location)
-
-                if location in self._pathmap:
-                    # Don't map the same file twice
-                    logger.debug(
-                        "ToilPathMapper stopping recursion because we have already "
-                        "mapped file: %s",
-                        location,
-                    )
-                    return
-
-                ab = abspath(location, basedir)
-                if "contents" in obj and location.startswith("_:"):
-                    # We are supposed to create this file
-                    self._pathmap[location] = MapperEnt(
-                        cast(str, obj["contents"]),
-                        tgt,
-                        "CreateWritableFile" if copy else "CreateFile",
-                        staged,
-                    )
-                else:
-                    with SourceLine(
-                        obj,
-                        "location",
-                        ValidationException,
-                        logger.isEnabledFor(logging.DEBUG),
-                    ):
-                        # If we have access to the Toil file store, we will have a
-                        # get_file set, and it will convert this path to a file:
-                        # URI for a local file it downloaded.
-                        if self.get_file:
-                            deref = self.get_file(
-                                location,
-                                obj.get("streamable", False),
-                                self.streaming_allowed,
+            else:
+                with SourceLine(
+                    obj,
+                    "location",
+                    ValidationException,
+                    logger.isEnabledFor(logging.DEBUG),
+                ):
+                    # If we have access to the Toil file store, we will have a
+                    # get_file set, and it will convert this path to a file:
+                    # URI for a local file it downloaded.
+                    if self.get_file:
+                        deref = self.get_file(
+                            location,
+                            obj.get("streamable", False),
+                            self.streaming_allowed,
+                        )
+                    else:
+                        deref = ab
+                    if deref.startswith("file:"):
+                        deref = schema_salad.ref_resolver.uri_file_path(deref)
+                    if urlsplit(deref).scheme in ["http", "https"]:
+                        deref = downloadHttpFile(location)
+                    elif urlsplit(deref).scheme != "toilfile":
+                        # Dereference symbolic links
+                        st = os.lstat(deref)
+                        while stat.S_ISLNK(st.st_mode):
+                            logger.debug("ToilPathMapper following symlink %s", deref)
+                            rl = os.readlink(deref)
+                            deref = (
+                                rl
+                                if os.path.isabs(rl)
+                                else os.path.join(os.path.dirname(deref), rl)
                             )
-                        else:
-                            deref = ab
-                        if deref.startswith("file:"):
-                            deref = schema_salad.ref_resolver.uri_file_path(deref)
-                        if urlsplit(deref).scheme in ["http", "https"]:
-                            deref = downloadHttpFile(location)
-                        elif urlsplit(deref).scheme != "toilfile":
-                            # Dereference symbolic links
                             st = os.lstat(deref)
-                            while stat.S_ISLNK(st.st_mode):
-                                logger.debug(
-                                    "ToilPathMapper following symlink %s", deref
-                                )
-                                rl = os.readlink(deref)
-                                deref = (
-                                    rl
-                                    if os.path.isabs(rl)
-                                    else os.path.join(os.path.dirname(deref), rl)
-                                )
-                                st = os.lstat(deref)
 
-                        # If we didn't download something that is a toilfile:
-                        # reference, we just pass that along.
+                    # If we didn't download something that is a toilfile:
+                    # reference, we just pass that along.
 
-                        """Link or copy files to their targets. Create them as needed."""
+                    """Link or copy files to their targets. Create them as needed."""
 
-                        logger.debug(
-                            "ToilPathMapper adding file mapping %s -> %s", deref, tgt
-                        )
+                    logger.debug(
+                        "ToilPathMapper adding file mapping %s -> %s", deref, tgt
+                    )
 
-                        self._pathmap[location] = MapperEnt(
-                            deref, tgt, "WritableFile" if copy else "File", staged
-                        )
+                    self._pathmap[location] = MapperEnt(
+                        deref, tgt, "WritableFile" if copy else "File", staged
+                    )
 
-                # Handle all secondary files that need to be next to this one.
-                self.visitlisting(
-                    cast(list[CWLObjectType], obj.get("secondaryFiles", [])),
-                    stagedir,
-                    basedir,
-                    copy=copy,
-                    staged=staged,
-                )
+            # Handle all secondary files that need to be next to this one.
+            self.visitlisting(
+                obj.get("secondaryFiles", []),
+                stagedir,
+                basedir,
+                copy=copy,
+                staged=staged,
+            )
 
 
 class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
@@ -1067,7 +1070,7 @@ class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
             )
 
             # If singularity is detected, prepull the image to ensure locking
-            (docker_req, docker_is_req) = process.get_requirement(
+            docker_req, docker_is_req = process.get_requirement(
                 feature="DockerRequirement"
             )
             with global_mutex(
@@ -1106,7 +1109,7 @@ class ToilTool:
 
     def make_path_mapper(
         self,
-        reffiles: list[Any],
+        reffiles: MutableSequence[CWLFileType | CWLDirectoryType],
         stagedir: str,
         runtimeContext: cwltool.context.RuntimeContext,
         separateDirs: bool,
@@ -1764,7 +1767,7 @@ def path_to_loc(obj: CWLObjectType) -> None:
 
 
 def extract_file_uri_once(
-    file_metadata: CWLObjectType,
+    file_metadata: CWLFileType,
     fileindex: dict[str, str],
     mark_broken: bool = False,
     skip_remote: bool = False,
@@ -1797,7 +1800,7 @@ def extract_file_uri_once(
         file, given the ones already scheduled to be downloaded in existing and
         the settings passed about what files need to be downloaded.
     """
-    location = cast(str, file_metadata["location"])
+    location = file_metadata["location"]
     if (
         location.startswith("toilfile:")
         or location.startswith("toildir:")
@@ -1809,7 +1812,7 @@ def extract_file_uri_once(
         return None
     if not location and file_metadata["path"]:
         file_metadata["location"] = location = schema_salad.ref_resolver.file_uri(
-            cast(str, file_metadata["path"])
+            file_metadata["path"]
         )
     if location.startswith("file://"):
         file_path = schema_salad.ref_resolver.uri_file_path(location)
@@ -1856,14 +1859,14 @@ V = TypeVar("V", covariant=True)
 class FileVisitFunc(Protocol[V]):
     def __call__(
         self,
-        file_metadata: CWLObjectType,
+        file_metadata: CWLFileType,
     ) -> V: ...
 
 
 class DirectoryVisitFunc(Protocol[V]):
     def __call__(
         self,
-        directory_metadata: CWLObjectType,
+        directory_metadata: CWLDirectoryType,
         directory_contents: DirectoryContents,
     ) -> V: ...
 
@@ -1952,8 +1955,8 @@ def visit_files(
     # Otherwise we actually want to put the things in the file store.
 
     def visit_file_or_directory_down(
-        rec: CWLObjectType,
-    ) -> list[CWLObjectType] | None:
+        rec: CWLFileType | CWLDirectoryType,
+    ) -> MutableSequence[CWLFileType | CWLDirectoryType] | None:
         """
         Visit each CWL File or Directory on the way down.
 
@@ -1975,14 +1978,14 @@ def visit_files(
         if rec.get("class", None) == "File":
             # Nothing to do!
             return None
-        elif rec.get("class", None) == "Directory":
+        elif is_directory(rec):
             # Check the original listing for collisions
-            ensure_no_collisions(cast(DirectoryType, rec))
+            ensure_no_collisions(rec)
 
             # Pull out the old listing, if any
-            old_listing = cast(Optional[list[CWLObjectType]], rec.get("listing", None))
+            old_listing = rec.get("listing", None)
 
-            if not cast(str, rec["location"]).startswith("_:"):
+            if not rec["location"].startswith("_:"):
                 # This is a thing we can list and not just a literal, so we
                 # want to ensure that we have at least one level of listing.
                 if "listing" in rec and rec["listing"] == []:
@@ -1995,14 +1998,14 @@ def visit_files(
                 # its original File objects that we need to process)
 
                 # Check the new listing for collisions
-                ensure_no_collisions(cast(DirectoryType, rec))
+                ensure_no_collisions(rec)
 
             return old_listing
         return None
 
     def visit_file_or_directory_up(
-        rec: CWLObjectType,
-        down_result: list[CWLObjectType] | None,
+        rec: CWLFileType | CWLDirectoryType,
+        down_result: MutableSequence[CWLFileType | CWLDirectoryType] | None,
         child_results: list[DirectoryContents],
     ) -> DirectoryContents:
         """
@@ -2021,7 +2024,7 @@ def visit_files(
         contained similar dict for a subdirectory. We can reduce by joining
         everything into a single dict, when no filenames conflict.
         """
-        if rec.get("class", None) == "File":
+        if is_file(rec):
             # This is a CWL File
 
             # We want to track it and any of its associated secondary files in
@@ -2032,7 +2035,7 @@ def visit_files(
             func_return.append(file_func(rec))
 
             # Make a record for this file under its name
-            result[cast(str, rec["basename"])] = cast(str, rec["location"])
+            result[rec["basename"]] = rec["location"]
 
             for secondary_file_result in child_results:
                 # Glom in the secondary files, if any
@@ -2040,13 +2043,14 @@ def visit_files(
 
             return result
 
-        elif rec.get("class", None) == "Directory":
+        elif is_directory(rec):
             # This is a CWL Directory
 
-            # Restore the original listing, or its absence
-            rec["listing"] = cast(Optional[CWLOutputType], down_result)
-            if rec["listing"] is None:
+            # Restore the original listing, or its absenc
+            if down_result is None:
                 del rec["listing"]
+            else:
+                rec["listing"] = down_result
 
             # We know we have child results from a fully recursive listing.
             # Build them into a contents dict.
@@ -2060,7 +2064,7 @@ def visit_files(
             directory_func(rec, contents)
 
             # Show those contents as being under our name in our parent.
-            return {cast(str, rec["basename"]): contents}
+            return {rec["basename"]: contents}
 
         else:
             raise RuntimeError("Got unexpected class of object: " + str(rec))
@@ -2076,7 +2080,7 @@ def visit_files(
 
 
 def upload_directory(
-    directory_metadata: CWLObjectType,
+    directory_metadata: CWLDirectoryType,
     directory_contents: DirectoryContents,
     mark_broken: bool = False,
 ) -> None:
@@ -2098,7 +2102,7 @@ def upload_directory(
     tool, since some tools require it to be cleared or single-level but still
     expect to see its contents in the filesystem.
     """
-    location = cast(str, directory_metadata["location"])
+    location = directory_metadata["location"]
     if (
         location.startswith("toilfile:")
         or location.startswith("toildir:")
@@ -2108,7 +2112,7 @@ def upload_directory(
         return
     if not location and directory_metadata["path"]:
         location = directory_metadata["location"] = schema_salad.ref_resolver.file_uri(
-            cast(str, directory_metadata["path"])
+            directory_metadata["path"]
         )
     if location.startswith("file://") and not os.path.isdir(
         schema_salad.ref_resolver.uri_file_path(location)
@@ -2133,7 +2137,7 @@ def upload_directory(
 
 def ensure_file_imported(
     import_func: Callable[[str], FileID],
-    file_metadata: CWLObjectType,
+    file_metadata: CWLFileType,
     fileindex: dict[str, str],
     existing: dict[str, str],
     mark_broken: bool = False,
@@ -2169,9 +2173,9 @@ def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> FileI
     return file_store.writeGlobalFile(schema_salad.ref_resolver.uri_file_path(fileuri))
 
 
-def remove_empty_listings(rec: CWLObjectType) -> None:
+def remove_empty_listings(rec: CWLDirectoryType) -> None:
     if rec.get("class") != "Directory":
-        finddirs: list[CWLObjectType] = []
+        finddirs: list[CWLDirectoryType] = []
         visit_class(rec, ("Directory",), finddirs.append)
         for f in finddirs:
             remove_empty_listings(f)
@@ -2279,12 +2283,13 @@ def toilStageFiles(
     """
 
     def _collectDirEntries(
-        obj: CWLObjectType | list[CWLObjectType],
-    ) -> Iterator[CWLObjectType]:
+        obj: Any,
+    ) -> Iterator[CWLFileType | CWLDirectoryType]:
         if isinstance(obj, dict):
-            if obj.get("class") in ("File", "Directory"):
+            if is_file_or_directory(obj):
                 yield obj
-                yield from _collectDirEntries(obj.get("secondaryFiles", []))
+                if is_file(obj) and "secondaryFiles" in obj:
+                    yield from _collectDirEntries(obj["secondaryFiles"])
             else:
                 for sub_obj in obj.values():
                     yield from _collectDirEntries(sub_obj)
@@ -2425,9 +2430,11 @@ def toilStageFiles(
                     with open(p.target, "wb") as n:
                         n.write(p.resolved.encode("utf-8"))
 
-    def _check_adjust(f: CWLObjectType) -> CWLObjectType:
+    def _check_adjust(
+        f: CWLFileType | CWLDirectoryType,
+    ) -> CWLFileType | CWLDirectoryType:
         # Figure out where the path mapper put this
-        mapped_location: MapperEnt = pm.mapper(cast(str, f["location"]))
+        mapped_location: MapperEnt = pm.mapper(f["location"])
         if destBucket:
             # Make the location point to the destination bucket.
             # Reconstruct the path we exported to.
@@ -2441,7 +2448,7 @@ def toilStageFiles(
             f["location"] = schema_salad.ref_resolver.file_uri(mapped_location.target)
             f["path"] = mapped_location.target
 
-        if "contents" in f:
+        if is_file(f) and "contents" in f:
             del f["contents"]
         return f
 
@@ -4014,19 +4021,14 @@ def rm_unprocessed_secondary_files(job_params: Any) -> None:
             # secondary files? Is that allowed?)
             rm_unprocessed_secondary_files(v)
 
-    if (
-        isinstance(job_params, dict)
-        and job_params.get("class", None) in ("File", "Directory")
-        and "secondaryFiles" in job_params
-    ):
-        # When we actually find a File or Directory (can directories have
-        # these?) with secondary files, filter them.
+    if is_file(job_params) and "secondaryFiles" in job_params:
+        # When we actually find a File, filter them.
         job_params["secondaryFiles"] = filtered_secondary_files(job_params)
 
 
 def filtered_secondary_files(
-    unfiltered_secondary_files: CWLObjectType,
-) -> list[CWLObjectType]:
+    unfiltered_secondary_files: CWLFileType,
+) -> MutableSequence[CWLFileType | CWLDirectoryType]:
     """
     Remove unprocessed secondary files.
 
@@ -4045,11 +4047,11 @@ def filtered_secondary_files(
     just a bit further down the track.
     """
     intermediate_secondary_files = []
-    final_secondary_files = []
+    final_secondary_files: MutableSequence[CWLFileType | CWLDirectoryType] = []
     # remove secondary files still containing interpolated strings
-    for sf in cast(list[CWLObjectType], unfiltered_secondary_files["secondaryFiles"]):
-        sf_bn = cast(str, sf.get("basename", ""))
-        sf_loc = cast(str, sf.get("location", ""))
+    for sf in unfiltered_secondary_files["secondaryFiles"]:
+        sf_bn = sf.get("basename", "")
+        sf_loc = sf.get("location", "")
         if ("$(" not in sf_bn) and ("${" not in sf_bn):
             if ("$(" not in sf_loc) and ("${" not in sf_loc):
                 intermediate_secondary_files.append(sf)
@@ -4066,8 +4068,8 @@ def filtered_secondary_files(
     # remove secondary files that are not present in the filestore or pointing
     # to existent things on disk
     for sf in intermediate_secondary_files:
-        sf_loc = cast(str, sf.get("location", ""))
-        if not sf_loc.startswith(MISSING_FILE) or sf.get("class", "") == "Directory":
+        sf_loc = sf.get("location", "")
+        if not sf_loc.startswith(MISSING_FILE) or is_directory(sf):
             # Pass imported files, and all Directories
             final_secondary_files.append(sf)
         else:
@@ -4243,8 +4245,7 @@ def generate_default_job_store(
         )
 
 
-usage_message = "\n\n" + textwrap.dedent(
-    """
+usage_message = "\n\n" + textwrap.dedent("""
             NOTE: If you're trying to specify a jobstore, you must use --jobStore, not a positional argument.
 
             Usage: toil-cwl-runner [options] <workflow> [<input file>] [workflow options]
@@ -4256,10 +4257,7 @@ usage_message = "\n\n" + textwrap.dedent(
                      example.cwl \\
                      example-job.yaml \\
                      --wf_input="hello world"
-    """[
-        1:
-    ]
-)
+    """[1:])
 
 
 def get_options(args: list[str]) -> Namespace:
@@ -4273,8 +4271,7 @@ def get_options(args: list[str]) -> Namespace:
     parser = ArgParser(
         allow_abbrev=False,
         usage="%(prog)s [options] WORKFLOW [INFILE] [WF_OPTIONS...]",
-        description=textwrap.dedent(
-            """
+        description=textwrap.dedent("""
             positional arguments:
 
               WORKFLOW              CWL file to run.
@@ -4289,8 +4286,7 @@ def get_options(args: list[str]) -> Namespace:
 
                                     If an input has the same name as a Toil option, pass
                                     '--' before it.
-        """
-        ),
+        """),
         formatter_class=RawDescriptionHelpFormatter,
     )
 
