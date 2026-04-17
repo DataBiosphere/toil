@@ -491,7 +491,7 @@ TERMINAL_STATES = {"COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED"}
 
 # How long can a workflow be in CANCELING state before we conclude that the
 # workflow running task is gone and move it to CANCELED?
-MAX_CANCELING_SECONDS = 30
+MAX_CANCELING_SECONDS = 60
 
 
 class WorkflowStateMachine:
@@ -630,7 +630,7 @@ class WorkflowStateMachine:
             canceled_at = self._store.get("cancel_time")
             if canceled_at is None:
                 # If there's no timestamp but it's supposedly canceling, put it
-                # into SYSTEM_ERROR, because we didn;t move to CANCELING properly.
+                # into SYSTEM_ERROR, because we didn't move to CANCELING properly.
                 state = "SYSTEM_ERROR"
                 self._store.set("state", state)
             else:

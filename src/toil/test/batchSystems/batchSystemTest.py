@@ -1465,8 +1465,9 @@ def measureConcurrency(filepath: StrPath, sleep_time: int = 10) -> int:
     count(1, filepath)
     try:
         time.sleep(sleep_time)
-    finally:
-        return count(-1, filepath)
+    except:
+        pass
+    return count(-1, filepath)
 
 
 def count(delta: int, file_path: StrPath) -> int:

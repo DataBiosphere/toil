@@ -6,4 +6,5 @@ ruamel.yaml>=0.15,<=0.19.1
 ruamel.yaml.clib>=0.2.6
 networkx!=2.8.1,<4
 CacheControl[filecache]
-cwl-utils>=0.36
+# TODO: cwl-utils 0.41 needs a cwltool newer than 3.1.20260315121657 or Toil will not type check, but no newer one has been released yet.
+cwl-utils>=0.36,<0.41

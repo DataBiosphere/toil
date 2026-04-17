@@ -225,6 +225,7 @@ class TestUtils:
             str(self.N),
             "--stats",
             "--retryCount=2",
+            "--retryBackoffSeconds=0",
             "--badWorker=0.5",
             "--badWorkerFailInterval=0.05",
         ]
@@ -284,6 +285,7 @@ class TestUtils:
 
     @slow
     @pytest.mark.slow
+    @pytest.mark.timeout(600)
     def testUtilsStatsSort(
         self, tmp_path: Path, unsortedFile: Path, correctSort: list[str]
     ) -> None:
@@ -307,13 +309,18 @@ class TestUtils:
             str(self.N),
             "--stats",
             "--retryCount=99",
+            "--retryBackoffSeconds=0",
             "--badWorker=0.5",
             "--badWorkerFailInterval=0.01",
         ]
 
+        logger.info("Run command: %s", " ".join(toilCommand))
+
         # Run the script for the first time
         system(toilCommand)
         assert jobstore.exists()
+
+        logger.debug("Run stats")
 
         # Check we can run 'toil stats'
         system(self.statsCommand(jobstore))
@@ -442,6 +449,7 @@ class TestUtils:
                 f"--fileToSort={unsortedFile}",
                 f"--outputFile={outputFile}",
                 "--clean=never",
+                "--retryBackoffSeconds=0",
                 "--badWorker=1",
             ]
         )
@@ -470,6 +478,7 @@ class TestUtils:
                     "--jobStore",
                     str(jobstore),
                     "--clean=never",
+                    "--retryBackoffSeconds=0",
                     "--badWorker=1",
                     str(cwl_file),
                     "--reverse",
@@ -582,6 +591,7 @@ class TestUtils:
             "-m",
             "toil.test.sort.restart_sort",
             jobstore.as_uri(),
+            "--retryBackoffSeconds=0",
             "--badWorker=1",
             "--logDebug",
         ]
@@ -592,6 +602,7 @@ class TestUtils:
             "-m",
             "toil.test.sort.restart_sort",
             jobstore.as_uri(),
+            "--retryBackoffSeconds=0",
             "--badWorker=0",
             "--logDebug",
             "--restart",

@@ -460,7 +460,7 @@ class AbstractJobStoreTest:
 
             class FakeError(RuntimeError):
                 pass
-            
+
             try:
                 with jobstore.update_file_stream(fileID, encoding="utf-8") as f:
                     f.write(bar)
@@ -1479,13 +1479,15 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             unitName="onJobStore",
         )
 
-        # Make the pickled size of the job larger than 256K
+        # Make the pickled size of the job larger than 256K by sticking a field on it
         with open("/dev/urandom", "rb") as random:
-            overlargeJob.jobName = str(random.read(512 * 1024))
+            random_data = str(random.read(512 * 1024))
+        setattr(overlargeJob, "giant_field", random_data)
         jobstore.assign_job_id(overlargeJob)
         jobstore.create_job(overlargeJob)
         self.assertTrue(jobstore.job_exists(overlargeJob.jobStoreID))
         overlargeJobDownloaded = jobstore.load_job(overlargeJob.jobStoreID)
+        assert getattr(overlargeJobDownloaded, "giant_field") == random_data
         # Because jobs lack equality comparison, we stringify for comparison.
         jobsInJobStore = [str(job) for job in jobstore.jobs()]
         self.assertEqual(jobsInJobStore, [str(overlargeJob)])
@@ -1566,7 +1568,8 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createExternalStore(self):
         """A S3.Bucket instance is returned"""
         from toil.jobStores.aws.jobStore import establish_boto3_session
-        from toil.lib.aws.utils import create_s3_bucket, retry_s3
+        from toil.lib.aws.utils import retry_s3
+        from toil.lib.aws.s3 import create_s3_bucket
 
         resource = establish_boto3_session().resource(
             "s3", region_name=self.awsRegion()
@@ -1582,7 +1585,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _cleanUpExternalStore(self, bucket):
         from toil.jobStores.aws.jobStore import establish_boto3_session
-        from toil.lib.aws.utils import delete_s3_bucket
+        from toil.lib.aws.s3 import delete_s3_bucket
 
         resource = establish_boto3_session().resource(
             "s3", region_name=self.awsRegion()

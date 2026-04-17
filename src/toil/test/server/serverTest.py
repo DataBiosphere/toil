@@ -214,7 +214,7 @@ class BucketUsingTest(ToilTest):
         super().setUpClass()
 
         from toil.lib.aws import get_current_aws_region, session
-        from toil.lib.aws.utils import create_s3_bucket
+        from toil.lib.aws.s3 import create_s3_bucket
 
         cls.region = get_current_aws_region()
         cls.s3_resource = session.resource("s3", region_name=cls.region)
@@ -225,7 +225,7 @@ class BucketUsingTest(ToilTest):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        from toil.lib.aws.utils import delete_s3_bucket
+        from toil.lib.aws.s3 import delete_s3_bucket
 
         if cls.bucket_name:
             delete_s3_bucket(cls.s3_resource, cls.bucket_name, cls.region)

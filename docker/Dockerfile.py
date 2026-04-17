@@ -71,7 +71,10 @@ dependencies = ' '.join(python_packages[python] +
                          'uidmap',
                          'squashfs-tools-ng',
                          # Dependencies for singularity on kubernetes
-                         'tzdata'])
+                         'tzdata',
+                         # Dependencies for building pysam when we need it for Cactus testing and there's no wheel
+                         'libbz2-dev',
+                         'liblzma-dev'])
 
 # pymesos's http-parser dependency can't build on Python later than 3.10, as
 # released in 0.9.0. The upstream pymesos can, but we write it out of Toil's

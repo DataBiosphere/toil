@@ -65,6 +65,7 @@ class JobFileStoreTest(ToilTest):
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
             options.logLevel = "DEBUG"
             options.retryCount = retryCount
+            options.retry_backoff_seconds = 0
             options.badWorker = badWorker
             options.badWorkerFailInterval = 1.0
             chainLength = 10
