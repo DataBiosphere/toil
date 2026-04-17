@@ -41,7 +41,8 @@ from toil.lib.aws.iam import (
 )
 from toil.lib.aws.session import AWSConnectionManager
 from toil.lib.aws.session import client as get_client
-from toil.lib.aws.utils import boto3_pager, create_s3_bucket
+from toil.lib.aws.s3 import create_s3_bucket
+from toil.lib.aws.utils import boto3_pager
 from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (
     a_short_time,

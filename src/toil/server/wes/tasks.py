@@ -30,6 +30,7 @@ from toil.common import Toil
 from toil.jobStores.utils import generate_locator
 from toil.server.celery_app import celery
 from toil.server.utils import (
+    MAX_CANCELING_SECONDS,
     WorkflowStateMachine,
     connect_to_workflow_state_store,
     download_file_from_internet,
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 # before we kill it?
 # Ought to be long enough to let it clean up its job store, but shorter than
 # our patience for CANCELING WES workflows to time out to CANCELED.
-WAIT_FOR_DEATH_TIMEOUT = 20
+WAIT_FOR_DEATH_TIMEOUT = MAX_CANCELING_SECONDS - 15
 
 
 class ToilWorkflowRunner:

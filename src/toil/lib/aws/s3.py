@@ -40,7 +40,11 @@ from mypy_boto3_s3.type_defs import (
 )
 
 from toil.lib.aws import AWSServerErrors, build_tag_dict_from_env, session
-from toil.lib.aws.utils import enable_public_objects, flatten_tags
+from toil.lib.aws.utils import (
+    enable_encryption,
+    enable_public_objects,
+    flatten_tags,
+)
 from toil.lib.conversions import MB, MIB, TB, modify_url
 from toil.lib.misc import printq
 from toil.lib.pipes import HashingPipe, ReadablePipe, WritablePipe
@@ -79,7 +83,8 @@ def create_s3_bucket(
     bucket_name: str,
     region: BucketLocationConstraintType | Literal["us-east-1"],
     tags: dict[str, str] | None = None,
-    public: bool = True,
+    public: bool = False,
+    encryptable: bool = False,
 ) -> "Bucket":
     """
     Create an AWS S3 bucket, using the given Boto3 S3 session, with the
@@ -88,6 +93,18 @@ def create_s3_bucket(
     Supports the us-east-1 region, where bucket creation is special.
 
     *ALL* S3 bucket creation should use this function.
+
+    :param public: If True, objects in the bucket can be made publicly
+        accessible. If False, they cannot. Historically, the default setting
+        was to allow public access, but in 2023, Amazon made not allowing
+        public access to any objects their default. This function uses the new
+        default value of False.
+
+    :param encryptable: If True, allow server-side encryption with
+        customer-managed keys (SSE-C) in the bucket. Historically, all buckets
+        supported this, but in November 2025 and April 2026, Amazon made not
+        allowing this the default. This function uses the new default value of
+        False.
     """
     logger.info("Creating bucket '%s' in region %s.", bucket_name, region)
     if region == "us-east-1":  # see https://github.com/boto/boto3/issues/125
@@ -104,9 +121,19 @@ def create_s3_bucket(
     bucket_tagging = s3_resource.BucketTagging(bucket_name)
     bucket_tagging.put(Tagging={"TagSet": flatten_tags(tags)})  # type: ignore
 
+    # Note that if any of these other retry-able calls runs out of retries, we
+    # hit the retries on this parent function, but they all fail because the
+    # bucket exists already and we can't create it again. TODO: refactor the
+    # retry system so it doesn't do that.
+
     # enabling public objects is the historical default
+    # TODO: Figure out which Toil features need this and adopt the new default
+    # value.
     if public:
         enable_public_objects(bucket_name)
+
+    if encryptable:
+        enable_encryption(bucket_name)
 
     return bucket
 

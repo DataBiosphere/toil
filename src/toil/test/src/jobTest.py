@@ -558,6 +558,7 @@ class TestJob:
             options = Job.Runner.getDefaultOptions("%s.%i" % (jobStore, test))
             options.logLevel = "DEBUG"
             options.retryCount = 1
+            options.retry_backoff_seconds = 0
             options.badWorker = 0.25
             options.badWorkerFailInterval = 0.01
             # Because we're going to be killing the services all the time for

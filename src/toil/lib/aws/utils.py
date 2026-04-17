@@ -123,73 +123,6 @@ def retry_s3(
     """
     return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
-
-@retry(errors=[AWSServerErrors])
-def delete_s3_bucket(
-    s3_resource: "S3ServiceResource", bucket: str, quiet: bool = True
-) -> None:
-    """
-    Delete the given S3 bucket.
-
-    Note that S3 bucket deletion is only eventually-consistent, and anyone can
-    register any S3 bucket name. For both of these reasons, a bucket name might
-    not be immediately (or ever) available for re-use after this function
-    returns.
-    """
-    printq(f"Deleting s3 bucket: {bucket}", quiet)
-
-    paginator = s3_resource.meta.client.get_paginator("list_object_versions")
-    try:
-        for response in paginator.paginate(Bucket=bucket):
-            # Versions and delete markers can both go in here to be deleted.
-            # They both have Key and VersionId, but there's no shared base type
-            # defined for them in the stubs to express that. See
-            # <https://github.com/vemel/mypy_boto3_builder/issues/123>. So we
-            # have to do gymnastics to get them into the same list.
-            to_delete: list[dict[str, Any]] = cast(
-                list[dict[str, Any]], response.get("Versions", [])
-            ) + cast(list[dict[str, Any]], response.get("DeleteMarkers", []))
-            for entry in to_delete:
-                printq(
-                    f"    Deleting {entry['Key']} version {entry['VersionId']}", quiet
-                )
-                s3_resource.meta.client.delete_object(
-                    Bucket=bucket, Key=entry["Key"], VersionId=entry["VersionId"]
-                )
-        s3_resource.Bucket(bucket).delete()
-        # S3 bucket deletion is only eventually-consistent. See
-        # <https://docs.aws.amazon.com/AmazonS3/latest/userguide/delete-bucket.html>
-        printq(
-            f"\n * S3 bucket successfully scheduled for deletion: {bucket}\n\n", quiet
-        )
-    except s3_resource.meta.client.exceptions.NoSuchBucket:
-        printq(f"\n * S3 bucket no longer exists: {bucket}\n\n", quiet)
-
-
-def create_s3_bucket(
-    s3_resource: "S3ServiceResource",
-    bucket_name: str,
-    region: AWSRegionName,
-) -> "Bucket":
-    """
-    Create an AWS S3 bucket, using the given Boto3 S3 session, with the
-    given name, in the given region.
-
-    Supports the us-east-1 region, where bucket creation is special.
-
-    *ALL* S3 bucket creation should use this function.
-    """
-    logger.info("Creating bucket '%s' in region %s.", bucket_name, region)
-    if region == "us-east-1":  # see https://github.com/boto/boto3/issues/125
-        bucket = s3_resource.create_bucket(Bucket=bucket_name)
-    else:
-        bucket = s3_resource.create_bucket(
-            Bucket=bucket_name,
-            CreateBucketConfiguration={"LocationConstraint": region},
-        )
-    return bucket
-
-
 @retry(errors=[ClientError])
 def enable_public_objects(bucket_name: str) -> None:
     """
@@ -226,6 +159,32 @@ def enable_public_objects(bucket_name: str) -> None:
     # Stop using an ownership controls setting that prohibits ACLs.
     s3_client.delete_bucket_ownership_controls(Bucket=bucket_name)
 
+@retry(errors=[ClientError])
+def enable_encryption(bucket_name: str) -> None:
+    """
+    Enable server-side encryption with customer keys (SSE-C) on a bucket.
+
+    Amazon blocks this by default now because they don't think people holding
+    their own keys is "flexible". See
+    <https://docs.aws.amazon.com/AmazonS3/latest/userguide/default-s3-c-encryption-setting-faq.html>
+    """
+    s3_client = session.client("s3")
+
+    # It is not documented whether touching some rules destroys others, but the
+    # examples at
+    # <https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketEncryption.html#API_PutBucketEncryption_Examples>
+    # suggest not. Note that to *un*block SSE-C, we say something that sounds
+    # like we're trying to *block* an encryption type of "NONE", but that's
+    # what the example in the docs for that particular task does. The list is
+    # constrained to be non-empty.
+    s3_client.put_bucket_encryption(
+        Bucket=bucket_name,
+        ServerSideEncryptionConfiguration={
+            "Rules": [
+                {"BlockedEncryptionTypes": {"EncryptionType": ["NONE"]}},
+            ],
+        },
+    )
 
 class NoBucketLocationError(Exception):
     """

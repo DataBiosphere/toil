@@ -210,7 +210,13 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         )
         if bucket_exists(self.s3_resource, self.bucket_name):
             raise JobStoreExistsException(self.locator, "aws")
-        self.bucket = create_s3_bucket(self.s3_resource, self.bucket_name, region=self.region)  # type: ignore
+        self.bucket = create_s3_bucket(
+            self.s3_resource,
+            self.bucket_name,
+            region=self.region,
+            public=True,
+            encryptable=True,
+        )  # type: ignore
         super().initialize(config)
 
     def resume(self) -> None:
