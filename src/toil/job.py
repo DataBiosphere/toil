@@ -68,7 +68,7 @@ from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
 from toil.lib.compatibility import deprecated
-from toil.lib.conversions import bytes2human, human2bytes
+from toil.lib.conversions import bytes2human, human2bytes, seconds_to_dhms
 from toil.lib.exceptions import UnimplementedURLException
 from toil.lib.expando import Expando
 from toil.lib.resources import ResourceMonitor
@@ -801,7 +801,11 @@ class Requirer:
         for k in REQUIREMENT_NAMES:
             v: str | ParsedRequirement | None = self._fetchRequirement(k)
             if v is not None:
-                if isinstance(v, (int, float)) and v > 1000:
+                if k == "walltime":
+                    if v == 0:
+                        continue
+                    v = seconds_to_dhms(v)
+                elif isinstance(v, (int, float)) and v > 1000:
                     # Make large numbers readable
                     v = bytes2human(v)
                 parts.append(f"{k}: {v}")
