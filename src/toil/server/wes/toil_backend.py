@@ -29,7 +29,11 @@ import toil.server.wes.amazon_wes_utils as amazon_wes_utils
 from toil.bus import JobStatus, replay_message_bus
 from toil.lib.io import AtomicFileCreate
 from toil.lib.threading import global_mutex
-from toil.server.utils import WorkflowStateMachine, connect_to_workflow_state_store
+from toil.server.utils import (
+    TERMINAL_STATES,
+    WorkflowStateMachine,
+    connect_to_workflow_state_store,
+)
 from toil.server.wes.abstract_backend import (
     OperationForbidden,
     TaskLog,
@@ -109,27 +113,44 @@ class ToilWorkflow:
 
     def exists(self) -> bool:
         """Return True if the workflow run exists."""
-        return self.get_state() != "UNKNOWN"
+        return self.state_machine.get_current_state() != "UNKNOWN"
 
-    def get_state(self) -> str:
-        """Return the state of the current run."""
-        return self.state_machine.get_current_state()
+    def get_state(self, task_runner: type[TaskRunner]) -> str:
+        """
+        Return the state of the current run.
+        
+        Responsible for correcting the state when it is in conflict with what
+        the task runner knows about running processes.
+        """
+        
+        if not task_runner.is_live(self.run_id):
+            # The task is no longer running.
+            # We can read its state and it won't change it itself.
+            state = self.state_machine.get_current_state()
+            if not task_runner.is_ok(self.run_id):
+                # The task is known to have failed
+                if state not in TERMINAL_STATES:
+                    # The task did not record its own failure.
+                    logger.error(
+                        "Failing run %s because the task to run its leader crashed", self.run_id
+                    )
+                    self.state_machine.send_system_error()
+                    state = self.state_machine.get_current_state()
+            elif state == "CANCELING":
+                # The task stopped while we were trying to cancel it, without
+                # confirming. This can happen when we cancel a task before it
+                # gets the code set up to receive the signal. Clean it up here.
+                logger.info(
+                    "Marking run %s as canceled because its task can no longer mark it", self.run_id
+                )
+                self.state_machine.send_canceled()
+                state = self.state_machine.get_current_state()
+        else:
+            # The task is not known to have stopped; we don't need to do any
+            # postprocessing after reading the state.
+            state = self.state_machine.get_current_state()
 
-    def check_on_run(self, task_runner: type[TaskRunner]) -> None:
-        """
-        Check to make sure nothing has gone wrong in the task runner for this
-        workflow. If something has, log, and fail the workflow with an error.
-        """
-        if not task_runner.is_ok(self.run_id) and self.get_state() not in [
-            "SYSTEM_ERROR",
-            "EXECUTOR_ERROR",
-            "COMPLETE",
-            "CANCELED",
-        ]:
-            logger.error(
-                "Failing run %s because the task to run its leader crashed", self.run_id
-            )
-            self.state_machine.send_system_error()
+        return state
 
     def set_up_run(self) -> None:
         """Set up necessary directories for the run."""
@@ -391,6 +412,8 @@ class ToilBackend(WESBackend):
         """
         Helper method to instantiate a ToilWorkflow object.
 
+        Makes sure we see a sensible view of it.
+
         :param run_id: The run ID.
         :param should_exists: If set, ensures that the workflow run exists (or
                               does not exist) according to the value.
@@ -407,7 +430,7 @@ class ToilBackend(WESBackend):
         # Sadly we can't just ask Celery if it has heard of them.
         # TODO: Implement multiple servers working together.
         owning_server = run.fetch_state("server_id")
-        apparent_state = run.get_state()
+        apparent_state = run.get_state(self.task_runner)
         if (
             apparent_state
             not in ("UNKNOWN", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED")
@@ -428,8 +451,6 @@ class ToilBackend(WESBackend):
             )
             run.state_machine.send_system_error()
 
-        # Poll to make sure the run is not broken
-        run.check_on_run(self.task_runner)
         return run
 
     def get_runs(self) -> Generator[tuple[str, str], None, None]:
@@ -442,14 +463,14 @@ class ToilBackend(WESBackend):
                 continue
             run = self._get_run(run_id)
             if run.exists():
-                yield run_id, run.get_state()
+                yield run_id, run.get_state(self.task_runner)
 
     def get_state(self, run_id: str) -> str:
         """
         Return the state of the workflow run with the given run ID. May raise
         an error if the workflow does not exist.
         """
-        return self._get_run(run_id, should_exists=True).get_state()
+        return self._get_run(run_id, should_exists=True).get_state(self.task_runner)
 
     @handle_errors
     def get_service_info(self) -> dict[str, Any]:
@@ -562,7 +583,7 @@ class ToilBackend(WESBackend):
     def get_run_log(self, run_id: str) -> dict[str, Any]:
         """Get detailed info about a workflow run."""
         run = self._get_run(run_id, should_exists=True)
-        state = run.get_state()
+        state = run.get_state(self.task_runner)
 
         with run.fetch_scratch("request.json") as f:
             if f is None:
@@ -629,7 +650,7 @@ class ToilBackend(WESBackend):
 
         # Do some preflight checks on the current state.
         # We won't catch all cases where the cancel won't go through, but we can catch some.
-        state = run.get_state()
+        state = run.get_state(self.task_runner)
         if state in ("CANCELING", "CANCELED", "COMPLETE"):
             # We don't need to do anything.
             logger.warning(

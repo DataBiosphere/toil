@@ -507,8 +507,6 @@ class WorkflowStateMachine:
     clients never see e.g. CANCELED -> COMPLETE or COMPLETE -> SYSTEM_ERROR, we
     can implement a real distributed state machine here.
 
-    We do handle making sure that tasks don't get stuck in CANCELING.
-
     State can be:
 
     "UNKNOWN"
@@ -569,22 +567,11 @@ class WorkflowStateMachine:
         non-terminal state.
         """
 
-        state = self.get_current_state()
-        if state != "CANCELING" and state not in TERMINAL_STATES:
-            # If it's not obvious we shouldn't cancel, cancel.
-
-            # If we end up in CANCELING but the workflow runner task isn't around,
-            # or we signal it at the wrong time, we will stay there forever,
-            # because it's responsible for setting the state to anything else.
-            # So, we save a timestamp, and if we see a CANCELING status and an old
-            # timestamp, we move on.
-            self._store.set("cancel_time", get_iso_time())
-            # Set state after time, because having the state but no time is an error.
-            self._store.set("state", "CANCELING")
+        self._set_state("CANCELING")
 
     def send_canceled(self) -> None:
         """
-        Send a canceled message that would move to CANCELED from CANCELLING.
+        Send a canceled message that would move from CANCELING to CANCELED.
         """
         self._set_state("CANCELED")
 
@@ -620,28 +607,6 @@ class WorkflowStateMachine:
 
         # Otherwise do an actual read from backing storage.
         state = self._store.get("state")
-
-        if state == "CANCELING":
-            # Make sure it hasn't been CANCELING for too long.
-            # We can get stuck in CANCELING if the workflow-running task goes
-            # away or is stopped while reporting back, because it is
-            # repsonsible for posting back that it has been successfully
-            # canceled.
-            canceled_at = self._store.get("cancel_time")
-            if canceled_at is None:
-                # If there's no timestamp but it's supposedly canceling, put it
-                # into SYSTEM_ERROR, because we didn't move to CANCELING properly.
-                state = "SYSTEM_ERROR"
-                self._store.set("state", state)
-            else:
-                # See if it has been stuck canceling for too long
-                canceled_at = datetime.fromisoformat(canceled_at)
-                canceling_seconds = (datetime.now() - canceled_at).total_seconds()
-                if canceling_seconds > MAX_CANCELING_SECONDS:
-                    # If it has, go to CANCELED instead, because the task is
-                    # nonresponsive and thus not running.
-                    state = "CANCELED"
-                    self._store.set("state", state)
 
         if state in TERMINAL_STATES:
             # We can cache this state forever

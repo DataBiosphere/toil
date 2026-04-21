@@ -19,11 +19,13 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from typing import Any
 from urllib.parse import urldefrag
 
 from celery.exceptions import SoftTimeLimitExceeded  # type: ignore
+import celery.states  # type: ignore
 
 import toil.server.wes.amazon_wes_utils as amazon_wes_utils
 from toil.common import Toil
@@ -31,6 +33,7 @@ from toil.jobStores.utils import generate_locator
 from toil.server.celery_app import celery
 from toil.server.utils import (
     MAX_CANCELING_SECONDS,
+    TERMINAL_STATES,
     WorkflowStateMachine,
     connect_to_workflow_state_store,
     download_file_from_internet,
@@ -44,9 +47,8 @@ logger = logging.getLogger(__name__)
 
 # How many seconds should we give a Toil workflow to gracefully shut down
 # before we kill it?
-# Ought to be long enough to let it clean up its job store, but shorter than
-# our patience for CANCELING WES workflows to time out to CANCELED.
-WAIT_FOR_DEATH_TIMEOUT = MAX_CANCELING_SECONDS - 15
+# Ought to be long enough to let it clean up its job store.
+WAIT_FOR_DEATH_TIMEOUT = 20
 
 
 class ToilWorkflowRunner:
@@ -456,9 +458,13 @@ def run_wes_task(
             logger.info(f"Fetching output files.")
             runner.write_output_files()
     except (KeyboardInterrupt, SystemExit, SoftTimeLimitExceeded):
-        # We canceled the workflow run
-        logger.info("Canceling the workflow")
-        runner.state_machine.send_canceled()
+        # We canceled the workflow run after setup.
+        # We can confirm cancellation, but only if we haven't already declared
+        # completion.
+        state = runner.get_state()
+        if state not in TERMINAL_STATES:
+            logger.info("Canceling the workflow")
+            runner.state_machine.send_canceled()
     except Exception:
         # The workflow run broke. We still count as the executor here.
         logger.exception("Running Toil produced an exception.")
@@ -474,8 +480,9 @@ run_wes = celery.task(name="run_wes")(run_wes_task)
 
 def cancel_run(task_id: str) -> None:
     """
-    Send a SIGTERM signal to the process that is running task_id.
+    Send a signal to the process that is running Celery task task_id.
     """
+    # Celery uses SIGUSR1 for raising SoftTimeLimitExceeded.
     celery.control.terminate(task_id, signal="SIGUSR1")
 
 
@@ -484,6 +491,9 @@ class TaskRunner:
     Abstraction over the Celery API. Runs our run_wes task and allows canceling it.
 
     We can swap this out in the server to allow testing without Celery.
+
+    Note that this is not responsible for acting on or having events for things
+    like failed Celery tasks.
     """
 
     @staticmethod
@@ -505,11 +515,26 @@ class TaskRunner:
     @staticmethod
     def is_ok(task_id: str) -> bool:
         """
-        Make sure that the task running system is working for the given task.
-        If the task system has detected an internal failure, return False.
+        Returns True if the task has not yet failed, and False otherwise.
+
+        Returns True if the task was successfully canceled.
+
+        If False, the task is also not live.
         """
-        # Nothing to do for Celery
+        # Poll Celery about the task. See <https://stackoverflow.com/a/38287835>
+        result = celery.result.AsyncResult(task_id)
+        if result.status == celery.states.FAILURE:
+            return False
         return True
+
+    @staticmethod
+    def is_live(task_id: str) -> bool:
+        """
+        Returns True if the task has not yet stopped, and False otherwise.
+        """
+        result = celery.result.AsyncResult(task_id)
+        # Celery "ready" means the result is as available as it is getting
+        return result.status not in celery.states.READY_STATES
 
 
 # If Celery can't be set up, we can just use this fake version instead.
@@ -520,16 +545,23 @@ class MultiprocessingTaskRunner(TaskRunner):
     Version of TaskRunner that just runs tasks with Multiprocessing.
 
     Can't use threading because there's no way to send a cancel signal or
-    exception to a Python thread, if loops in the task (i.e.
-    ToilWorkflowRunner) don't poll for it.
+    exception to a Python thread, if loops and the task (i.e.
+    ToilWorkflowRunner) doesn't poll for it.
     """
 
     _id_to_process: dict[str, multiprocessing.Process] = {}
     _id_to_log: dict[str, str] = {}
 
+    # For testing, we can delay task setup by this many seconds.
+    # This needs to be smuggled into the multiprocessing child process because
+    # it won't inherit any replacements and has its own globals/class scopes
+    setup_delay = 0
+
     @staticmethod
     def set_up_and_run_task(
-        output_path: str, args: tuple[str, str, str, dict[str, Any], list[str]]
+        output_path: str,
+        args: tuple[str, str, str, dict[str, Any], list[str]],
+        setup_delay: int
     ) -> None:
         """
         Set up logging for the process into the given file and then call
@@ -538,6 +570,8 @@ class MultiprocessingTaskRunner(TaskRunner):
         If the process finishes successfully, it will clean up the log, but if
         the process crashes, the caller must clean up the log.
         """
+
+        time.sleep(setup_delay)
 
         # Multiprocessing and the server manage to hide actual task output from
         # the tests. Logging messages will appear in pytest's "live" log but
@@ -604,7 +638,7 @@ class MultiprocessingTaskRunner(TaskRunner):
         )
 
         cls._id_to_process[task_id] = multiprocessing.Process(
-            target=cls.set_up_and_run_task, args=(path, args)
+            target=cls.set_up_and_run_task, args=(path, args, cls.setup_delay)
         )
         cls._id_to_process[task_id].start()
 
@@ -622,8 +656,11 @@ class MultiprocessingTaskRunner(TaskRunner):
     @classmethod
     def is_ok(cls, task_id: str) -> bool:
         """
-        Make sure that the task running system is working for the given task.
-        If the task system has detected an internal failure, return False.
+        Return True if the task has not yet failed, and False otherwise.
+
+        Returns True if the task was successfully canceled.
+
+        If False, the task is also not live.
         """
 
         process = cls._id_to_process.get(task_id)
@@ -639,7 +676,7 @@ class MultiprocessingTaskRunner(TaskRunner):
             process.exitcode is not None
             and process.exitcode not in ACCEPTABLE_EXIT_CODES
         ):
-            # Something went wring in the task and it couldn't handle it.
+            # Something went wrong in the task and it couldn't handle it.
             logger.error(
                 "Process for running %s failed with code %s", task_id, process.exitcode
             )
@@ -655,3 +692,15 @@ class MultiprocessingTaskRunner(TaskRunner):
             return False
 
         return True
+
+    @classmethod
+    def is_live(cls, task_id: str) -> bool:
+        """
+        Returns True if the task has not yet stopped, and False otherwise.
+        """
+        process = cls._id_to_process.get(task_id)
+        if process is None:
+            # Never heard of this task, so it's probably in the process of
+            # getting made
+            return True
+        return process.exitcode is None
