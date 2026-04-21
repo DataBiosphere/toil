@@ -320,8 +320,7 @@ class AbstractFileStore(ABC):
                the job and all its successors have completed running.  If not the global
                file must be deleted manually.
         :param hints: Optional human-readable path hints; see
-               :class:`~toil.jobStores.abstractJobStore.AbstractJobStore` for
-               details.
+               :ref:`file-hints` for details.
 
         :return: an ID that can be used to retrieve the file.
         """
@@ -354,8 +353,7 @@ class AbstractFileStore(ABC):
                matching that basename, the file will be detected.
 
         :param hints: Optional human-readable path hints; see
-               :class:`~toil.jobStores.abstractJobStore.AbstractJobStore` for
-               details.
+               :ref:`file-hints` for details.
 
         :return: A context manager yielding a tuple of
                   1) a file handle which can be written to and

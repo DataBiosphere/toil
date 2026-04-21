@@ -687,6 +687,78 @@ class AbstractJobStoreTest:
             )
             assert self.jobstore_initialized.file_exists(third_id)
 
+        def test_banned_hints(self) -> None:
+            """
+            Hint components that would collide with the layout's reserved
+            directory names (and other filesystem-pathological values) are
+            dropped. Files are still written and retrievable.
+            """
+            tmp_path = Path(self._createTempDir())
+
+            file_num = 0
+
+            def get_a_file() -> Path:
+                nonlocal file_num
+                dir_path = tmp_path / str(file_num)
+                file_num += 1
+                os.mkdir(dir_path)
+                to_upload = dir_path / "file.txt"
+                open(to_upload, "w").write("Hello!\n")
+                return to_upload
+
+            for banned in ([""], ["."], [".."], ["files"], ["deleted"]):
+                file_id = self.jobstore_initialized.write_file(
+                    str(get_a_file()), hints=banned
+                )
+                assert self.jobstore_initialized.file_exists(file_id)
+                for component in banned:
+                    # The banned hint must not be in the ID as a path
+                    # component. For the empty-string case this is
+                    # trivially true. For "." and ".." it would confuse
+                    # filesystem semantics.
+                    assert f"/{component}/" not in file_id, (
+                        f"Banned hint {component!r} survived into {file_id}"
+                    )
+
+            # A mix of banned and allowed hints keeps only the allowed.
+            mixed_id = self.jobstore_initialized.write_file(
+                str(get_a_file()), hints=["files", "good", "deleted"]
+            )
+            assert "good" in mixed_id
+            assert "/files/good/" in mixed_id or mixed_id.endswith("/good") \
+                or "/good/" in mixed_id
+            assert self.jobstore_initialized.file_exists(mixed_id)
+
+        def test_hinted_numeric_components(self) -> None:
+            """
+            A hint list that is a prefix of another hint list whose
+            extension is purely numeric must not produce colliding file
+            IDs. (In an older design the two allocations could both land
+            at the same slot.)
+            """
+            tmp_path = Path(self._createTempDir())
+
+            file_num = 0
+
+            def get_a_file() -> Path:
+                nonlocal file_num
+                dir_path = tmp_path / str(file_num)
+                file_num += 1
+                os.mkdir(dir_path)
+                to_upload = dir_path / "file.txt"
+                open(to_upload, "w").write("Hello!\n")
+                return to_upload
+
+            id_shallow = self.jobstore_initialized.write_file(
+                str(get_a_file()), hints=["a"]
+            )
+            id_deep = self.jobstore_initialized.write_file(
+                str(get_a_file()), hints=["a", "0"]
+            )
+            assert id_shallow != id_deep
+            assert self.jobstore_initialized.file_exists(id_shallow)
+            assert self.jobstore_initialized.file_exists(id_deep)
+
         def testStatsAndLogging(self):
             """Tests behavior of reading and writing stats and logging."""
             jobstore1 = self.jobstore_initialized
@@ -1544,6 +1616,10 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     @pytest.mark.skip(reason="Google job store does not use file hints")
     def test_file_hints(self):
+        pass
+
+    @pytest.mark.skip(reason="Google job store does not use file hints")
+    def test_banned_hints(self):
         pass
 
     def _createJobStore(self):

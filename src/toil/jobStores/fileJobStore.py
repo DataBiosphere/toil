@@ -646,7 +646,20 @@ class FileJobStore(AbstractJobStore, URLAccess):
     def delete_file(self, file_id):
         if not self.file_exists(file_id):
             return
-        os.remove(self._get_file_path_from_id(file_id))
+        file_path = self._get_file_path_from_id(file_id)
+        if self._is_hinted_file_path(file_path):
+            # Tombstone before delete: a crash after the unlink but
+            # before the tombstone would free the slot for reuse.
+            tombstone = self._hinted_tombstone_path(file_path)
+            os.makedirs(os.path.dirname(tombstone), exist_ok=True)
+            try:
+                fd = os.open(
+                    tombstone, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666
+                )
+                os.close(fd)
+            except FileExistsError:
+                pass
+        os.remove(file_path)
 
     def file_exists(self, file_id):
         absPath = self._get_file_path_from_id(file_id)
@@ -1267,59 +1280,128 @@ class FileJobStore(AbstractJobStore, URLAccess):
 
         return self._walk_dynamic_spray_dir(self.stats_archive)
 
-    def _get_unique_file_path_with_hints(self, fileName, jobStoreID, cleanup, hints):
+    # Subdirectory names used within a hints tree to separate live files
+    # from tombstones left behind after deletion.  These names are banned
+    # as hints (see AbstractJobStore._BANNED_HINTS) so they can never
+    # collide with a user-provided hint component.
+    _HINT_FILES_DIR = "files"
+    _HINT_DELETED_DIR = "deleted"
+
+    def _hints_root_dir(
+        self, jobStoreID: str | None, cleanup: bool
+    ) -> str:
+        """Root directory under which a hints tree is rooted."""
+        if jobStoreID is not None:
+            self._check_job_store_id_assigned(jobStoreID)
+            if cleanup:
+                return self._get_job_files_cleanup_dir(jobStoreID)
+            return self._get_job_files_dir(jobStoreID)
+        return self.filesDir
+
+    def _hinted_tombstone_path(self, file_path: str) -> str:
+        """
+        Given the on-disk path of a hinted file, return the path of its
+        tombstone.  The file lives at ``<hints_dir>/files/<basename>`` or
+        ``<hints_dir>/files/<N>/<basename>``; the tombstone lives at the
+        corresponding ``<hints_dir>/deleted/<basename>`` or
+        ``<hints_dir>/deleted/<N>/<basename>``.
+        """
+        parent, basename = os.path.split(file_path)
+        parent_name = os.path.basename(parent)
+        if parent_name == self._HINT_FILES_DIR:
+            # Bare slot.
+            hints_dir = os.path.dirname(parent)
+            return os.path.join(hints_dir, self._HINT_DELETED_DIR, basename)
+        # Numbered slot: parent is the number, grandparent is files/.
+        grandparent = os.path.dirname(parent)
+        assert os.path.basename(grandparent) == self._HINT_FILES_DIR, (
+            f"Path {file_path} is not a hinted file path"
+        )
+        hints_dir = os.path.dirname(grandparent)
+        return os.path.join(
+            hints_dir, self._HINT_DELETED_DIR, parent_name, basename
+        )
+
+    def _is_hinted_file_path(self, file_path: str) -> bool:
+        """Return True if the path has the shape of a hinted-layout file."""
+        parent_name = os.path.basename(os.path.dirname(file_path))
+        if parent_name == self._HINT_FILES_DIR:
+            return True
+        try:
+            int(parent_name)
+        except ValueError:
+            return False
+        grandparent_name = os.path.basename(
+            os.path.dirname(os.path.dirname(file_path))
+        )
+        return grandparent_name == self._HINT_FILES_DIR
+
+    def _get_unique_file_path_with_hints(
+        self,
+        fileName: str,
+        jobStoreID: str | None,
+        cleanup: bool,
+        hints_string: str,
+    ) -> str:
         """
         Get a unique file path under a directory tree built from hints.
+
+        On successful return, an empty placeholder file has been created
+        at the returned path (via O_CREAT|O_EXCL) so the path is reserved.
+        Callers may overwrite the placeholder with actual content.
 
         :param fileName: A file name or path; only the basename is used.
         :param jobStoreID: If given, the file is stored under the job's file area.
         :param cleanup: If True and jobStoreID is set, the file is stored in
             the job's cleanup area.
-        :param hints: Already-sanitized list of hint strings to use as
-            directory components.
-        :return: Absolute path for the new file.
+        :param hints_string: Sanitized hints joined by ``/``; see
+            :meth:`~AbstractJobStore.hints_to_string`.
+        :return: Absolute path of the newly reserved file.
         """
         basename = os.path.basename(fileName)
+        root = self._hints_root_dir(jobStoreID, cleanup)
+        hints_dir = os.path.join(root, hints_string)
 
-        # Determine the root under which hint directories are placed.
-        if jobStoreID is not None:
-            self._check_job_store_id_assigned(jobStoreID)
-            if cleanup:
-                root = self._get_job_files_cleanup_dir(jobStoreID)
-            else:
-                root = self._get_job_files_dir(jobStoreID)
-        else:
-            root = self.filesDir
-
-        hints_dir = os.path.join(root, *hints)
-        os.makedirs(hints_dir, exist_ok=True)
-
-        # Each file gets its own numbered subdirectory (0/, 1/, ...).
-        # We use os.mkdir to claim a slot — it is atomic even on NFS, so
-        # concurrent writers on a shared filesystem won't collide.  After
-        # a file is deleted, the empty directory remains as a tombstone
-        # that prevents the slot number from being reallocated.
+        # Try the bare slot first, then numbered slots 0, 1, 2, ...
+        # Slot value None means "no number"; otherwise an integer.
+        slot: int | None = None
         while True:
-            try:
-                existing = os.listdir(hints_dir)
-            except FileNotFoundError:
-                existing = []
-            next_n = 0
-            for entry in existing:
-                try:
-                    n = int(entry)
-                except ValueError:
-                    continue
-                if n >= next_n:
-                    next_n = n + 1
+            if slot is None:
+                files_dir = os.path.join(hints_dir, self._HINT_FILES_DIR)
+                deleted_dir = os.path.join(hints_dir, self._HINT_DELETED_DIR)
+            else:
+                files_dir = os.path.join(
+                    hints_dir, self._HINT_FILES_DIR, str(slot)
+                )
+                deleted_dir = os.path.join(
+                    hints_dir, self._HINT_DELETED_DIR, str(slot)
+                )
+            target = os.path.join(files_dir, basename)
+            tombstone = os.path.join(deleted_dir, basename)
 
-            numbered_dir = os.path.join(hints_dir, str(next_n))
-            try:
-                os.mkdir(numbered_dir)
-                return os.path.join(numbered_dir, basename)
-            except FileExistsError:
-                # Another writer claimed this slot; retry.
+            if os.path.lexists(tombstone):
+                slot = 0 if slot is None else slot + 1
                 continue
+
+            os.makedirs(files_dir, exist_ok=True)
+            try:
+                fd = os.open(
+                    target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666
+                )
+                os.close(fd)
+            except FileExistsError:
+                slot = 0 if slot is None else slot + 1
+                continue
+
+            # Re-check: a concurrent create+delete of this slot between
+            # the first check and the create above would leave a
+            # tombstone we need to honor.
+            if os.path.lexists(tombstone):
+                os.unlink(target)
+                slot = 0 if slot is None else slot + 1
+                continue
+
+            return target
 
     def _get_unique_file_path(self, fileName, jobStoreID=None, cleanup=False, hints=None):
         """
@@ -1334,9 +1416,11 @@ class FileJobStore(AbstractJobStore, URLAccess):
         :return: The full path with a unique file name.
         """
 
-        sanitized = self._sanitize_hints(hints)
-        if sanitized:
-            return self._get_unique_file_path_with_hints(fileName, jobStoreID, cleanup, sanitized)
+        hints_string = self.hints_to_string(hints)
+        if hints_string:
+            return self._get_unique_file_path_with_hints(
+                fileName, jobStoreID, cleanup, hints_string
+            )
 
         # Give the file a unique directory that either will be cleaned up with a job or won't.
         directory = self._get_file_directory(jobStoreID, cleanup)

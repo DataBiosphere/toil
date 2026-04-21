@@ -177,17 +177,17 @@ class AbstractJobStore(ABC):
     To actually get ahold of a :class:`toil.job.Job`, use
     :meth:`toil.job.Job.loadJob` with a JobStore and the relevant JobDescription.
 
-    .. rubric:: File Hints
+    .. _file-hints:
+
+    File Hints
+    ----------
 
     File-writing methods accept an optional ``hints`` parameter: a list of
-    strings (e.g. workflow name, task name) that are incorporated into the
-    stored file's path or key so a human browsing the job store can locate
-    it.  Each hint becomes a path component after sanitization.  Two files
-    written with the same hints and basename are guaranteed distinct IDs;
-    disambiguation is handled by appending a numbered directory (``0/``,
-    ``1/``, ...).  Deleted slots are never reused (the empty directory or a
-    tombstone object prevents reallocation), which is required because Toil
-    may journal and replay file deletions.
+    strings, such as workflow and task names. The strings are sanitized and
+    used to hierarchically organize stored files in a human-readable way, so
+    a person browsing the job store can find files by the task that produced
+    them. Files written with the same hints and basename still get distinct
+    IDs.
     """
 
     def __init__(self, locator: str) -> None:
@@ -1097,41 +1097,59 @@ class AbstractJobStore(ABC):
 
     ##########################################
     # The following provide a way of creating/reading/writing/updating files
-    # associated with a given job.  See the "File Hints" section in the
-    # class docstring for the hints system.
+    # associated with a given job.
     ##########################################
 
-    # Strips everything except characters safe in filesystem paths, S3 keys,
-    # and urllib quote() output: ASCII letters, digits, underscore, dot, hyphen.
-    HINT_SAFE_RE = re.compile(r"[^a-zA-Z0-9_.-]")
-    # Maximum length of a single sanitized hint path component.
-    MAX_HINT_LENGTH = 40
-    # Maximum total length of the hints portion of the path (joined with /).
-    MAX_HINTS_PATH_LENGTH = 120
+    # Hints that are reserved for internal use by the file layout and must
+    # never appear as a sanitized hint component.
+    _BANNED_HINTS = frozenset({"", ".", "..", "files", "deleted"})
 
-    def _sanitize_hints(self, hints: list[str] | None) -> list[str]:
+    def _sanitize_hint(self, hint: str, safe: str = "_.-", max_length: int = 40) -> str:
         """
-        Produce path-safe components from user-supplied hint strings.
+        Sanitize a single hint string into a safe path component.
 
-        Each hint is stripped of unsafe characters and truncated to
-        :attr:`MAX_HINT_LENGTH`.  Hints are collected in order until
-        adding the next one (plus a ``/`` separator) would exceed
-        :attr:`MAX_HINTS_PATH_LENGTH`, then the rest are dropped.
+        ASCII alphanumerics are always kept. ``safe`` is a string of
+        additional characters to keep, like the ``safe`` argument to
+        :func:`urllib.parse.quote`. The result is truncated to
+        ``max_length``. Returns the empty string if the sanitized hint is
+        reserved by the file layout (see :attr:`_BANNED_HINTS`).
+        """
+        safe_set = set(safe)
+        cleaned = "".join(c for c in hint if c.isascii() and (c.isalnum() or c in safe_set))
+        cleaned = cleaned[:max_length]
+        if cleaned in self._BANNED_HINTS:
+            return ""
+        return cleaned
+
+    def hints_to_string(
+        self,
+        hints: list[str] | None,
+        separator: str = "/",
+        max_length: int = 120,
+        safe: str = "_.-",
+    ) -> str:
+        """
+        Turn user-supplied hints into a path-like string.
+
+        Each hint is sanitized via :meth:`_sanitize_hint`; empty results
+        are dropped. Surviving hints are joined with ``separator`` in
+        order, up to ``max_length`` characters total. Returns the empty
+        string if no hints survive.
         """
         if not hints:
-            return []
-        result: list[str] = []
+            return ""
+        parts: list[str] = []
         total = 0
         for hint in hints:
-            cleaned = self.HINT_SAFE_RE.sub("", hint)[: self.MAX_HINT_LENGTH]
+            cleaned = self._sanitize_hint(hint, safe=safe)
             if not cleaned:
                 continue
-            needed = len(cleaned) + (1 if result else 0)
-            if total + needed > self.MAX_HINTS_PATH_LENGTH:
+            needed = len(cleaned) + (len(separator) if parts else 0)
+            if total + needed > max_length:
                 break
             total += needed
-            result.append(cleaned)
-        return result
+            parts.append(cleaned)
+        return separator.join(parts)
 
     # Don't add any new arguments to this old version; make people use the new one!
     @deprecated(new_function_name="write_file")
@@ -1172,8 +1190,8 @@ class AbstractJobStore(ABC):
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
 
-        :param hints: Optional human-readable path hints; see the file
-               operations section comment on this class for details.
+        :param hints: Optional human-readable path hints; see
+               :ref:`file-hints` for details.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -1236,8 +1254,8 @@ class AbstractJobStore(ABC):
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
 
-        :param hints: Optional human-readable path hints; see the file
-               operations section comment on this class for details.
+        :param hints: Optional human-readable path hints; see
+               :ref:`file-hints` for details.
 
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
                 as for encode(). Defaults to None which represents binary mode.
@@ -1295,8 +1313,8 @@ class AbstractJobStore(ABC):
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
 
-        :param hints: Optional human-readable path hints; see the file
-               operations section comment on this class for details.
+        :param hints: Optional human-readable path hints; see
+               :ref:`file-hints` for details.
 
         :return: a jobStoreFileID that references the newly created file and can be used to reference the
                  file in the future.

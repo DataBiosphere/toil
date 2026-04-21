@@ -2233,14 +2233,12 @@ class CWLNamedJob(Job):
             # We need something. Put the class.
             name_parts.append(class_name)
 
-        # Keep the structured path for use as file hints.
-        self.task_path = name_parts
-
-        # String together the hierarchical name
-        unit_name = ".".join(name_parts)
+        # Dotted hierarchical name used both as the unit name and as
+        # file hints for writes to the job store.
+        self.task_path = ".".join(name_parts)
 
         # Display as that along with the class
-        display_name = f"{class_name} {unit_name}"
+        display_name = f"{class_name} {self.task_path}"
 
         # Set up the job with the right requirements and names.
         super().__init__(
@@ -2249,7 +2247,7 @@ class CWLNamedJob(Job):
             disk=disk,
             accelerators=accelerators,
             preemptible=preemptible,
-            unitName=unit_name,
+            unitName=self.task_path,
             displayName=display_name,
             local=local,
         )
@@ -2885,7 +2883,7 @@ class CWLJob(CWLNamedJob):
         fs_access = runtime_context.make_fs_access(runtime_context.basedir)
 
         # And a file importer that can go from a file:// URI to a Toil FileID
-        hints = self.task_path or None
+        hints = self.task_path.split(".") if self.task_path else None
         def file_import_function(url: str, log_level: int = logging.DEBUG) -> FileID:
             logger.log(log_level, "Loading %s...", url)
             return writeGlobalFileWrapper(file_store, url, hints=hints)
