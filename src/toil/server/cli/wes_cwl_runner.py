@@ -419,7 +419,9 @@ def submit_run(
 
 
 def poll_run(client: WESClientWithWorkflowEngineParameters, run_id: str) -> bool:
-    """Return True if the given workflow run is in a finished state."""
+    """
+    Return True if the given workflow run is COMPLETE or never will be.
+    """
     status_result = client.get_run_status(run_id)
     state = status_result.get("state")
 

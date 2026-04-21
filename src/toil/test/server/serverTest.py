@@ -24,6 +24,8 @@ from io import BytesIO
 from typing import TYPE_CHECKING, Optional
 from urllib.parse import urlparse
 
+import pytest
+
 try:
     from flask.testing import FlaskClient
     from werkzeug.test import TestResponse
@@ -43,41 +45,6 @@ from toil.test import (
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
-
-@needs_server
-class ToilServerUtilsTest(ToilTest):
-    """
-    Tests for the utility functions used by the Toil server.
-    """
-
-    def test_workflow_canceling_recovery(self):
-        """
-        Make sure that a workflow in CANCELING state will be recovered to a
-        terminal state eventually even if the workflow runner Celery task goes
-        away without flipping the state.
-        """
-
-        from toil.server.utils import (
-            MemoryStateStore,
-            WorkflowStateMachine,
-            WorkflowStateStore,
-        )
-
-        store = WorkflowStateStore(MemoryStateStore(), "test-workflow")
-
-        state_machine = WorkflowStateMachine(store)
-
-        # Cancel a workflow
-        state_machine.send_cancel()
-        # Make sure it worked.
-        self.assertEqual(state_machine.get_current_state(), "CANCELING")
-
-        # Back-date the time of cancelation to something really old
-        store.set("cancel_time", "2011-11-04 00:05:23.283")
-
-        # Make sure it is now CANCELED due to timeout
-        self.assertEqual(state_machine.get_current_state(), "CANCELED")
 
 
 class hidden:
@@ -777,6 +744,43 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             from toil.server.wes.tasks import WAIT_FOR_DEATH_TIMEOUT
 
             self.assertLess(cancel_seconds, WAIT_FOR_DEATH_TIMEOUT)
+
+    @pytest.mark.timeout(60)
+    def test_cancel_before_setup(self) -> None:
+        """
+        Run and cancel a workflow before the workflow has a chance to set up
+        its cancellation handlers.
+        """
+
+        with pytest.MonkeyPatch.context() as mp:
+            # Patch the server to wait when starting tasks
+            from toil.server.wes.tasks import MultiprocessingTaskRunner
+            mp.setattr(MultiprocessingTaskRunner, "setup_delay", 10)
+
+            with self.app.test_client() as client:
+                # Start a workflow
+                run = self._start_slow_workflow(client)
+                time.sleep(2)
+                status = self._poll_status(client, run)
+                self.assertIn(status, ["QUEUED", "INITIALIZING", "RUNNING"])
+
+                # Cancel it
+                cancel_sent = time.time()
+                self._cancel_workflow(client, run)
+                time.sleep(1)
+                status = self._poll_status(client, run)
+                self.assertIn(status, ["CANCELING", "CANCELED"])
+
+                self._wait_for_status(client, run, "CANCELED")
+                cancel_complete = time.time()
+
+                # Make sure the cancellation was relatively prompt and we didn't
+                # have to go through any of the timeout codepaths
+                cancel_seconds = cancel_complete - cancel_sent
+                logger.info("Cancellation took %s seconds to complete", cancel_seconds)
+                from toil.server.wes.tasks import WAIT_FOR_DEATH_TIMEOUT
+
+                self.assertLess(cancel_seconds, WAIT_FOR_DEATH_TIMEOUT)
 
 
 @needs_celery_broker
