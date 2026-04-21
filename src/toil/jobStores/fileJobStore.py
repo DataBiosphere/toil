@@ -648,17 +648,8 @@ class FileJobStore(AbstractJobStore, URLAccess):
             return
         file_path = self._get_file_path_from_id(file_id)
         if self._is_hinted_file_path(file_path):
-            # Tombstone before delete: a crash after the unlink but
-            # before the tombstone would free the slot for reuse.
-            tombstone = self._hinted_tombstone_path(file_path)
-            os.makedirs(os.path.dirname(tombstone), exist_ok=True)
-            try:
-                fd = os.open(
-                    tombstone, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666
-                )
-                os.close(fd)
-            except FileExistsError:
-                pass
+            # Tombstone before delete
+            self.tombstone(file_id)
         os.remove(file_path)
 
     def file_exists(self, file_id):
@@ -1280,13 +1271,6 @@ class FileJobStore(AbstractJobStore, URLAccess):
 
         return self._walk_dynamic_spray_dir(self.stats_archive)
 
-    # Subdirectory names used within a hints tree to separate live files
-    # from tombstones left behind after deletion.  These names are banned
-    # as hints (see AbstractJobStore._BANNED_HINTS) so they can never
-    # collide with a user-provided hint component.
-    _HINT_FILES_DIR = "files"
-    _HINT_DELETED_DIR = "deleted"
-
     def _hints_root_dir(
         self, jobStoreID: str | None, cleanup: bool
     ) -> str:
@@ -1298,29 +1282,51 @@ class FileJobStore(AbstractJobStore, URLAccess):
             return self._get_job_files_dir(jobStoreID)
         return self.filesDir
 
-    def _hinted_tombstone_path(self, file_path: str) -> str:
+    def _get_root_dir(self, file_id: str) -> str:
         """
-        Given the on-disk path of a hinted file, return the path of its
-        tombstone.  The file lives at ``<hints_dir>/files/<basename>`` or
-        ``<hints_dir>/files/<N>/<basename>``; the tombstone lives at the
-        corresponding ``<hints_dir>/deleted/<basename>`` or
-        ``<hints_dir>/deleted/<N>/<basename>``.
+        Given a hinted file ID, get the hint tree scope it belongs to.
         """
-        parent, basename = os.path.split(file_path)
-        parent_name = os.path.basename(parent)
-        if parent_name == self._HINT_FILES_DIR:
-            # Bare slot.
-            hints_dir = os.path.dirname(parent)
-            return os.path.join(hints_dir, self._HINT_DELETED_DIR, basename)
-        # Numbered slot: parent is the number, grandparent is files/.
-        grandparent = os.path.dirname(parent)
-        assert os.path.basename(grandparent) == self._HINT_FILES_DIR, (
-            f"Path {file_path} is not a hinted file path"
-        )
-        hints_dir = os.path.dirname(grandparent)
-        return os.path.join(
-            hints_dir, self._HINT_DELETED_DIR, parent_name, basename
-        )
+        #TODO: ????????????
+
+    def _hint_tree_put_if_absent(self, path: str, scope: str | None = None) -> bool:
+        """
+        Create a path in the hint tree if it did not exist.
+
+        Returns True if it was created and False if it existed already.
+        """
+        
+        assert scope is not None
+        final_path = os.path.join(scope, path)
+
+        dirname = os.path.dirname(final_path)
+        os.makedirs(dirname, exist_ok=True)
+        try:
+            fd = os.open(
+                final_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666
+            )
+            os.close(fd)
+        except FileExistsError:
+            return False
+        return True
+
+    def _hint_tree_exists(self, path: str, scope: str | None = None) -> bool:
+        """
+        Return True if the given path exists in the hint tree, and False otherwise.
+        """
+        assert scope is not None
+        final_path = os.path.join(scope, path)
+        return os.path.exists(final_path)
+
+    def _hint_tree_delete(self, path: str, scope: str | None = None) -> None:
+        """
+        Delete the given path from the hint tree, if present.
+        """
+        assert scope is not None
+        final_path = os.path.join(scope, path)
+        try:
+            os.unlink(final_path)
+        except FileNotFoundError:
+            pass
 
     def _is_hinted_file_path(self, file_path: str) -> bool:
         """Return True if the path has the shape of a hinted-layout file."""
@@ -1336,73 +1342,6 @@ class FileJobStore(AbstractJobStore, URLAccess):
         )
         return grandparent_name == self._HINT_FILES_DIR
 
-    def _get_unique_file_path_with_hints(
-        self,
-        fileName: str,
-        jobStoreID: str | None,
-        cleanup: bool,
-        hints_string: str,
-    ) -> str:
-        """
-        Get a unique file path under a directory tree built from hints.
-
-        On successful return, an empty placeholder file has been created
-        at the returned path (via O_CREAT|O_EXCL) so the path is reserved.
-        Callers may overwrite the placeholder with actual content.
-
-        :param fileName: A file name or path; only the basename is used.
-        :param jobStoreID: If given, the file is stored under the job's file area.
-        :param cleanup: If True and jobStoreID is set, the file is stored in
-            the job's cleanup area.
-        :param hints_string: Sanitized hints joined by ``/``; see
-            :meth:`~AbstractJobStore.hints_to_string`.
-        :return: Absolute path of the newly reserved file.
-        """
-        basename = os.path.basename(fileName)
-        root = self._hints_root_dir(jobStoreID, cleanup)
-        hints_dir = os.path.join(root, hints_string)
-
-        # Try the bare slot first, then numbered slots 0, 1, 2, ...
-        # Slot value None means "no number"; otherwise an integer.
-        slot: int | None = None
-        while True:
-            if slot is None:
-                files_dir = os.path.join(hints_dir, self._HINT_FILES_DIR)
-                deleted_dir = os.path.join(hints_dir, self._HINT_DELETED_DIR)
-            else:
-                files_dir = os.path.join(
-                    hints_dir, self._HINT_FILES_DIR, str(slot)
-                )
-                deleted_dir = os.path.join(
-                    hints_dir, self._HINT_DELETED_DIR, str(slot)
-                )
-            target = os.path.join(files_dir, basename)
-            tombstone = os.path.join(deleted_dir, basename)
-
-            if os.path.lexists(tombstone):
-                slot = 0 if slot is None else slot + 1
-                continue
-
-            os.makedirs(files_dir, exist_ok=True)
-            try:
-                fd = os.open(
-                    target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666
-                )
-                os.close(fd)
-            except FileExistsError:
-                slot = 0 if slot is None else slot + 1
-                continue
-
-            # Re-check: a concurrent create+delete of this slot between
-            # the first check and the create above would leave a
-            # tombstone we need to honor.
-            if os.path.lexists(tombstone):
-                os.unlink(target)
-                slot = 0 if slot is None else slot + 1
-                continue
-
-            return target
-
     def _get_unique_file_path(self, fileName, jobStoreID=None, cleanup=False, hints=None):
         """
         Create unique file name within a jobStore directory or tmp directory.
@@ -1416,15 +1355,17 @@ class FileJobStore(AbstractJobStore, URLAccess):
         :return: The full path with a unique file name.
         """
 
-        hints_string = self.hints_to_string(hints)
-        if hints_string:
-            return self._get_unique_file_path_with_hints(
-                fileName, jobStoreID, cleanup, hints_string
-            )
-
+        
         # Give the file a unique directory that either will be cleaned up with a job or won't.
         directory = self._get_file_directory(jobStoreID, cleanup)
-        # And then a path under it
+        
+        hints_string = self.hints_to_string(hints)
+        if hints_string:
+            # If we can use hints, pick a location based on hints under the directory.
+            return os.path.join(directory, self.claim_hinted_slot(hints_string, scope=directory))
+
+        # Otherwise, pick a path under the directory
+        # TODO: Prevent these from intersecting with hinted paths!!!
         uniquePath = os.path.join(directory, os.path.basename(fileName))
         # No need to check if it exists already; it is in a unique directory.
         return uniquePath

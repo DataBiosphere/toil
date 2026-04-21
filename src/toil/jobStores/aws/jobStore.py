@@ -48,6 +48,7 @@ from toil.fileStores import FileID
 from toil.job import JobDescription
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
+    HintedJobStore,
     JobStoreExistsException,
     NoSuchFileException,
     NoSuchJobException,
@@ -82,7 +83,7 @@ DEFAULT_AWS_PART_SIZE = 52428800
 logger = logging.getLogger(__name__)
 
 
-class AWSJobStore(AbstractJobStore, URLAccess):
+class AWSJobStore(AbstractJobStore, HintedJobStore, URLAccess):
     """
     The AWS jobstore can be thought of as an AWS s3 bucket, with functions to
     centralize, store, and track files for the workflow.
@@ -176,8 +177,11 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         # system could be used, because each file should belong to at most one
         # job. This should be changed to a hierarchical layout.
         self.job_associations_key_prefix = "job-associations/"
-        # input/output files named with uuid4 or hint paths
-        self.content_key_prefix = "files/"
+        # We store UUID-names files under here
+        self.flat_content_key_prefix = "files-flat/"
+        # We store hinted files under here instead so they're easier to find
+        # and not mixed in with the flat file pile.
+        self.hierarchical_content_key_prefix = "files/"
         # these are special files, like 'environment.pickle'; place them in root
         self.shared_key_prefix = ""
         # read and unread; named with uuid4
@@ -233,7 +237,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         Get the key in the bucket for the given identifier and prefix.
 
         We have this so higher-level code doesn't need to worry about the
-        pasting together of prefixes and identifiers, so it never ahs to be
+        pasting together of prefixes and identifiers, so it never has to be
         mixed with the identifier=/prefix= calling convention.
         """
         return f"{prefix}{identifier}"
@@ -304,7 +308,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
         :raises NoSuchJobException: if the prefix is the job prefix and the
             identifier is not found.
-        :raises NoSuchFileException: if the prefix is the content prefix and
+        :raises NoSuchFileException: if the prefix is a content prefix and
             the identifier is not found.
         :raises self.s3_client.exceptions.NoSuchKey: in other cases where the
             identifier is not found.
@@ -321,7 +325,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         except self.s3_client.exceptions.NoSuchKey:
             if prefix == self.job_key_prefix:
                 raise NoSuchJobException(identifier)
-            elif prefix == self.content_key_prefix:
+            elif prefix in (self.flat_content_key_prefix, self.hierarchical_content_key_prefix):
                 raise NoSuchFileException(identifier)
             else:
                 raise
@@ -329,7 +333,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 if prefix == self.job_key_prefix:
                     raise NoSuchJobException(identifier)
-                elif prefix == self.content_key_prefix:
+                elif prefix in (self.flat_content_key_prefix, self.hierarchical_content_key_prefix):
                     raise NoSuchFileException(identifier)
                 else:
                     raise
@@ -445,7 +449,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             self.s3_resource, bucket=self.bucket_name, prefix=root_key
         ):
             job_file_associations_to_delete.append(associated_job_file["Key"])
-            file_id = associated_job_file["Key"].split(".")[-1]
+            file_id = associated_job_file["Key"].split(".", 1)[-1]
             self.delete_file(file_id)
 
         # delete the job-file association references (these are empty files the simply connect jobs to files)
@@ -462,75 +466,47 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             data=None,
         )
 
-        ###################################### FILES API ######################################
-        #
-        # There are two file ID schemes:
-        #
-        # - UUID-based (no hints): file_id is a unique identifier string.
-        #   The S3 key is "files/<file_id>/<basename>". Resolving the key
-        #   from the file_id requires a list because the basename isn't in
-        #   the file_id.
-        #
-        # - Hinted: file_id is the S3 key suffix under the "files/" prefix.
-        #   Live files live at "files/<hints>/files/<basename>" (bare slot)
-        #   or "files/<hints>/files/<N>/<basename>" (numbered slot).
-        #   Tombstones for deleted files live at "files/<hints>/deleted/..."
-        #   with parallel structure. Hint components can never equal the
-        #   reserved names "files" or "deleted" (see AbstractJobStore.
-        #   _BANNED_HINTS), so there is no ambiguity between a hint
-        #   component and the files/deleted split.
+    ###################################### FILES API ######################################
+    
+
+    # There are two file ID schemes:
+    #
+    # UUID-based (no hints): file_id is a unique identifier string. The S3 key
+    # is "<file_id>/<basename>" under the flat content key prefix. Resolving
+    # the key from the file_id requires a list because the basename isn't in
+    # the file_id.
+    #
+    # Hinted: file_id is the S3 key suffix under the hierarchical content key
+    # prefix, where the hint tree lives. These include some path structure in
+    # the ID. We use HintedJobStore functionality to manage these.
 
     def _is_hinted_file_id(self, file_id: str) -> bool:
         """
         Return True if ``file_id`` uses the hinted scheme rather than the
-        UUID scheme. Hinted file IDs always contain ``/files/``; UUID file
-        IDs are bare UUIDs and contain no slashes.
+        UUID scheme.
         """
-        return "/files/" in file_id
 
-    def _hinted_file_key(self, file_id: str) -> str:
-        """S3 key for a hinted file with the given file_id."""
-        return self._key_in_bucket(
-            identifier=file_id, prefix=self.content_key_prefix
-        )
+        # The UUID file IDs never contain slash, but the hinted ones always do.
+        return "/" in file_id
 
-    def _hinted_tombstone_key(self, file_id: str) -> str:
+
+    def _hint_tree_put_if_absent(self, path: str, scope: str | None = None) -> bool:
         """
-        S3 key of the tombstone that corresponds to a hinted ``file_id``.
+        Create a path in the hint tree if it did not exist.
 
-        Swaps the ``/files/`` segment that separates hints from slot
-        contents with ``/deleted/``.
+        Returns True if it was created and False if it existed already.
         """
-        marker = f"/{self._HINT_FILES_DIR}/"
-        # The hint components never contain "files", so the first match
-        # here is the boundary we want.
-        idx = file_id.index(marker)
-        tombstone_id = (
-            file_id[:idx] + f"/{self._HINT_DELETED_DIR}/" + file_id[idx + len(marker):]
-        )
-        return self._key_in_bucket(
-            identifier=tombstone_id, prefix=self.content_key_prefix
-        )
 
-    def _tombstone_exists(self, tombstone_key: str) -> bool:
-        return s3_key_exists(
-            s3_resource=self.s3_resource,
-            bucket=self.bucket_name,
-            key=tombstone_key,
-        )
+        assert scope is None
 
-    def _put_if_absent(self, key: str, body: bytes = b"") -> bool:
-        """
-        Try to create an S3 object with ``IfNoneMatch: *``.
-
-        Returns True on success, False if the key already exists. Raises
-        on any other error.
-        """
         try:
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
-                Key=key,
-                Body=body,
+                Key=self._key_in_bucket(
+                    identifier=path,
+                    prefix=self.hierarchical_content_key_prefix,
+                ),
+                Body=b'',
                 IfNoneMatch="*",
                 **self._get_encryption_args(),
             )
@@ -540,89 +516,68 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                 return False
             raise
 
-    def _claim_hinted_slot(self, hints_path: str, basename: str) -> str:
+    def _hint_tree_exists(self, path: str, scope: str | None = None) -> bool:
         """
-        Claim the next available slot in a hints tree.
-
-        On successful return, an empty placeholder object exists at the
-        S3 key for the returned file_id. Callers may overwrite it with
-        actual content.
-
-        :param hints_path: Sanitized hints joined by ``/``; see
-            :meth:`~AbstractJobStore.hints_to_string`.
-        :param basename: The file basename.
-        :returns: The new file_id (equals the S3 key suffix under the
-            content key prefix).
+        Return True if the given path exists in the hint tree, and False otherwise.
         """
-        # Try the bare slot, then numbered slots 0, 1, 2, ...
-        slot: int | None = None
-        while True:
-            if slot is None:
-                slot_path = f"{hints_path}/{self._HINT_FILES_DIR}/{basename}"
-                tombstone_path = (
-                    f"{hints_path}/{self._HINT_DELETED_DIR}/{basename}"
-                )
-            else:
-                slot_path = (
-                    f"{hints_path}/{self._HINT_FILES_DIR}/{slot}/{basename}"
-                )
-                tombstone_path = (
-                    f"{hints_path}/{self._HINT_DELETED_DIR}/{slot}/{basename}"
-                )
-            file_key = self._key_in_bucket(
-                identifier=slot_path, prefix=self.content_key_prefix
-            )
-            tombstone_key = self._key_in_bucket(
-                identifier=tombstone_path, prefix=self.content_key_prefix
-            )
+        
+        assert scope is None
 
-            if self._tombstone_exists(tombstone_key):
-                slot = 0 if slot is None else slot + 1
-                continue
+        return s3_key_exists(
+            s3_resource=self.s3_resource,
+            bucket=self.bucket_name,
+            key=self._key_in_bucket(
+                identifier=path,
+                prefix=self.hierarchical_content_key_prefix,
+            ),
+        )
 
-            if not self._put_if_absent(file_key):
-                slot = 0 if slot is None else slot + 1
-                continue
+    def _hint_tree_delete(self, path: str, scope: str | None = None) -> None:
+        """
+        Delete the given path from the hint tree, if present.
+        """
+        
+        assert scope is None
 
-            # Re-check: a concurrent create+delete of this slot between
-            # the first check and the put above would leave a tombstone
-            # we need to honor.
-            if self._tombstone_exists(tombstone_key):
-                self.s3_client.delete_object(
-                    Bucket=self.bucket_name, Key=file_key
-                )
-                slot = 0 if slot is None else slot + 1
-                continue
-
-            return slot_path
+        self.s3_client.delete_object(
+            Bucket=self.bucket_name,
+            Key=self._key_in_bucket(
+                identifier=path,
+                prefix=self.hierarchical_content_key_prefix,
+            ),
+        )
 
     def _allocate_file_id(self, basename: str, hints: list[str] | None) -> str:
         """
         Choose a file_id for a new file.
 
         If *hints* are provided and any survive sanitization, claim a
-        numbered hinted slot and create an empty placeholder at its S3
-        key. Otherwise mint a fresh UUID and write nothing.
+        hinted slot and create an empty placeholder at its S3 key. Otherwise
+        mint a fresh UUID and write nothing.
 
         :returns: The new file_id. For hinted IDs, an empty object exists
             at the key. For UUID IDs, nothing has been written yet.
         """
-        hints_path = self.hints_to_string(hints)
-        if hints_path:
-            return self._claim_hinted_slot(hints_path, basename)
+        hints_str = self.hints_to_string(hints)
+        if hints_str:
+            return self.claim_hinted_slot(hints_str, basename)
         return str(uuid.uuid4())
 
     def _file_key_for(self, file_id: str, basename: str) -> str:
         """
         S3 key at which to write the content for a file with the given
-        file_id. Hinted file_ids are the key suffix directly; UUID file_ids
-        get the basename appended.
+        file_id.
         """
         if self._is_hinted_file_id(file_id):
-            return self._hinted_file_key(file_id)
+            # Hinted file_ids are the key suffix directly
+            return self._key_in_bucket(
+                identifier=file_id,
+                prefix=self.hierarchical_content_key_prefix,
+            )
+        # UUID file_ids get the basename appended and use the flat prefix
         return self._key_in_bucket(
             identifier=f"{file_id}/{basename}",
-            prefix=self.content_key_prefix,
+            prefix=self.flat_content_key_prefix,
         )
 
     def write_file(
@@ -672,9 +627,11 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         Raises :class:`NoSuchFileException` if no object lives at the key.
         """
         if self._is_hinted_file_id(file_id):
-            # The hinted file_id is the S3 key suffix directly; just check
-            # the object exists.
-            key = self._hinted_file_key(file_id)
+            # The hinted file_id is the S3 key suffix directly
+            key = self._key_in_bucket(
+                identifier=file_id,
+                prefix=self.hierarchical_content_key_prefix,
+            )
             if not s3_key_exists(
                 s3_resource=self.s3_resource,
                 bucket=self.bucket_name,
@@ -686,7 +643,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         # UUID case: the basename isn't in the file_id, so list children.
         # Trailing / prevents e.g. file_id "abc" matching "abcd/...".
         prefix = self._key_in_bucket(
-            identifier=file_id, prefix=self.content_key_prefix
+            identifier=file_id, prefix=self.flat_content_key_prefix
         ) + "/"
         s3_keys = list(
             list_s3_items(
@@ -914,11 +871,8 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             return
 
         if self._is_hinted_file_id(file_id):
-            # Tombstone before delete: a crash after the unlink but
-            # before the tombstone would free the slot for reuse. Use
-            # IfNoneMatch so concurrent deletes don't step on each other.
-            tombstone_key = self._hinted_tombstone_key(file_id)
-            self._put_if_absent(tombstone_key)
+            # Tombstone before delete 
+            self.tombstone(file_id)
 
         self.s3_client.delete_object(Bucket=self.bucket_name, Key=full_s3_key)
 
@@ -952,11 +906,10 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                     identifier=shared_file_name, prefix=self.shared_key_prefix
                 )
             else:
-                # cannot determine exec bit from foreign s3 so default to False
                 dst_key = "/".join(
                     [
                         self._key_in_bucket(
-                            identifier=file_id, prefix=self.content_key_prefix
+                            identifier=file_id, prefix=self.flat_content_key_prefix
                         ),
                         src_key_name.split("/")[-1],
                     ]
@@ -1068,10 +1021,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             return create_public_url(
                 self.s3_resource,
                 bucket=self.bucket_name,
-                key=self._key_in_bucket(
-                    identifier=file_id,
-                    prefix=self.content_key_prefix,
-                ),
+                key=self.find_s3_key_from_file_id(file_id),
             )
         except self.s3_client.exceptions.NoSuchKey:
             raise NoSuchFileException(file_id)

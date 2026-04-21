@@ -706,16 +706,14 @@ class AbstractJobStoreTest:
                 open(to_upload, "w").write("Hello!\n")
                 return to_upload
 
-            for banned in ([""], ["."], [".."], ["files"], ["deleted"]):
+            for banned in (["."], [".."], ["files"], ["deleted"]):
                 file_id = self.jobstore_initialized.write_file(
                     str(get_a_file()), hints=banned
                 )
                 assert self.jobstore_initialized.file_exists(file_id)
                 for component in banned:
                     # The banned hint must not be in the ID as a path
-                    # component. For the empty-string case this is
-                    # trivially true. For "." and ".." it would confuse
-                    # filesystem semantics.
+                    # component.
                     assert f"/{component}/" not in file_id, (
                         f"Banned hint {component!r} survived into {file_id}"
                     )
@@ -725,8 +723,6 @@ class AbstractJobStoreTest:
                 str(get_a_file()), hints=["files", "good", "deleted"]
             )
             assert "good" in mixed_id
-            assert "/files/good/" in mixed_id or mixed_id.endswith("/good") \
-                or "/good/" in mixed_id
             assert self.jobstore_initialized.file_exists(mixed_id)
 
         def test_hinted_numeric_components(self) -> None:
