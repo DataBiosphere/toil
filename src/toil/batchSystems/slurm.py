@@ -883,6 +883,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             is_export_file_option = option_detector("export-file")
             is_time_option = option_detector("time", "t")
             is_partition_option = option_detector("partition", "p")
+            is_qos_option = option_detector("qos")
 
             # We will fill these in with stuff parsed from TOIL_SLURM_ARGS, or
             # with our own determinations if they aren't there.
@@ -892,6 +893,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             export_list = []  # Some items here may be multiple comma-separated values
             time_limit: int | None = self.boss.config.slurm_time  # type: ignore[attr-defined]
             partition: str | None = None
+            qos: str | None = None
 
             if nativeConfig is not None:
                 logger.debug(
@@ -950,6 +952,17 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                             partition = args[i]
                         else:
                             partition = arg.split("=", 1)[1]
+                    elif is_qos_option(arg):
+                        # Capture the QOS so we can avoid assigning one on top of it
+                        if "=" not in arg:
+                            if i + 1 >= len(args):
+                                raise ValueError(
+                                    f"No value supplied for Slurm {arg} argument"
+                                )
+                            i += 1
+                            qos = args[i]
+                        else:
+                            qos = arg.split("=", 1)[1]
                     else:
                         # Other arguments pass through.
                         sbatch_line.append(arg)
@@ -1013,12 +1026,23 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 # Pick a partition based on time limit
                 partition = self.boss.partitions.get_partition(time_limit)
 
+            if qos is None:
+                # Apply a configured QOS if one wasn't already supplied.
+                gpu_qos_override: str | None = self.boss.config.slurm_gpu_qos  # type: ignore[attr-defined]
+                qos_override: str | None = self.boss.config.slurm_qos  # type: ignore[attr-defined]
+                if gpus and gpu_qos_override:
+                    qos = gpu_qos_override
+                elif qos_override:
+                    qos = qos_override
+
             # Now generate all the arguments
             if len(export_list) > 0:
                 # add --export to the sbatch
                 sbatch_line.append("--export=" + ",".join(export_list))
             if partition is not None:
                 sbatch_line.append(f"--partition={partition}")
+            if qos is not None:
+                sbatch_line.append(f"--qos={qos}")
             if gpus:
                 # Generate GPU assignment argument
                 sbatch_line.append(f"--gres=gpu:{gpus}")
@@ -1179,11 +1203,25 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             help="Partition to send Slurm jobs to.",
         )
         parser.add_argument(
+            "--slurmQOS",
+            dest="slurm_qos",
+            default=None,
+            env_var="TOIL_SLURM_QOS",
+            help="QOS to send Slurm jobs to.",
+        )
+        parser.add_argument(
             "--slurmGPUPartition",
             dest="slurm_gpu_partition",
             default=None,
             env_var="TOIL_SLURM_GPU_PARTITION",
             help="Partition to send Slurm jobs to if they ask for GPUs.",
+        )
+        parser.add_argument(
+            "--slurmGPUQOS",
+            dest="slurm_gpu_qos",
+            default=None,
+            env_var="TOIL_SLURM_GPU_QOS",
+            help="QOS to send Slurm jobs to if they ask for GPUs.",
         )
         parser.add_argument(
             "--slurmPE",
@@ -1208,6 +1246,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         setOption("slurm_default_all_mem")
         setOption("slurm_time")
         setOption("slurm_partition")
+        setOption("slurm_qos")
         setOption("slurm_gpu_partition")
+        setOption("slurm_gpu_qos")
         setOption("slurm_pe")
         setOption("slurm_args")
