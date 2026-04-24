@@ -804,7 +804,7 @@ class Requirer:
                 if k == "walltime":
                     if v == 0:
                         continue
-                    v = seconds_to_dhms(v)
+                    v = seconds_to_dhms(cast(int, v))
                 elif isinstance(v, (int, float)) and v > 1000:
                     # Make large numbers readable
                     v = bytes2human(v)

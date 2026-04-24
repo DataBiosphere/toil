@@ -2579,8 +2579,8 @@ class CWLJob(CWLNamedJob):
         # Check if the tool has set a time limit. If yes, use it. Otherwise,
         # use a None requirement to use the Toil default.
         tool_max_walltime = tool.get_requirement("ToolTimeLimit")[0] or {}
-        if "timelimit" in tool_max_walltime:
-            walltime = int(tool_max_walltime["timelimit"])
+        if (limit_val := tool_max_walltime["timelimit"]) is not None:
+            walltime = cast(int, self.builder.do_eval(limit_val))
         else:
             walltime = None
 
