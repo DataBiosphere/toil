@@ -1888,6 +1888,22 @@ def test_workflow_echo_string_scatter_capture_stdout(tmp_path: Path) -> None:
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
+def test_timelimit_expression(tmp_path: Path) -> None:
+    with get_data("test/cwl/timelimit.cwl") as cwl_file:
+        cmd = [
+            "toil-cwl-runner",
+            f"--jobStore=file:{tmp_path / 'jobStore'}",
+            str(cwl_file),
+        ]
+        p = subprocess.run(cmd, capture_output=True, text=True)
+        assert len(p.stdout) > 0
+        assert "Finished toil run successfully" in p.stderr
+        assert p.returncode == 0
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
 def test_visit_top_cwl_class() -> None:
     structure = {
         "class": "Directory",

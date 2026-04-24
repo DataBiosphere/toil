@@ -204,6 +204,7 @@ class Config:
     deadlockCheckInterval: float | int
 
     # Resource requirements
+    defaultWalltime: int
     defaultMemory: int
     defaultCores: float | int
     defaultDisk: int
@@ -389,6 +390,7 @@ class Config:
             set_option("deadlockCheckInterval")
 
         set_option("defaultMemory")
+        set_option("defaultWalltime")
         set_option("defaultCores")
         set_option("defaultDisk")
         set_option("defaultAccelerators")

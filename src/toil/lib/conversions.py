@@ -3,6 +3,7 @@ Conversion utilities for mapping memory, disk, core declarations from strings to
 Also contains general conversion functions
 """
 
+import datetime
 import math
 import urllib.parse
 from typing import SupportsInt
@@ -177,6 +178,19 @@ def hms_duration_to_seconds(hms: str) -> float:
     seconds += float(vals_to_convert[2])
 
     return seconds
+
+
+def seconds_to_dhms(seconds: int) -> str:
+    """
+    Convert seconds to a days-hours:minutes:seconds string.
+    """
+    if seconds < 0:
+        raise ValueError("Invalid Time, negative value")
+
+    walltime = datetime.timedelta(seconds=seconds)
+    days = walltime.days
+    remainder = str(walltime).split(",")[int(days > 0)].strip()
+    return f"{days}-{remainder}"
 
 
 def strtobool(val: str) -> bool:
