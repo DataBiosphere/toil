@@ -364,6 +364,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self,
             cpu: int,
             memory: int,
+            walltime: int,
             jobID: int,
             command: str,
             jobName: str,
