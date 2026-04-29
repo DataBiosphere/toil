@@ -1292,12 +1292,9 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
                 final_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666
             )
             os.close(fd)
-            logger.debug("Successfully put hint tree path %s", path)
         except FileExistsError:
-            logger.debug("Could not put existing hint tree path %s", path)
             return False
         except IsADirectoryError:
-            logger.debug("Could not put directory hint tree path %s", path)
             return False
         return True
 
@@ -1317,9 +1314,7 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
         final_path = os.path.join(self.hintedDir, path)
         try:
             os.unlink(final_path)
-            logger.debug("Deleted hint tree path %s", path)
         except FileNotFoundError:
-            logger.debug("Could not delete absent hint tree path %s", path)
             pass
 
     def _get_hinted_slot(self, file_path: str) -> str | None:
@@ -1330,7 +1325,6 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
             result = file_path[len(self.hintedDir) + 1:]
         else:
             result = None
-        logger.debug("File %s hinted slot: %s", file_path, result)
         return result
 
     def _get_unique_file_path(self, fileName, jobStoreID=None, cleanup=False, hints=None):
