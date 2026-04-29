@@ -1842,6 +1842,8 @@ class HintedJobStore:
             slot_path[:idx] + f"/{self._HINT_DELETED_DIR}/" + slot_path[idx + len(marker):]
         )
 
+        logger.debug("Leaving tombstone %s for path %s", tombstone_path, slot_path)
+
         # Leave the tombstone
         self._hint_tree_put_if_absent(tombstone_path)
 

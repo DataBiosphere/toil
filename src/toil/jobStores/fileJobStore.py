@@ -651,9 +651,10 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
         if not self.file_exists(file_id):
             return
         file_path = self._get_file_path_from_id(file_id)
-        if self._is_hinted_file_path(file_path):
+        slot = self._get_hinted_slot(file_path)
+        if slot is not None:
             # Tombstone before delete
-            self.tombstone(file_id)
+            self.tombstone(slot)
         os.remove(file_path)
 
     def file_exists(self, file_id):
@@ -1282,7 +1283,6 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
 
         Returns True if it was created and False if it existed already.
         """
-        
         final_path = os.path.join(self.hintedDir, path)
 
         dirname = os.path.dirname(final_path)
@@ -1292,9 +1292,12 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
                 final_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666
             )
             os.close(fd)
+            logger.debug("Successfully put hint tree path %s", path)
         except FileExistsError:
+            logger.debug("Could not put existing hint tree path %s", path)
             return False
         except IsADirectoryError:
+            logger.debug("Could not put directory hint tree path %s", path)
             return False
         return True
 
@@ -1303,7 +1306,9 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
         Return True if the given path exists in the hint tree, and False otherwise.
         """
         final_path = os.path.join(self.hintedDir, path)
-        return os.path.exists(final_path)
+        result = os.path.exists(final_path)
+        logger.debug("Check hint tree path %s exists: %s", path, result)
+        return result
 
     def _hint_tree_delete(self, path: str) -> None:
         """
@@ -1312,15 +1317,21 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
         final_path = os.path.join(self.hintedDir, path)
         try:
             os.unlink(final_path)
+            logger.debug("Deleted hint tree path %s", path)
         except FileNotFoundError:
+            logger.debug("Could not delete absent hint tree path %s", path)
             pass
 
-    def _is_hinted_file_path(self, file_path: str) -> bool:
-        """Return True if the path has the shape of a hinted-layout file."""
-
-        abs_path = self._get_file_path_from_id(file_id)
-
-        return abs_path.startswith(self.hintedDir + "/")
+    def _get_hinted_slot(self, file_path: str) -> str | None:
+        """
+        Return the hinted slot a file is in, or None if not a hinted file. 
+        """
+        if file_path.startswith(self.hintedDir + "/"):
+            result = file_path[len(self.hintedDir) + 1:]
+        else:
+            result = None
+        logger.debug("File %s hinted slot: %s", file_path, result)
+        return result
 
     def _get_unique_file_path(self, fileName, jobStoreID=None, cleanup=False, hints=None):
         """

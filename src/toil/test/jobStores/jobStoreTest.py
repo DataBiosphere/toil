@@ -28,7 +28,7 @@ from pathlib import Path
 from queue import Queue
 from tempfile import mkstemp
 from threading import Thread
-from typing import Any
+from typing import Any, Callable
 from urllib.request import Request, urlopen
 
 import pytest
@@ -38,7 +38,11 @@ import edit_distance
 from toil.common import Config
 from toil.fileStores import FileID
 from toil.job import JobDescription, TemporaryID
-from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobException
+from toil.jobStores.abstractJobStore import (
+    HintedJobStore,
+    NoSuchFileException,
+    NoSuchJobException,
+)
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
@@ -551,26 +555,35 @@ class AbstractJobStoreTest:
                     self.fail("Expecting NoSuchFileException")
                 except NoSuchFileException:
                     pass
-        
-        def test_file_hints(self) -> None:
-            """Check that, when using hints, a person would be able to find the file."""
-           
-            # TODO: Convert to a fixture_using test and make this a fixture
-            tmp_path = Path(self._createTempDir())
 
+        # TODO: Typing the return value properly would need multiple lines of Protocol.
+        def _file_maker(self, tmp_path: Path) -> Callable[[Any], Path]:
+            """
+            Get a function that mints fresh files that can be uploaded to a job store.
+            """
+            
             file_num = 0
 
-            def get_a_file() -> Path:
+            def get_a_file(basename: str = "file.txt") -> Path:
                 """
-                Get a fresh file not yet uploaded.
+                Get a path to a fresh file that can be uploaded to a job store.
                 """
                 nonlocal file_num
                 dir_path = tmp_path / str(file_num)
                 file_num += 1
                 os.mkdir(dir_path)
-                to_upload = dir_path / "file.txt"
+                to_upload = dir_path / basename
                 open(to_upload, "w").write("Hello!\n")
                 return to_upload
+            
+            return get_a_file
+
+        def test_file_hints(self) -> None:
+            """Check that, when using hints, a person would be able to find the file."""
+
+            # TODO: Convert to a fixture_using test and make this a fixture
+            tmp_path = Path(self._createTempDir())
+            get_a_file = self._file_maker(tmp_path)
 
             job = self.arbitraryJob()
             self.jobstore_initialized.assign_job_id(job)
@@ -587,7 +600,7 @@ class AbstractJobStoreTest:
             assert "wombats" in one_hint_id
             # TODO: How do we make sure that the only things near the front of the
             # path are static meaningful things and hints?
-                                                               
+
 
             many_hint_id = self.jobstore_initialized.write_file(str(get_a_file()), hints=["lions", "tigers", "bears"])
             assert many_hint_id not in seen
@@ -651,17 +664,7 @@ class AbstractJobStoreTest:
             destroy the wrong file.
             """
             tmp_path = Path(self._createTempDir())
-
-            file_num = 0
-
-            def get_a_file() -> Path:
-                nonlocal file_num
-                dir_path = tmp_path / str(file_num)
-                file_num += 1
-                os.mkdir(dir_path)
-                to_upload = dir_path / "file.txt"
-                open(to_upload, "w").write("Hello!\n")
-                return to_upload
+            get_a_file = self._file_maker(tmp_path)
 
             hints = ["alpha", "beta"]
 
@@ -696,23 +699,17 @@ class AbstractJobStoreTest:
         def test_banned_hints(self) -> None:
             """
             Hint components that would collide with the layout's reserved
-            directory names (and other filesystem-pathological values) are
-            dropped. Files are still written and retrievable.
+            directory names or are otherwise not allowable are dropped.
             """
             tmp_path = Path(self._createTempDir())
+            get_a_file = self._file_maker(tmp_path)
 
-            file_num = 0
-
-            def get_a_file() -> Path:
-                nonlocal file_num
-                dir_path = tmp_path / str(file_num)
-                file_num += 1
-                os.mkdir(dir_path)
-                to_upload = dir_path / "file.txt"
-                open(to_upload, "w").write("Hello!\n")
-                return to_upload
-
-            for banned in (["."], [".."], ["files"], ["deleted"]):
+            for banned in (
+                ["."],
+                [".."],
+                [HintedJobStore._HINT_FILES_DIR],
+                [HintedJobStore._HINT_DELETED_DIR]
+            ):
                 file_id = self.jobstore_initialized.write_file(
                     str(get_a_file()), hints=banned
                 )
@@ -733,33 +730,56 @@ class AbstractJobStoreTest:
 
         def test_hinted_numeric_components(self) -> None:
             """
-            A hint list that is a prefix of another hint list whose
-            extension is purely numeric must not produce colliding file
-            IDs. (In an older design the two allocations could both land
-            at the same slot.)
+            Adding a hint that's the same as the disambiguating numbers needs
+            to not produce collisions we can't handle.
             """
             tmp_path = Path(self._createTempDir())
+            get_a_file = self._file_maker(tmp_path)
 
-            file_num = 0
+            seen = set()
 
-            def get_a_file() -> Path:
-                nonlocal file_num
-                dir_path = tmp_path / str(file_num)
-                file_num += 1
-                os.mkdir(dir_path)
-                to_upload = dir_path / "file.txt"
-                open(to_upload, "w").write("Hello!\n")
-                return to_upload
+            for hints in (
+                ["a"],
+                # We don't start adding the numbers until the first collision
+                ["a"],
+                ["a", "0"],
+            ):
+                file_id = self.jobstore_initialized.write_file(
+                    str(get_a_file()), hints=hints
+                )
+                assert file_id not in seen
+                seen.add(file_id)
 
-            id_shallow = self.jobstore_initialized.write_file(
-                str(get_a_file()), hints=["a"]
-            )
-            id_deep = self.jobstore_initialized.write_file(
-                str(get_a_file()), hints=["a", "0"]
-            )
-            assert id_shallow != id_deep
-            assert self.jobstore_initialized.file_exists(id_shallow)
-            assert self.jobstore_initialized.file_exists(id_deep)
+            for file_id in seen:
+                assert self.jobstore_initialized.file_exists(file_id)
+
+        def test_hinted_numeric_basename(self) -> None:
+            """
+            A hint list that is a prefix of another hint list whose
+            extension is purely numeric must not produce colliding file
+            IDs.
+            """
+            tmp_path = Path(self._createTempDir())
+            get_a_file = self._file_maker(tmp_path)
+
+            seen = set()
+
+            for hints, basename in (
+                (["a"], "foo.txt"),
+                (["a"], "foo.txt"),
+                (["a"], "0"),
+                (["a"], "0"),
+                (["a", "0"], "0"),
+                (["a", "0"], "0"),
+            ):
+                file_id = self.jobstore_initialized.write_file(
+                    str(get_a_file()), hints=hints
+                )
+                assert file_id not in seen
+                seen.add(file_id)
+
+            for file_id in seen:
+                assert self.jobstore_initialized.file_exists(file_id)
 
         def testStatsAndLogging(self):
             """Tests behavior of reading and writing stats and logging."""
