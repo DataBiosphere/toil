@@ -1286,13 +1286,15 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
         final_path = os.path.join(self.hintedDir, path)
 
         dirname = os.path.dirname(final_path)
-        os.makedirs(dirname, exist_ok=True)
         try:
+            os.makedirs(dirname, exist_ok=True)
             fd = os.open(
                 final_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666
             )
             os.close(fd)
         except FileExistsError:
+            return False
+        except IsADirectoryError:
             return False
         return True
 
