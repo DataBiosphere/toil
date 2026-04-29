@@ -839,7 +839,9 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
 
         Used for debugging.
 
-        :param for_job: If set, restrict the list to files for a particular job.
+        :param for_job: If set, restrict the list to files associated with a
+            particular job. Note that hinted files won't turn up here because
+            we can't organize files at the top level by both job *and* hint.
         """
 
         # TODO: Promote to AbstractJobStore.
@@ -867,6 +869,12 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
             for file_dir_path in self._list_dynamic_spray_dir(self.filesDir):
                 # Run on all the no-job files
                 yield from os.listdir(file_dir_path)
+
+            for (dirpath, dirnames, filenames) in os.walk(self.hinted_files_dir, topdown=True):
+                if HintedJobStore._HINT_DELETED_DIR in dirnames:
+                    # Stay out of the tombstone directories
+                    dirnames.remove(HintedJobStore._HINT_DELETED_DIR)
+                yield from filenames
 
         for job_store_id in jobs:
             # Files from _get_job_files_dir
