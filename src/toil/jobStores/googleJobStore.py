@@ -141,6 +141,9 @@ def permission_error_reporter(url: ParseResult, notes: str) -> Iterator[None]:
 
 
 class GoogleJobStore(AbstractJobStore, URLAccess):
+    """
+    Job store implementation backed by Google Cloud Storage.
+    """
 
     nodeServiceAccountJson = "/root/service_account.json"
 
