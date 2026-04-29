@@ -490,15 +490,12 @@ class AWSJobStore(AbstractJobStore, HintedJobStore, URLAccess):
         return "/" in file_id
 
 
-    def _hint_tree_put_if_absent(self, path: str, scope: str | None = None) -> bool:
+    def _hint_tree_put_if_absent(self, path: str) -> bool:
         """
         Create a path in the hint tree if it did not exist.
 
         Returns True if it was created and False if it existed already.
         """
-
-        assert scope is None
-
         try:
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
@@ -516,13 +513,11 @@ class AWSJobStore(AbstractJobStore, HintedJobStore, URLAccess):
                 return False
             raise
 
-    def _hint_tree_exists(self, path: str, scope: str | None = None) -> bool:
+    def _hint_tree_exists(self, path: str) -> bool:
         """
         Return True if the given path exists in the hint tree, and False otherwise.
         """
         
-        assert scope is None
-
         return s3_key_exists(
             s3_resource=self.s3_resource,
             bucket=self.bucket_name,
@@ -532,13 +527,11 @@ class AWSJobStore(AbstractJobStore, HintedJobStore, URLAccess):
             ),
         )
 
-    def _hint_tree_delete(self, path: str, scope: str | None = None) -> None:
+    def _hint_tree_delete(self, path: str) -> None:
         """
         Delete the given path from the hint tree, if present.
         """
         
-        assert scope is None
-
         self.s3_client.delete_object(
             Bucket=self.bucket_name,
             Key=self._key_in_bucket(

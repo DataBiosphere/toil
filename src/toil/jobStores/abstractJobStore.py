@@ -1704,10 +1704,9 @@ class HintedJobStore:
     """
     A job store mixin that helps store files with hints at paths based on the hints.
 
-    The inheriting class needs to provide one or more "hint trees": places
-    where objects can be created, polled, and deleted at slash-delimited paths.
-    If there are multiple hint trees (such as for files scoped to different
-    jobs), each is identified by a "scope".
+    The inheriting class needs to provide a "hint trees": a place where objects
+    can be created, polled, and deleted at slash-delimited paths. This is
+    probably something like a directory or a key prefix.
 
     This class will give you slash-delimeted places in there to use for hinted
     files, which can be used as part of file IDs.
@@ -1777,7 +1776,7 @@ class HintedJobStore:
             parts.append(cleaned)
         return separator.join(parts)
 
-    def claim_hinted_slot(self, hints_str: str, basename: str, scope: str | None = None) -> str:
+    def claim_hinted_slot(self, hints_str: str, basename: str) -> str:
         """
         Claim the next available slot in a hints tree.
 
@@ -1789,7 +1788,6 @@ class HintedJobStore:
 
         :param hints_str: Result of :meth:`hints_to_string`. Must be nonempty.
         :param basename: The file basename.
-        :param scope: Hint tree scope to use.
         :returns: The location in the hint tree that was assigned.
         """
         if len(hints_str) == 0:
@@ -1811,32 +1809,30 @@ class HintedJobStore:
                     f"{hints_str}/{self._HINT_DELETED_DIR}/{slot}/{basename}"
                 )
 
-            if self._hint_tree_exists(tombstone_path, scope=scope):
+            if self._hint_tree_exists(tombstone_path):
                 slot = 0 if slot is None else slot + 1
                 continue
 
-            if not self._hint_tree_put_if_absent(slot_path, scope=scope):
+            if not self._hint_tree_put_if_absent(slot_path):
                 slot = 0 if slot is None else slot + 1
                 continue
 
             # Re-check: a concurrent create+delete of this slot between
             # the first check and the put above would leave a tombstone
             # we need to honor.
-            if self._hint_tree_exists(tombstone_path, scope=scope):
-                self._hint_tree_delete(slot_path, scope=scope)
+            if self._hint_tree_exists(tombstone_path):
+                self._hint_tree_delete(slot_path)
                 slot = 0 if slot is None else slot + 1
                 continue
 
             return slot_path
 
-    def tombstone(self, slot_path: str, scope: str | None = None) -> None:
+    def tombstone(self, slot_path: str) -> None:
         """
         Create a tombstone for the slot occupied by the given slot path.
 
         Ensures that the slot will never be re-used even if the object at the
         slot path vanishes from the hint tree.
-
-        :param scope: Hint tree scope to use.
         """
         marker = f"/{self._HINT_FILES_DIR}/"
         # The hint components never contain "files", so the first match
@@ -1847,11 +1843,11 @@ class HintedJobStore:
         )
 
         # Leave the tombstone
-        self._hint_tree_put_if_absent(tombstone_path, scope=scope)
+        self._hint_tree_put_if_absent(tombstone_path)
 
     # These need to be implemented by the actual JobStore implementation.
 
-    def _hint_tree_put_if_absent(self, path: str, scope: str | None = None) -> bool:
+    def _hint_tree_put_if_absent(self, path: str) -> bool:
         """
         Create a path in the hint tree if it did not exist.
 
@@ -1859,13 +1855,13 @@ class HintedJobStore:
         """
         raise NotImplementedError()
 
-    def _hint_tree_exists(self, path: str, scope: str | None = None) -> bool:
+    def _hint_tree_exists(self, path: str) -> bool:
         """
         Return True if the given path exists in the hint tree, and False otherwise.
         """
         raise NotImplementedError()
 
-    def _hint_tree_delete(self, path: str, scope: str | None = None) -> None:
+    def _hint_tree_delete(self, path: str) -> None:
         """
         Delete the given path from the hint tree, if present.
         """
