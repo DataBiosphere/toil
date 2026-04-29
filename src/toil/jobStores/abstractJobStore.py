@@ -176,24 +176,6 @@ class AbstractJobStore(ABC):
 
     To actually get ahold of a :class:`toil.job.Job`, use
     :meth:`toil.job.Job.loadJob` with a JobStore and the relevant JobDescription.
-
-    .. _file-hints:
-
-    File Hints
-    ----------
-
-    File-writing methods accept an optional ``hints`` parameter: a list of
-    strings, such as workflow and task names. Job stores implementing the hints
-    feature use them to hierarchically organize stored files in a
-    human-readable way, so a person browsing the job store can find files by
-    the task that produced them. Files written with the same hints and basename
-    still get distinct IDs.
-
-    UUIDs not created by the caller must never be used as hints.
-
-    Job store implementations can use
-    :class:`toil.jobStores.abstractJobStore.HintedJobStore` to implement using
-    hints in a consistent way.
     """
 
     def __init__(self, locator: str) -> None:
@@ -1146,7 +1128,7 @@ class AbstractJobStore(ABC):
                jobStore.delete(job). If jobStoreID was not given, does nothing.
 
         :param hints: Optional human-readable path hints; see
-               :ref:`file-hints` for details.
+               :class:`toil.jobStores.abstractJobStore.HintedJobStore` for details.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -1210,7 +1192,7 @@ class AbstractJobStore(ABC):
                matching that basename, the file will be detected.
 
         :param hints: Optional human-readable path hints; see
-               :ref:`file-hints` for details.
+               :class:`toil.jobStores.abstractJobStore.HintedJobStore` for details.
 
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
                 as for encode(). Defaults to None which represents binary mode.
@@ -1269,7 +1251,7 @@ class AbstractJobStore(ABC):
                matching that basename, the file will be detected.
 
         :param hints: Optional human-readable path hints; see
-               :ref:`file-hints` for details.
+               :class:`toil.jobStores.abstractJobStore.HintedJobStore` for details.
 
         :return: a jobStoreFileID that references the newly created file and can be used to reference the
                  file in the future.
@@ -1703,6 +1685,22 @@ class AbstractJobStore(ABC):
 class HintedJobStore:
     """
     A job store mixin that helps store files with hints at paths based on the hints.
+
+    File Hints
+    ----------
+
+    File-writing methods on
+    :class:`toil.jobStores.abstractJobStore.AbstractJobStore` accept an
+    optional ``hints`` parameter: a list of strings, such as workflow and task
+    names. Job stores implementing the hints feature use them to hierarchically
+    organize stored files in a human-readable way, so a person browsing the job
+    store can find files by the task that produced them. Files written with the
+    same hints and basename still get distinct IDs.
+
+    UUIDs not created by the caller must never be used as hints.
+
+    Implementing File Hints with HintedJobStore
+    -------------------------------------------
 
     The inheriting class needs to provide a "hint trees": a place where objects
     can be created, polled, and deleted at slash-delimited paths. This is
