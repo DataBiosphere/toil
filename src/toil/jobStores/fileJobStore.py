@@ -73,6 +73,16 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
     # All log files start with this prefix
     LOG_PREFIX = "stats"
 
+    # Directory name constants used to lay out our storage.
+    # These are here so tests can peek at them to figure out where to inspect.
+    JOBS_DIR = "jobs"
+    STATS_INBOX_DIR = "stats/inbox"
+    STATS_ARCHIVE_DIR = "stats/archive"
+    FILES_DIR = "files-flat"
+    HINTED_FILES_DIR = "files"
+    JOB_FILES_DIR = "job-files"
+    SHARED_FILES_DIR = "shared"
+
     def default_caching(self) -> bool:
         """
         Jobstore's preference as to whether it likes caching or doesn't care about it.
@@ -94,22 +104,20 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
         logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
 
         # Directory where actual job files go, and their job-associated temp files
-        self.jobsDir = os.path.join(self.jobStoreDir, "jobs")
-        # Directory where stats files go
-        self.statsDir = os.path.join(self.jobStoreDir, "stats")
-        # Which has subdirectories for new and seen stats files
-        self.stats_inbox = os.path.join(self.statsDir, "inbox")
-        self.stats_archive = os.path.join(self.statsDir, "archive")
+        self.jobsDir = os.path.join(self.jobStoreDir, self.JOBS_DIR)
+        # Directories where new and seen stats files go
+        self.stats_inbox = os.path.join(self.jobStoreDir, self.STATS_INBOX_DIR)
+        self.stats_archive = os.path.join(self.jobStoreDir, self.STATS_ARCHIVE_DIR)
         # Directory where non-job-associated files for the file store go
-        self.filesDir = os.path.join(self.jobStoreDir, "files-flat")
+        self.filesDir = os.path.join(self.jobStoreDir, self.FILES_DIR)
         # Directory where hinted, non-job-associated files for the file store go
-        self.hinted_files_dir = os.path.join(self.jobStoreDir, "files")
+        self.hinted_files_dir = os.path.join(self.jobStoreDir, self.HINTED_FILES_DIR)
         # Directory where job-associated files for the file store go.
         # Each per-job directory in here will have separate directories for
         # files to clean up and files to not clean up when the job is deleted.
-        self.jobFilesDir = os.path.join(self.jobStoreDir, "job-files")
+        self.jobFilesDir = os.path.join(self.jobStoreDir, self.JOB_FILES_DIR)
         # Directory where shared files go
-        self.sharedFilesDir = os.path.join(self.jobStoreDir, "shared")
+        self.sharedFilesDir = os.path.join(self.jobStoreDir, self.SHARED_FILES_DIR)
 
         self.fanOut = fanOut
 
@@ -129,7 +137,6 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
             else:
                 raise
         os.makedirs(self.jobsDir, exist_ok=True)
-        os.makedirs(self.statsDir, exist_ok=True)
         os.makedirs(self.stats_inbox, exist_ok=True)
         os.makedirs(self.stats_archive, exist_ok=True)
         os.makedirs(self.filesDir, exist_ok=True)
@@ -1319,7 +1326,7 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
 
     def _get_hinted_slot(self, file_path: str) -> str | None:
         """
-        Return the hinted slot a file is in, or None if not a hinted file. 
+        Return the hinted slot a file is in, or None if not a hinted file.
         """
         if file_path.startswith(self.hinted_files_dir + "/"):
             result = file_path[len(self.hinted_files_dir) + 1:]
@@ -1333,7 +1340,7 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
 
         :param fileName: A file name, which can be a full path as only the
         basename will be used.
-        :param jobStoreID: If given, the path returned will be in a directory including the job's ID as part of its path.
+        :param jobStoreID: If given, the path returned may be in a directory including the job's ID as part of its path.
         :param bool cleanup: If True and jobStoreID is set, the path will be in
             a place such that it gets deleted when the job is deleted.
         :param hints: Optional list of hint strings for human-findable placement.
@@ -1342,11 +1349,12 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
 
         basename = os.path.basename(fileName)
 
-        if jobStoreID is None:
-            # Since files associated with a job store ID need to be laid out
-            # under a directory for that job, we can't lay them out in a way
-            # where people can find them with the hints. So only use hints when
-            # not using a job store ID.
+        if jobStoreID is None or not cleanup:
+            # Since files associated with a job store ID and requiring cleanup
+            # need to be laid out under a directory for that job; we can't lay
+            # them out in a way where people can find them with the hints. In
+            # other cases, laying out based on the associated job ID, if any,
+            # is optional, and we cna use the hints instead oif we have them.
             hints_string = self.hints_to_string(hints)
             if hints_string:
                 # If we can use hints, pick a location based on hints under the directory.
