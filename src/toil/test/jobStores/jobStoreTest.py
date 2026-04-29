@@ -1001,7 +1001,10 @@ class AbstractJobStoreTest:
                         if self.jobstore_initialized.moveExports:
                             # Ensure the export performed a move / link
                             self.assertTrue(jobStoreHasLink)
-                            self.assertEqual(os.path.realpath(jobStorePath), dstUrl[7:])
+                            self.assertEqual(
+                                os.path.realpath(jobStorePath),
+                                os.path.realpath(dstUrl[7:])
+                            )
                         else:
                             # Ensure the export has not moved the job store file
                             self.assertFalse(jobStoreHasLink)
