@@ -30,6 +30,7 @@ from toil.fileStores import FileID
 from toil.job import TemporaryID
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
+    HintedJobStore,
     JobStoreExistsException,
     NoSuchFileException,
     NoSuchJobException,
@@ -47,7 +48,7 @@ from toil.lib.url import URLAccess
 logger = logging.getLogger(__name__)
 
 
-class FileJobStore(AbstractJobStore, URLAccess):
+class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
     """
     A job store that uses a directory on a locally attached file system. To be compatible with
     distributed batch systems, that file system must be shared by all worker nodes.
@@ -1332,6 +1333,8 @@ class FileJobStore(AbstractJobStore, URLAccess):
         :return: The full path with a unique file name.
         """
 
+        basename = os.path.basename(fileName)
+
         if jobStoreID is None:
             # Since files associated with a job store ID need to be laid out
             # under a directory for that job, we can't lay them out in a way
@@ -1340,12 +1343,12 @@ class FileJobStore(AbstractJobStore, URLAccess):
             hints_string = self.hints_to_string(hints)
             if hints_string:
                 # If we can use hints, pick a location based on hints under the directory.
-                return os.path.join(directory, self.claim_hinted_slot(hints_string))
+                return os.path.join(self.hintedDir, self.claim_hinted_slot(hints_string, basename))
 
         # Give the file a unique directory that either will be cleaned up with a job or won't.
         directory = self._get_file_directory(jobStoreID, cleanup)
         # Pick a path under the directory
-        uniquePath = os.path.join(directory, os.path.basename(fileName))
+        uniquePath = os.path.join(directory, basename)
         # No need to check if it exists already; it is in a unique directory.
         return uniquePath
 

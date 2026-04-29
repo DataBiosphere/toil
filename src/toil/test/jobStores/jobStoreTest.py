@@ -633,9 +633,15 @@ class AbstractJobStoreTest:
             assert many_hint_id_job not in seen
             seen.add(many_hint_id_job)
             assert "wombats" not in many_hint_id_job
-            assert "lions" in many_hint_id_job
-            assert "tigers" in many_hint_id_job
-            assert "bears" in many_hint_id_job
+            if "lions" in many_hint_id_job or "tigers" in many_hint_id_job or "bears" in many_hint_id_job:
+                # We don't *require* hints to be respected for job-associated
+                # files (because the FileJobStore doesn't have a good way to do
+                # it, since it uses a top-level per-job directory, which means
+                # you immediately can't find the files by hint). But if any of
+                # these hints are there, they all should be.
+                assert "lions" in many_hint_id_job
+                assert "tigers" in many_hint_id_job
+                assert "bears" in many_hint_id_job
 
         def test_hinted_file_ids_not_reused_after_deletion(self) -> None:
             """
