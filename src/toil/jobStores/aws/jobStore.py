@@ -48,6 +48,7 @@ from toil.fileStores import FileID
 from toil.job import JobDescription
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
+    HintedJobStore,
     JobStoreExistsException,
     NoSuchFileException,
     NoSuchJobException,
@@ -82,7 +83,7 @@ DEFAULT_AWS_PART_SIZE = 52428800
 logger = logging.getLogger(__name__)
 
 
-class AWSJobStore(AbstractJobStore, URLAccess):
+class AWSJobStore(AbstractJobStore, HintedJobStore, URLAccess):
     """
     The AWS jobstore can be thought of as an AWS s3 bucket, with functions to
     centralize, store, and track files for the workflow.
@@ -92,12 +93,13 @@ class AWSJobStore(AbstractJobStore, URLAccess):
     1. Jobs: These are pickled as files, and contain the information necessary to run a job when unpickled.
        A job's file is deleted when finished, and its absence means it completed.
 
-    2. Files: The inputs and outputs of jobs.  Each file is written in s3 with the file pattern:
-       "files/{uuid4}/{original_filename}", where the file prefix
-       "files/{uuid4}" should only point to one file.
+    2. Files: The inputs and outputs of jobs.  Stored under the ``files/``
+       prefix using one of two file ID schemes; see the FILES API
+       section of this module for the layout details.
+
     3. Logs: The written log files of jobs that have run, plus the log file for the main Toil process.
 
-    4. Shared Files: Files with himan=-readable names, used by Toil itself or Python workflows.
+    4. Shared Files: Files with human-readable names, used by Toil itself or Python workflows.
        These include:
 
        * environment.pickle   (environment variables)
@@ -146,6 +148,13 @@ class AWSJobStore(AbstractJobStore, URLAccess):
        version.
     """
 
+    # Subdirectory names within a hints tree that hold live files and
+    # tombstones for deleted files.  These names are banned as hints (see
+    # AbstractJobStore._BANNED_HINTS) so they can never collide with a
+    # user-provided hint component.
+    _HINT_FILES_DIR = "files"
+    _HINT_DELETED_DIR = "deleted"
+
     def __init__(self, locator: str, partSize: int = DEFAULT_AWS_PART_SIZE) -> None:
         super().__init__(locator)
         # TODO: parsing of user options seems like it should be done outside of this class;
@@ -168,8 +177,11 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         # system could be used, because each file should belong to at most one
         # job. This should be changed to a hierarchical layout.
         self.job_associations_key_prefix = "job-associations/"
-        # input/output files named with uuid4
-        self.content_key_prefix = "files/"
+        # We store UUID-names files under here
+        self.flat_content_key_prefix = "files-flat/"
+        # We store hinted files under here instead so they're easier to find
+        # and not mixed in with the flat file pile.
+        self.hierarchical_content_key_prefix = "files/"
         # these are special files, like 'environment.pickle'; place them in root
         self.shared_key_prefix = ""
         # read and unread; named with uuid4
@@ -225,7 +237,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         Get the key in the bucket for the given identifier and prefix.
 
         We have this so higher-level code doesn't need to worry about the
-        pasting together of prefixes and identifiers, so it never ahs to be
+        pasting together of prefixes and identifiers, so it never has to be
         mixed with the identifier=/prefix= calling convention.
         """
         return f"{prefix}{identifier}"
@@ -296,7 +308,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
 
         :raises NoSuchJobException: if the prefix is the job prefix and the
             identifier is not found.
-        :raises NoSuchFileException: if the prefix is the content prefix and
+        :raises NoSuchFileException: if the prefix is a content prefix and
             the identifier is not found.
         :raises self.s3_client.exceptions.NoSuchKey: in other cases where the
             identifier is not found.
@@ -313,7 +325,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         except self.s3_client.exceptions.NoSuchKey:
             if prefix == self.job_key_prefix:
                 raise NoSuchJobException(identifier)
-            elif prefix == self.content_key_prefix:
+            elif prefix in (self.flat_content_key_prefix, self.hierarchical_content_key_prefix):
                 raise NoSuchFileException(identifier)
             else:
                 raise
@@ -321,7 +333,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             if e.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 if prefix == self.job_key_prefix:
                     raise NoSuchJobException(identifier)
-                elif prefix == self.content_key_prefix:
+                elif prefix in (self.flat_content_key_prefix, self.hierarchical_content_key_prefix):
                     raise NoSuchFileException(identifier)
                 else:
                     raise
@@ -437,7 +449,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             self.s3_resource, bucket=self.bucket_name, prefix=root_key
         ):
             job_file_associations_to_delete.append(associated_job_file["Key"])
-            file_id = associated_job_file["Key"].split(".")[-1]
+            file_id = associated_job_file["Key"].split(".", 1)[-1]
             self.delete_file(file_id)
 
         # delete the job-file association references (these are empty files the simply connect jobs to files)
@@ -454,10 +466,119 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             data=None,
         )
 
-        ###################################### FILES API ######################################
+    ###################################### FILES API ######################################
+    
+
+    # There are two file ID schemes:
+    #
+    # UUID-based (no hints): file_id is a unique identifier string. The S3 key
+    # is "<file_id>/<basename>" under the flat content key prefix. Resolving
+    # the key from the file_id requires a list because the basename isn't in
+    # the file_id.
+    #
+    # Hinted: file_id is the S3 key suffix under the hierarchical content key
+    # prefix, where the hint tree lives. These include some path structure in
+    # the ID. We use HintedJobStore functionality to manage these.
+
+    def _is_hinted_file_id(self, file_id: str) -> bool:
+        """
+        Return True if ``file_id`` uses the hinted scheme rather than the
+        UUID scheme.
+        """
+
+        # The UUID file IDs never contain slash, but the hinted ones always do.
+        return "/" in file_id
+
+
+    def _hint_tree_put_if_absent(self, path: str) -> bool:
+        """
+        Create a path in the hint tree if it did not exist.
+
+        Returns True if it was created and False if it existed already.
+        """
+        try:
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=self._key_in_bucket(
+                    identifier=path,
+                    prefix=self.hierarchical_content_key_prefix,
+                ),
+                Body=b'',
+                IfNoneMatch="*",
+                **self._get_encryption_args(),
+            )
+            return True
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "PreconditionFailed":
+                return False
+            raise
+
+    def _hint_tree_exists(self, path: str) -> bool:
+        """
+        Return True if the given path exists in the hint tree, and False otherwise.
+        """
+        
+        return s3_key_exists(
+            s3_resource=self.s3_resource,
+            bucket=self.bucket_name,
+            key=self._key_in_bucket(
+                identifier=path,
+                prefix=self.hierarchical_content_key_prefix,
+            ),
+        )
+
+    def _hint_tree_delete(self, path: str) -> None:
+        """
+        Delete the given path from the hint tree, if present.
+        """
+        
+        self.s3_client.delete_object(
+            Bucket=self.bucket_name,
+            Key=self._key_in_bucket(
+                identifier=path,
+                prefix=self.hierarchical_content_key_prefix,
+            ),
+        )
+
+    def _allocate_file_id(self, basename: str, hints: list[str] | None) -> str:
+        """
+        Choose a file_id for a new file.
+
+        If *hints* are provided and any survive sanitization, claim a
+        hinted slot and create an empty placeholder at its S3 key. Otherwise
+        mint a fresh UUID and write nothing.
+
+        :returns: The new file_id. For hinted IDs, an empty object exists
+            at the key. For UUID IDs, nothing has been written yet.
+        """
+        hints_str = self.hints_to_string(hints)
+        if hints_str:
+            return self.claim_hinted_slot(hints_str, basename)
+        return str(uuid.uuid4())
+
+    def _file_key_for(self, file_id: str, basename: str) -> str:
+        """
+        S3 key at which to write the content for a file with the given
+        file_id.
+        """
+        if self._is_hinted_file_id(file_id):
+            # Hinted file_ids are the key suffix directly
+            return self._key_in_bucket(
+                identifier=file_id,
+                prefix=self.hierarchical_content_key_prefix,
+            )
+        # UUID file_ids get the basename appended and use the flat prefix
+        return self._key_in_bucket(
+            identifier=f"{file_id}/{basename}",
+            prefix=self.flat_content_key_prefix,
+        )
 
     def write_file(
-        self, local_path: str, job_id: str | None = None, cleanup: bool = False
+        self,
+        local_path: str,
+        job_id: str | None = None,
+        cleanup: bool = False,
+        hints: list[str] | None = None,
     ) -> FileID:
         """
         Write a local file into the jobstore and return a file_id referencing it.
@@ -472,7 +593,9 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             TODO: we don't need cleanup; remove it and only use job_id
         """
         # TODO: etag = compute_checksum_for_file(local_path, algorithm='etag')[len('etag$'):]
-        file_id = str(uuid.uuid4())  # mint a new file_id
+        basename = os.path.basename(local_path)
+        file_id = self._allocate_file_id(basename, hints)
+
         file_attributes = os.stat(local_path)
         size = file_attributes.st_size
         executable = file_attributes.st_mode & stat.S_IXUSR != 0
@@ -481,28 +604,45 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             # associate this job with this file; then the file reference will be deleted when the job is
             self.associate_job_with_file(job_id, file_id)
 
-        # Each file gets a prefix under which we put exactly one key, to hide
-        # metadata in the key.
-        prefix = self._key_in_bucket(identifier=file_id, prefix=self.content_key_prefix)
-
         copy_local_to_s3(
             s3_resource=self.s3_resource,
             local_file_path=local_path,
             dst_bucket=self.bucket_name,
-            dst_key=f"{prefix}/{os.path.basename(local_path)}",
+            dst_key=self._file_key_for(file_id, basename),
             extra_args=self._get_encryption_args(),
         )
         return FileID(file_id, size, executable)
 
     def find_s3_key_from_file_id(self, file_id: str) -> str:
-        """This finds an s3 key for which file_id is the prefix, and which already exists."""
-        prefix = self._key_in_bucket(identifier=file_id, prefix=self.content_key_prefix)
-        s3_keys = [
-            s3_item
-            for s3_item in list_s3_items(
+        """
+        Return the full S3 key for an existing file_id.
+
+        Raises :class:`NoSuchFileException` if no object lives at the key.
+        """
+        if self._is_hinted_file_id(file_id):
+            # The hinted file_id is the S3 key suffix directly
+            key = self._key_in_bucket(
+                identifier=file_id,
+                prefix=self.hierarchical_content_key_prefix,
+            )
+            if not s3_key_exists(
+                s3_resource=self.s3_resource,
+                bucket=self.bucket_name,
+                key=key,
+            ):
+                raise NoSuchFileException(file_id)
+            return key
+
+        # UUID case: the basename isn't in the file_id, so list children.
+        # Trailing / prevents e.g. file_id "abc" matching "abcd/...".
+        prefix = self._key_in_bucket(
+            identifier=file_id, prefix=self.flat_content_key_prefix
+        ) + "/"
+        s3_keys = list(
+            list_s3_items(
                 self.s3_resource, bucket=self.bucket_name, prefix=prefix
             )
-        ]
+        )
         if len(s3_keys) == 0:
             raise NoSuchFileException(file_id)
         if len(s3_keys) > 1:
@@ -517,20 +657,22 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         self,
         job_id: str | None = None,
         cleanup: bool = False,
+        hints: list[str] | None = None,
         basename: str | None = None,
         encoding: str | None = None,
         errors: str | None = None,
     ) -> Iterator[tuple[IO[bytes], str]]:
-        file_id = str(uuid.uuid4())
+        if not basename:
+            basename = "stream"
+        file_id = self._allocate_file_id(str(basename), hints)
         if job_id and cleanup:
             self.associate_job_with_file(job_id, file_id)
-        prefix = self._key_in_bucket(identifier=file_id, prefix=self.content_key_prefix)
 
         pipe = MultiPartPipe(
             part_size=self.part_size,
             s3_resource=self.s3_resource,
             bucket_name=self.bucket_name,
-            file_id=f"{prefix}/{str(basename)}",
+            file_id=self._file_key_for(file_id, str(basename)),
             encryption_args=self._get_encryption_args(),
             encoding=encoding,
             errors=errors,
@@ -720,6 +862,11 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         except NoSuchFileException:
             # The file is gone. That's great, we're idempotent.
             return
+
+        if self._is_hinted_file_id(file_id):
+            # Tombstone before delete 
+            self.tombstone(file_id)
+
         self.s3_client.delete_object(Bucket=self.bucket_name, Key=full_s3_key)
 
         ###################################### URI API ######################################
@@ -752,11 +899,10 @@ class AWSJobStore(AbstractJobStore, URLAccess):
                     identifier=shared_file_name, prefix=self.shared_key_prefix
                 )
             else:
-                # cannot determine exec bit from foreign s3 so default to False
                 dst_key = "/".join(
                     [
                         self._key_in_bucket(
-                            identifier=file_id, prefix=self.content_key_prefix
+                            identifier=file_id, prefix=self.flat_content_key_prefix
                         ),
                         src_key_name.split("/")[-1],
                     ]
@@ -868,10 +1014,7 @@ class AWSJobStore(AbstractJobStore, URLAccess):
             return create_public_url(
                 self.s3_resource,
                 bucket=self.bucket_name,
-                key=self._key_in_bucket(
-                    identifier=file_id,
-                    prefix=self.content_key_prefix,
-                ),
+                key=self.find_s3_key_from_file_id(file_id),
             )
         except self.s3_client.exceptions.NoSuchKey:
             raise NoSuchFileException(file_id)
@@ -913,15 +1056,24 @@ class AWSJobStore(AbstractJobStore, URLAccess):
         job_id: str | None = None,
         cleanup: bool = False,
         basename: str | None = None,
+        hints: list[str] | None = None,
     ) -> str:
         """Create an empty file in s3 and return a bare string file ID."""
-        file_id = str(uuid.uuid4())
-        self.write_to_bucket(
-            identifier=f"{file_id}/0/{basename}",
-            prefix=self.content_key_prefix,
-            data=None,
-            bucket=self.bucket_name,
-        )
+        if not basename:
+            basename = "empty"
+        file_id = self._allocate_file_id(basename, hints)
+        if not self._is_hinted_file_id(file_id):
+            # _allocate_file_id promises that UUID IDs have nothing
+            # written yet, so we must create the empty object ourselves.
+            # (For hinted IDs the placeholder created during slot claim
+            # already serves as the empty file.)
+            put_s3_object(
+                s3_resource=self.s3_resource,
+                bucket=self.bucket_name,
+                key=self._file_key_for(file_id, basename),
+                body=b"",
+                extra_args=self._get_encryption_args(),
+            )
         if job_id and cleanup:
             self.associate_job_with_file(job_id, file_id)
         return file_id

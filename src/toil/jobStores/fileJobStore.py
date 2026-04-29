@@ -30,6 +30,7 @@ from toil.fileStores import FileID
 from toil.job import TemporaryID
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
+    HintedJobStore,
     JobStoreExistsException,
     NoSuchFileException,
     NoSuchJobException,
@@ -47,7 +48,7 @@ from toil.lib.url import URLAccess
 logger = logging.getLogger(__name__)
 
 
-class FileJobStore(AbstractJobStore, URLAccess):
+class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
     """
     A job store that uses a directory on a locally attached file system. To be compatible with
     distributed batch systems, that file system must be shared by all worker nodes.
@@ -72,6 +73,16 @@ class FileJobStore(AbstractJobStore, URLAccess):
     # All log files start with this prefix
     LOG_PREFIX = "stats"
 
+    # Directory name constants used to lay out our storage.
+    # These are here so tests can peek at them to figure out where to inspect.
+    JOBS_DIR = "jobs"
+    STATS_INBOX_DIR = "stats/inbox"
+    STATS_ARCHIVE_DIR = "stats/archive"
+    FILES_DIR = "files-flat"
+    HINTED_FILES_DIR = "files"
+    JOB_FILES_DIR = "job-files"
+    SHARED_FILES_DIR = "shared"
+
     def default_caching(self) -> bool:
         """
         Jobstore's preference as to whether it likes caching or doesn't care about it.
@@ -93,20 +104,20 @@ class FileJobStore(AbstractJobStore, URLAccess):
         logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
 
         # Directory where actual job files go, and their job-associated temp files
-        self.jobsDir = os.path.join(self.jobStoreDir, "jobs")
-        # Directory where stats files go
-        self.statsDir = os.path.join(self.jobStoreDir, "stats")
-        # Which has subdirectories for new and seen stats files
-        self.stats_inbox = os.path.join(self.statsDir, "inbox")
-        self.stats_archive = os.path.join(self.statsDir, "archive")
+        self.jobsDir = os.path.join(self.jobStoreDir, self.JOBS_DIR)
+        # Directories where new and seen stats files go
+        self.stats_inbox = os.path.join(self.jobStoreDir, self.STATS_INBOX_DIR)
+        self.stats_archive = os.path.join(self.jobStoreDir, self.STATS_ARCHIVE_DIR)
         # Directory where non-job-associated files for the file store go
-        self.filesDir = os.path.join(self.jobStoreDir, "files/no-job")
+        self.filesDir = os.path.join(self.jobStoreDir, self.FILES_DIR)
+        # Directory where hinted, non-job-associated files for the file store go
+        self.hinted_files_dir = os.path.join(self.jobStoreDir, self.HINTED_FILES_DIR)
         # Directory where job-associated files for the file store go.
         # Each per-job directory in here will have separate directories for
         # files to clean up and files to not clean up when the job is deleted.
-        self.jobFilesDir = os.path.join(self.jobStoreDir, "files/for-job")
+        self.jobFilesDir = os.path.join(self.jobStoreDir, self.JOB_FILES_DIR)
         # Directory where shared files go
-        self.sharedFilesDir = os.path.join(self.jobStoreDir, "files/shared")
+        self.sharedFilesDir = os.path.join(self.jobStoreDir, self.SHARED_FILES_DIR)
 
         self.fanOut = fanOut
 
@@ -126,10 +137,10 @@ class FileJobStore(AbstractJobStore, URLAccess):
             else:
                 raise
         os.makedirs(self.jobsDir, exist_ok=True)
-        os.makedirs(self.statsDir, exist_ok=True)
         os.makedirs(self.stats_inbox, exist_ok=True)
         os.makedirs(self.stats_archive, exist_ok=True)
         os.makedirs(self.filesDir, exist_ok=True)
+        os.makedirs(self.hinted_files_dir, exist_ok=True)
         os.makedirs(self.jobFilesDir, exist_ok=True)
         os.makedirs(self.sharedFilesDir, exist_ok=True)
         self.linkImports = config.symlinkImports
@@ -504,19 +515,19 @@ class FileJobStore(AbstractJobStore, URLAccess):
         # Glue it all together, and truncate to length
         return "_".join(parts)[:maxLength]
 
-    def write_file(self, local_path, job_id=None, cleanup=False):
-        absPath = self._get_unique_file_path(local_path, job_id, cleanup)
+    def write_file(self, local_path, job_id=None, cleanup=False, hints=None):
+        absPath = self._get_unique_file_path(local_path, job_id, cleanup, hints=hints)
         relPath = self._get_file_id_from_path(absPath)
         atomic_copy(local_path, absPath)
         return relPath
 
     @contextmanager
     def write_file_stream(
-        self, job_id=None, cleanup=False, basename=None, encoding=None, errors=None
+        self, job_id=None, cleanup=False, hints=None, basename=None, encoding=None, errors=None
     ):
         if not basename:
             basename = "stream"
-        absPath = self._get_unique_file_path(basename, job_id, cleanup)
+        absPath = self._get_unique_file_path(basename, job_id, cleanup, hints=hints)
         relPath = self._get_file_id_from_path(absPath)
 
         with open(
@@ -530,8 +541,8 @@ class FileJobStore(AbstractJobStore, URLAccess):
             # to clean ourselves up, somehow, for certain workloads.
             yield f, relPath
 
-    def get_empty_file_store_id(self, jobStoreID=None, cleanup=False, basename=None):
-        with self.write_file_stream(jobStoreID, cleanup, basename) as (
+    def get_empty_file_store_id(self, job_id=None, cleanup=False, basename=None, hints=None):
+        with self.write_file_stream(job_id, cleanup, hints=hints, basename=basename) as (
             fileHandle,
             jobStoreFileID,
         ):
@@ -646,15 +657,21 @@ class FileJobStore(AbstractJobStore, URLAccess):
     def delete_file(self, file_id):
         if not self.file_exists(file_id):
             return
-        os.remove(self._get_file_path_from_id(file_id))
+        file_path = self._get_file_path_from_id(file_id)
+        slot = self._get_hinted_slot(file_path)
+        if slot is not None:
+            # Tombstone before delete
+            self.tombstone(slot)
+        os.remove(file_path)
 
     def file_exists(self, file_id):
         absPath = self._get_file_path_from_id(file_id)
 
         if (
-            not absPath.startswith(self.jobsDir)
-            and not absPath.startswith(self.filesDir)
-            and not absPath.startswith(self.jobFilesDir)
+            not absPath.startswith(self.jobsDir + "/")
+            and not absPath.startswith(self.filesDir + "/")
+            and not absPath.startswith(self.hinted_files_dir + "/")
+            and not absPath.startswith(self.jobFilesDir+ "/")
         ):
             # Don't even look for it, it is out of bounds.
             raise NoSuchFileException(file_id)
@@ -672,9 +689,10 @@ class FileJobStore(AbstractJobStore, URLAccess):
         absPath = self._get_file_path_from_id(file_id)
 
         if (
-            not absPath.startswith(self.jobsDir)
-            and not absPath.startswith(self.filesDir)
-            and not absPath.startswith(self.jobFilesDir)
+            not absPath.startswith(self.jobsDir + "/")
+            and not absPath.startswith(self.filesDir + "/")
+            and not absPath.startswith(self.hinted_files_dir + "/")
+            and not absPath.startswith(self.jobFilesDir + "/")
         ):
             # Don't even look for it, it is out of bounds.
             raise NoSuchFileException(file_id)
@@ -821,7 +839,9 @@ class FileJobStore(AbstractJobStore, URLAccess):
 
         Used for debugging.
 
-        :param for_job: If set, restrict the list to files for a particular job.
+        :param for_job: If set, restrict the list to files associated with a
+            particular job. Note that hinted files won't turn up here because
+            we can't organize files at the top level by both job *and* hint.
         """
 
         # TODO: Promote to AbstractJobStore.
@@ -849,6 +869,12 @@ class FileJobStore(AbstractJobStore, URLAccess):
             for file_dir_path in self._list_dynamic_spray_dir(self.filesDir):
                 # Run on all the no-job files
                 yield from os.listdir(file_dir_path)
+
+            for (dirpath, dirnames, filenames) in os.walk(self.hinted_files_dir, topdown=True):
+                if HintedJobStore._HINT_DELETED_DIR in dirnames:
+                    # Stay out of the tombstone directories
+                    dirnames.remove(HintedJobStore._HINT_DELETED_DIR)
+                yield from filenames
 
         for job_store_id in jobs:
             # Files from _get_job_files_dir
@@ -1029,8 +1055,7 @@ class FileJobStore(AbstractJobStore, URLAccess):
         :param str jobStoreFileID: The ID of a file
 
         :rtype : string, string is the absolute path that that file should
-                 appear at on disk, under either self.jobsDir if it is to be
-                 cleaned up with a job, or self.filesDir otherwise.
+                 appear at on disk.
         """
 
         # We just make the file IDs paths under the job store overall.
@@ -1267,24 +1292,88 @@ class FileJobStore(AbstractJobStore, URLAccess):
 
         return self._walk_dynamic_spray_dir(self.stats_archive)
 
-    def _get_unique_file_path(self, fileName, jobStoreID=None, cleanup=False):
+    def _hint_tree_put_if_absent(self, path: str) -> bool:
+        """
+        Create a path in the hint tree if it did not exist.
+
+        Returns True if it was created and False if it existed already.
+        """
+        final_path = os.path.join(self.hinted_files_dir, path)
+
+        dirname = os.path.dirname(final_path)
+        try:
+            os.makedirs(dirname, exist_ok=True)
+            fd = os.open(
+                final_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666
+            )
+            os.close(fd)
+        except FileExistsError:
+            return False
+        except IsADirectoryError:
+            return False
+        return True
+
+    def _hint_tree_exists(self, path: str) -> bool:
+        """
+        Return True if the given path exists in the hint tree, and False otherwise.
+        """
+        final_path = os.path.join(self.hinted_files_dir, path)
+        result = os.path.exists(final_path)
+        logger.debug("Check hint tree path %s exists: %s", path, result)
+        return result
+
+    def _hint_tree_delete(self, path: str) -> None:
+        """
+        Delete the given path from the hint tree, if present.
+        """
+        final_path = os.path.join(self.hinted_files_dir, path)
+        try:
+            os.unlink(final_path)
+        except FileNotFoundError:
+            pass
+
+    def _get_hinted_slot(self, file_path: str) -> str | None:
+        """
+        Return the hinted slot a file is in, or None if not a hinted file.
+        """
+        if file_path.startswith(self.hinted_files_dir + "/"):
+            result = file_path[len(self.hinted_files_dir) + 1:]
+        else:
+            result = None
+        return result
+
+    def _get_unique_file_path(self, fileName, jobStoreID=None, cleanup=False, hints=None):
         """
         Create unique file name within a jobStore directory or tmp directory.
 
         :param fileName: A file name, which can be a full path as only the
         basename will be used.
-        :param jobStoreID: If given, the path returned will be in a directory including the job's ID as part of its path.
+        :param jobStoreID: If given, the path returned may be in a directory including the job's ID as part of its path.
         :param bool cleanup: If True and jobStoreID is set, the path will be in
             a place such that it gets deleted when the job is deleted.
+        :param hints: Optional list of hint strings for human-findable placement.
         :return: The full path with a unique file name.
         """
 
+        basename = os.path.basename(fileName)
+
+        if jobStoreID is None or not cleanup:
+            # Since files associated with a job store ID and requiring cleanup
+            # need to be laid out under a directory for that job; we can't lay
+            # them out in a way where people can find them with the hints. In
+            # other cases, laying out based on the associated job ID, if any,
+            # is optional, and we cna use the hints instead oif we have them.
+            hints_string = self.hints_to_string(hints)
+            if hints_string:
+                # If we can use hints, pick a location based on hints under the directory.
+                return os.path.join(self.hinted_files_dir, self.claim_hinted_slot(hints_string, basename))
+
         # Give the file a unique directory that either will be cleaned up with a job or won't.
         directory = self._get_file_directory(jobStoreID, cleanup)
-        # And then a path under it
-        uniquePath = os.path.join(directory, os.path.basename(fileName))
+        # Pick a path under the directory
+        unique_path = os.path.join(directory, basename)
         # No need to check if it exists already; it is in a unique directory.
-        return uniquePath
+        return unique_path
 
     def _get_file_directory(self, jobStoreID=None, cleanup=False):
         """

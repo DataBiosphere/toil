@@ -24,6 +24,8 @@ from toil.test import pneeds_wdl as needs_wdl
 from toil.test import pslow as slow
 from toil.version import python
 
+from toil.jobStores.fileJobStore import FileJobStore
+
 logger = logging.getLogger(__name__)
 
 
@@ -165,7 +167,7 @@ class TestDebugJob:
 
         # Get the job ID.
         # TODO: This assumes a lot about the FileJobStore. Use the MessageBus instead?
-        job_id = "kind-explode/" + os.listdir(job_store / "jobs/kind-explode")[0]
+        job_id = "kind-explode/" + os.listdir(job_store / FileJobStore.JOBS_DIR / "kind-explode")[0]
 
         return job_store, job_id
 
@@ -207,7 +209,7 @@ class TestDebugJob:
         # root job ID file. If it doesn't, we failed during workflow setup and
         # not because of a real failing job.
         assert (
-            job_store / "files/shared/rootJobStoreID"
+            job_store / FileJobStore.SHARED_FILES_DIR / "rootJobStoreID"
         ).exists(), "Failed workflow still needs a root job"
 
         # Get a job name for a job that fails

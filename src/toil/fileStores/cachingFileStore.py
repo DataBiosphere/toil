@@ -1207,7 +1207,7 @@ class CachingFileStore(AbstractFileStore):
             # its temp dir and database entry.
             self._deallocateSpaceForJob()
 
-    def writeGlobalFile(self, localFileName, cleanup=False):
+    def writeGlobalFile(self, localFileName, cleanup=False, hints=None):
         """
         Creates a file in the jobstore and returns a FileID reference.
         """
@@ -1224,7 +1224,7 @@ class CachingFileStore(AbstractFileStore):
         # Make sure to pass along the file basename.
         # TODO: this empty file could leak if we die now...
         fileID = self.jobStore.get_empty_file_store_id(
-            creatorID, cleanup, os.path.basename(localFileName)
+            creatorID, cleanup, os.path.basename(localFileName), hints=hints
         )
         # Work out who we are
         with self.as_process() as me:

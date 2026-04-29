@@ -24,19 +24,25 @@ import urllib.parse as urlparse
 import uuid
 from abc import ABCMeta, abstractmethod
 from io import BytesIO
+from pathlib import Path
 from queue import Queue
 from tempfile import mkstemp
 from threading import Thread
-from typing import Any
+from typing import Any, Callable
 from urllib.request import Request, urlopen
 
 import pytest
 from stubserver import FTPStubServer
+import edit_distance
 
 from toil.common import Config
 from toil.fileStores import FileID
 from toil.job import JobDescription, TemporaryID
-from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobException
+from toil.jobStores.abstractJobStore import (
+    HintedJobStore,
+    NoSuchFileException,
+    NoSuchJobException,
+)
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
@@ -550,6 +556,231 @@ class AbstractJobStoreTest:
                 except NoSuchFileException:
                     pass
 
+        # TODO: Typing the return value properly would need multiple lines of Protocol.
+        def _file_maker(self, tmp_path: Path) -> Callable[[Any], Path]:
+            """
+            Get a function that mints fresh files that can be uploaded to a job store.
+            """
+            
+            file_num = 0
+
+            def get_a_file(basename: str = "file.txt") -> Path:
+                """
+                Get a path to a fresh file that can be uploaded to a job store.
+                """
+                nonlocal file_num
+                dir_path = tmp_path / str(file_num)
+                file_num += 1
+                os.mkdir(dir_path)
+                to_upload = dir_path / basename
+                open(to_upload, "w").write("Hello!\n")
+                return to_upload
+            
+            return get_a_file
+
+        def test_file_hints(self) -> None:
+            """Check that, when using hints, a person would be able to find the file."""
+
+            # TODO: Convert to a fixture_using test and make this a fixture
+            tmp_path = Path(self._createTempDir())
+            get_a_file = self._file_maker(tmp_path)
+
+            job = self.arbitraryJob()
+            self.jobstore_initialized.assign_job_id(job)
+            self.jobstore_initialized.create_job(job)
+
+            seen = set()
+
+            no_hint_id = self.jobstore_initialized.write_file(str(get_a_file()))
+            seen.add(no_hint_id)
+
+            one_hint_id = self.jobstore_initialized.write_file(str(get_a_file()), hints=["wombats"])
+            assert one_hint_id not in seen
+            seen.add(one_hint_id)
+            assert "wombats" in one_hint_id
+            # TODO: How do we make sure that the only things near the front of the
+            # path are static meaningful things and hints?
+
+
+            many_hint_id = self.jobstore_initialized.write_file(str(get_a_file()), hints=["lions", "tigers", "bears"])
+            assert many_hint_id not in seen
+            seen.add(many_hint_id)
+            assert "wombats" not in many_hint_id
+            assert "lions" in many_hint_id
+            assert "tigers" in many_hint_id
+            assert "bears" in many_hint_id
+
+            other_many_hint_id = self.jobstore_initialized.write_file(str(get_a_file()), hints=["lions", "tigers", "bears"])
+            assert other_many_hint_id not in seen
+            seen.add(other_many_hint_id)
+            assert "wombats" not in other_many_hint_id
+            assert "lions" in other_many_hint_id
+            assert "tigers" in other_many_hint_id
+            assert "bears" in other_many_hint_id
+
+            assert edit_distance.edit_distance(many_hint_id, other_many_hint_id)[0] < 3, "IDs using hints must be low-entropy and human-findable, while not colliding even across nodes!"
+
+            forbidden_hint_id = self.jobstore_initialized.write_file(str(get_a_file()), hints=["", "whales", "/", """
+            Call me Ishmael. Some years ago⁠—never mind how long precisely⁠—having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world. It is a way I have of driving off the spleen and regulating the circulation. Whenever I find myself growing grim about the mouth; whenever it is a damp, drizzly November in my soul; whenever I find myself involuntarily pausing before coffin warehouses, and bringing up the rear of every funeral I meet; and especially whenever my hypos get such an upper hand of me, that it requires a strong moral principle to prevent me from deliberately stepping into the street, and methodically knocking people’s hats off⁠—then, I account it high time to get to sea as soon as I can. This is my substitute for pistol and ball. With a philosophical flourish Cato throws himself upon his sword; I quietly take to the ship. There is nothing surprising in this. If they but knew it, almost all men in their degree, some time or other, cherish very nearly the same feelings towards the ocean with me.
+
+    There now is your insular city of the Manhattoes, belted round by wharves as Indian isles by coral reefs⁠—commerce surrounds it with her surf. Right and left, the streets take you waterward. Its extreme downtown is the battery, where that noble mole is washed by waves, and cooled by breezes, which a few hours previous were out of sight of land. Look at the crowds of water-gazers there.
+
+    Circumambulate the city of a dreamy Sabbath afternoon. Go from Corlears Hook to Coenties Slip, and from thence, by Whitehall, northward. What do you see?⁠—Posted like silent sentinels all around the town, stand thousands upon thousands of mortal men fixed in ocean reveries. Some leaning against the spiles; some seated upon the pier-heads; some looking over the bulwarks of ships from China; some high aloft in the rigging, as if striving to get a still better seaward peep. But these are all landsmen; of week days pent up in lath and plaster⁠—tied to counters, nailed to benches, clinched to desks. How then is this? Are the green fields gone? What do they here?
+
+    But look! here come more crowds, pacing straight for the water, and seemingly bound for a dive. Strange! Nothing will content them but the extremest limit of the land; loitering under the shady lee of yonder warehouses will not suffice. No. They must get just as nigh the water as they possibly can without falling in. And there they stand⁠—miles of them⁠—leagues. Inlanders all, they come from lanes and alleys, streets and avenues⁠—north, east, south, and west. Yet here they all unite. Tell me, does the magnetic virtue of the needles of the compasses of all those ships attract them thither?
+
+    Once more. Say you are in the country; in some high land of lakes. Take almost any path you please, and ten to one it carries you down in a dale, and leaves you there by a pool in the stream. There is magic in it. Let the most absentminded of men be plunged in his deepest reveries⁠—stand that man on his legs, set his feet a-going, and he will infallibly lead you to water, if water there be in all that region. Should you ever be athirst in the great American desert, try this experiment, if your caravan happen to be supplied with a metaphysical professor. Yes, as everyone knows, meditation and water are wedded forever.
+            """])
+            assert forbidden_hint_id not in seen
+            seen.add(forbidden_hint_id)
+            assert "wombats" not in forbidden_hint_id
+            assert "whales" in forbidden_hint_id
+            assert "\n" not in forbidden_hint_id
+            assert len(forbidden_hint_id) < 200
+
+            no_hint_id_job = self.jobstore_initialized.write_file(str(get_a_file()), job_id=job.jobStoreID)
+            assert no_hint_id_job not in seen
+            seen.add(no_hint_id_job)
+
+            many_hint_id_job = self.jobstore_initialized.write_file(str(get_a_file()), job_id=job.jobStoreID, hints=["lions", "tigers", "bears"])
+            assert many_hint_id_job not in seen
+            seen.add(many_hint_id_job)
+            assert "wombats" not in many_hint_id_job
+            if "lions" in many_hint_id_job or "tigers" in many_hint_id_job or "bears" in many_hint_id_job:
+                # We don't *require* hints to be respected for job-associated
+                # files (because the FileJobStore doesn't have a good way to do
+                # it, since it uses a top-level per-job directory, which means
+                # you immediately can't find the files by hint). But if any of
+                # these hints are there, they all should be.
+                assert "lions" in many_hint_id_job
+                assert "tigers" in many_hint_id_job
+                assert "bears" in many_hint_id_job
+
+        def test_hinted_file_ids_not_reused_after_deletion(self) -> None:
+            """
+            Verify that deleting a hinted file and creating a new one with the
+            same hints never reuses the old file ID. Toil journals deletions
+            and may replay them; a reused ID would cause a replayed delete to
+            destroy the wrong file.
+            """
+            tmp_path = Path(self._createTempDir())
+            get_a_file = self._file_maker(tmp_path)
+
+            hints = ["alpha", "beta"]
+
+            # Create a file with hints, note its ID, then delete it.
+            first_id = self.jobstore_initialized.write_file(
+                str(get_a_file()), hints=hints
+            )
+            assert self.jobstore_initialized.file_exists(first_id)
+            self.jobstore_initialized.delete_file(first_id)
+            assert not self.jobstore_initialized.file_exists(first_id)
+
+            # Create a new file with the same hints.
+            second_id = self.jobstore_initialized.write_file(
+                str(get_a_file()), hints=hints
+            )
+            assert second_id != first_id, (
+                f"Hinted file ID {first_id} was reused after deletion"
+            )
+            assert self.jobstore_initialized.file_exists(second_id)
+
+            # Delete again and create a third to make sure tombstones
+            # accumulate correctly.
+            self.jobstore_initialized.delete_file(second_id)
+            third_id = self.jobstore_initialized.write_file(
+                str(get_a_file()), hints=hints
+            )
+            assert third_id not in (first_id, second_id), (
+                f"Hinted file ID {third_id} was reused after deletion"
+            )
+            assert self.jobstore_initialized.file_exists(third_id)
+
+        def test_banned_hints(self) -> None:
+            """
+            Hint components that would collide with the layout's reserved
+            directory names or are otherwise not allowable are dropped.
+            """
+            tmp_path = Path(self._createTempDir())
+            get_a_file = self._file_maker(tmp_path)
+
+            for banned in (
+                ["."],
+                [".."],
+                [HintedJobStore._HINT_FILES_DIR],
+                [HintedJobStore._HINT_DELETED_DIR]
+            ):
+                file_id = self.jobstore_initialized.write_file(
+                    str(get_a_file()), hints=banned
+                )
+                assert self.jobstore_initialized.file_exists(file_id)
+                for component in banned:
+                    # The banned hint must not be in the ID as a path
+                    # component.
+                    assert f"/{component}/" not in file_id, (
+                        f"Banned hint {component!r} survived into {file_id}"
+                    )
+
+            # A mix of banned and allowed hints keeps only the allowed.
+            mixed_id = self.jobstore_initialized.write_file(
+                str(get_a_file()), hints=["files", "good", "deleted"]
+            )
+            assert "good" in mixed_id
+            assert self.jobstore_initialized.file_exists(mixed_id)
+
+        def test_hinted_numeric_components(self) -> None:
+            """
+            Adding a hint that's the same as the disambiguating numbers needs
+            to not produce collisions we can't handle.
+            """
+            tmp_path = Path(self._createTempDir())
+            get_a_file = self._file_maker(tmp_path)
+
+            seen = set()
+
+            for hints in (
+                ["a"],
+                # We don't start adding the numbers until the first collision
+                ["a"],
+                ["a", "0"],
+            ):
+                file_id = self.jobstore_initialized.write_file(
+                    str(get_a_file()), hints=hints
+                )
+                assert file_id not in seen
+                seen.add(file_id)
+
+            for file_id in seen:
+                assert self.jobstore_initialized.file_exists(file_id)
+
+        def test_hinted_numeric_basename(self) -> None:
+            """
+            A hint list that is a prefix of another hint list whose
+            extension is purely numeric must not produce colliding file
+            IDs.
+            """
+            tmp_path = Path(self._createTempDir())
+            get_a_file = self._file_maker(tmp_path)
+
+            seen = set()
+
+            for hints, basename in (
+                (["a"], "foo.txt"),
+                (["a"], "foo.txt"),
+                (["a"], "0"),
+                (["a"], "0"),
+                (["a", "0"], "0"),
+                (["a", "0"], "0"),
+            ):
+                file_id = self.jobstore_initialized.write_file(
+                    str(get_a_file()), hints=hints
+                )
+                assert file_id not in seen
+                seen.add(file_id)
+
+            for file_id in seen:
+                assert self.jobstore_initialized.file_exists(file_id)
+
         def testStatsAndLogging(self):
             """Tests behavior of reading and writing stats and logging."""
             jobstore1 = self.jobstore_initialized
@@ -770,7 +1001,10 @@ class AbstractJobStoreTest:
                         if self.jobstore_initialized.moveExports:
                             # Ensure the export performed a move / link
                             self.assertTrue(jobStoreHasLink)
-                            self.assertEqual(os.path.realpath(jobStorePath), dstUrl[7:])
+                            self.assertEqual(
+                                os.path.realpath(jobStorePath),
+                                os.path.realpath(dstUrl[7:])
+                            )
                         else:
                             # Ensure the export has not moved the job store file
                             self.assertFalse(jobStoreHasLink)
@@ -1404,6 +1638,14 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = os.getenv("TOIL_GOOGLE_PROJECTID")
     headers = {"x-goog-project-id": projectID}
+
+    @pytest.mark.skip(reason="Google job store does not use file hints")
+    def test_file_hints(self):
+        pass
+
+    @pytest.mark.skip(reason="Google job store does not use file hints")
+    def test_banned_hints(self):
+        pass
 
     def _createJobStore(self):
         from toil.jobStores.googleJobStore import GoogleJobStore
