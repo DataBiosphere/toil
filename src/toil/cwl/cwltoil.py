@@ -2636,15 +2636,23 @@ class CWLJob(CWLNamedJob):
         # If not using the Toil file store, output files just go directly to
         # their final homes their space doesn't need to be accounted per-job.
 
+        options_dict: dict = {} # type: ignore
+        run_local: bool = self.conditional.is_false(cwljob)
+        if not run_local:
+            options_dict["cores"] = req["cores"]
+            options_dict["memory"] = memory
+            options_dict["disk"] = int(total_disk)
+            options_dict["accelerators"] = accelerators
+            options_dict["preemptible"] = preemptible
+
         super().__init__(
-            cores=req["cores"],
-            memory=memory,
-            disk=int(total_disk),
-            accelerators=accelerators,
-            preemptible=preemptible,
             tool_id=self.cwltool.tool["id"],
             parent_name=parent_name,
-            local=isinstance(tool, cwltool.command_line_tool.ExpressionTool),
+            local=(
+                isinstance(tool, cwltool.command_line_tool.ExpressionTool)
+                or run_local
+                ),
+            **options_dict,
         )
 
         self.cwljob = cwljob
