@@ -6,8 +6,10 @@ import time
 import traceback
 from functools import partial
 from pathlib import Path
+import errno
 
-from toil.lib.threading import LastProcessStandingArena, cpu_count, global_mutex
+from toil.lib.threading import LastProcessStandingArena, cpu_count, global_mutex, safe_lock, safe_unlock_and_close
+from unittest.mock import patch
 
 log = logging.getLogger(__name__)
 
@@ -68,6 +70,59 @@ class TestThreading:
                 assert not filename.startswith(
                     "precious"
                 ), f"File {filename} still exists"
+    
+    # Tests for ENOLCK (toil#4846)
+    def testSafeLockRetriesOnENOLCK(self) -> None:
+        enolck = OSError(errno.ENOLCK, "No locks available")
+        # First call raises ENOLCK, second call succeeds
+        with patch("fcntl.flock", side_effect=[enolck, None]) as mock_flock:
+            safe_lock(0)
+            assert mock_flock.call_count == 2
+    
+    def testSafeLockFailsAfterMaxRetriesOnENOLCK(self) -> None:
+        enolck = OSError(errno.ENOLCK, "No locks available")
+        # First call raises ENOLCK, second call succeeds
+        with patch("fcntl.flock", side_effect=enolck):
+            with patch("toil.lib.threading.time.sleep"):  # skip the backoff waits
+                try:
+                    safe_lock(0)
+                    assert False, "Expected OSError to be raised"
+                except OSError as e:
+                    assert e.errno == errno.ENOLCK
+    
+    def testSafeLockRetriesOnEIO(self) -> None:
+        eio = OSError(errno.EIO, "Input/Output Error")
+        # First call raises EIO, second call succeeds
+        with patch("fcntl.flock", side_effect=[eio, None]) as mock_flock:
+            safe_lock(0)
+            assert mock_flock.call_count == 2
+    
+    def testSafeLockFailsAfterMaxRetriesOnEIO(self) -> None:
+        eio = OSError(errno.EIO, "Input/Output Error")
+        # First call raises EIO, second call succeeds
+        with patch("fcntl.flock", side_effect=eio):
+            with patch("toil.lib.threading.time.sleep"):  # skip the backoff waits
+                try:
+                    safe_lock(0)
+                    assert False, "Expected OSError to be raised"
+                except OSError as e:
+                    assert e.errno == errno.EIO
+    
+    def testSafeUnlockAndCloseSwallowsENOLCK(self) -> None:
+        enolck = OSError(errno.ENOLCK, "No locks available")
+        # First call raises ENOLCK, second call succeeds
+        with patch("fcntl.flock", side_effect=enolck):
+            with patch("os.close") as mock_close:
+                safe_unlock_and_close(0)
+                mock_close.assert_called_once_with(0)
+ 
+    def testSafeUnlockAndCloseSwallowsEIO(self) -> None:
+        # First call raises EIO, second call succeeds
+        eio = OSError(errno.EIO, "Input/output error")
+        with patch("fcntl.flock", side_effect=eio):
+            with patch("os.close") as mock_close:
+                safe_unlock_and_close(0)
+                mock_close.assert_called_once_with(0)
 
 
 def _testGlobalMutexOrderingTask(scope: Path, mutex: str, number: int) -> bool:
