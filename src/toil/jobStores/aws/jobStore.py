@@ -525,6 +525,7 @@ class AWSJobStore(AbstractJobStore, HintedJobStore, URLAccess):
                 identifier=path,
                 prefix=self.hierarchical_content_key_prefix,
             ),
+            extra_args=self._get_encryption_args(),
         )
 
     def _hint_tree_delete(self, path: str) -> None:
@@ -629,6 +630,7 @@ class AWSJobStore(AbstractJobStore, HintedJobStore, URLAccess):
                 s3_resource=self.s3_resource,
                 bucket=self.bucket_name,
                 key=key,
+                extra_args=self._get_encryption_args(),
             ):
                 raise NoSuchFileException(file_id)
             return key
