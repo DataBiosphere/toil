@@ -2167,10 +2167,14 @@ def ensure_file_imported(
     logger.debug("Sending file at: %s", file_metadata["location"])
 
 
-def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> FileID:
+def writeGlobalFileWrapper(
+    file_store: AbstractFileStore, fileuri: str, hints: list[str] | None = None
+) -> FileID:
     """Wrap writeGlobalFile to accept file:// URIs."""
     fileuri = fileuri if ":/" in fileuri else f"file://{fileuri}"
-    return file_store.writeGlobalFile(schema_salad.ref_resolver.uri_file_path(fileuri))
+    return file_store.writeGlobalFile(
+        schema_salad.ref_resolver.uri_file_path(fileuri), hints=hints
+    )
 
 
 def remove_empty_listings(rec: CWLDirectoryType) -> None:
@@ -2229,11 +2233,12 @@ class CWLNamedJob(Job):
             # We need something. Put the class.
             name_parts.append(class_name)
 
-        # String together the hierarchical name
-        unit_name = ".".join(name_parts)
+        # Dotted hierarchical name used both as the unit name and as
+        # file hints for writes to the job store.
+        self.task_path = ".".join(name_parts)
 
         # Display as that along with the class
-        display_name = f"{class_name} {unit_name}"
+        display_name = f"{class_name} {self.task_path}"
 
         # Set up the job with the right requirements and names.
         super().__init__(
@@ -2242,7 +2247,7 @@ class CWLNamedJob(Job):
             disk=disk,
             accelerators=accelerators,
             preemptible=preemptible,
-            unitName=unit_name,
+            unitName=self.task_path,
             displayName=display_name,
             local=local,
         )
@@ -2878,9 +2883,10 @@ class CWLJob(CWLNamedJob):
         fs_access = runtime_context.make_fs_access(runtime_context.basedir)
 
         # And a file importer that can go from a file:// URI to a Toil FileID
+        hints = self.task_path.split(".") if self.task_path else None
         def file_import_function(url: str, log_level: int = logging.DEBUG) -> FileID:
             logger.log(log_level, "Loading %s...", url)
-            return writeGlobalFileWrapper(file_store, url)
+            return writeGlobalFileWrapper(file_store, url, hints=hints)
 
         file_visitor = functools.partial(
             ensure_file_imported,

@@ -35,3 +35,4 @@ pytest-xdist
 build
 check-jsonschema
 strip_ansi==0.1.1
+edit_distance>=1.0.7,<2

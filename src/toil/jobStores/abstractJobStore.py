@@ -1084,10 +1084,11 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     ##########################################
-    # The following provide an way of creating/reading/writing/updating files
+    # The following provide a way of creating/reading/writing/updating files
     # associated with a given job.
     ##########################################
 
+    # Don't add any new arguments to this old version; make people use the new one!
     @deprecated(new_function_name="write_file")
     def writeFile(
         self,
@@ -1095,11 +1096,19 @@ class AbstractJobStore(ABC):
         jobStoreID: str | None = None,
         cleanup: bool = False,
     ) -> str:
-        return self.write_file(localFilePath, jobStoreID, cleanup)
+        return self.write_file(
+            localFilePath,
+            job_id=jobStoreID,
+            cleanup=cleanup
+        )
 
     @abstractmethod
     def write_file(
-        self, local_path: str, job_id: str | None = None, cleanup: bool = False
+        self,
+        local_path: str,
+        job_id: str | None = None,
+        cleanup: bool = False,
+        hints: list[str] | None = None,
     ) -> str:
         """
         Takes a file (as a path) and places it in this job store. Returns an ID that can be used
@@ -1118,6 +1127,9 @@ class AbstractJobStore(ABC):
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
 
+        :param hints: Optional human-readable path hints; see
+               :class:`toil.jobStores.abstractJobStore.HintedJobStore` for details.
+
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
 
@@ -1131,6 +1143,7 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
+    # Don't add any new arguments to this old version; make people use the new one!
     @deprecated(new_function_name="write_file_stream")
     def writeFileStream(
         self,
@@ -1140,7 +1153,13 @@ class AbstractJobStore(ABC):
         encoding: str | None = None,
         errors: str | None = None,
     ) -> ContextManager[tuple[IO[bytes], str]]:
-        return self.write_file_stream(jobStoreID, cleanup, basename, encoding, errors)
+        return self.write_file_stream(
+            jobStoreID,
+            cleanup=cleanup,
+            basename=basename,
+            encoding=encoding,
+            errors=errors
+        )
 
     @abstractmethod
     @contextmanager
@@ -1148,6 +1167,7 @@ class AbstractJobStore(ABC):
         self,
         job_id: str | None = None,
         cleanup: bool = False,
+        hints: list[str] | None = None,
         basename: str | None = None,
         encoding: str | None = None,
         errors: str | None = None,
@@ -1171,6 +1191,9 @@ class AbstractJobStore(ABC):
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
 
+        :param hints: Optional human-readable path hints; see
+               :class:`toil.jobStores.abstractJobStore.HintedJobStore` for details.
+
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
                 as for encode(). Defaults to None which represents binary mode.
 
@@ -1189,7 +1212,8 @@ class AbstractJobStore(ABC):
         :rtype: Iterator[Tuple[IO[bytes], str]]
         """
         raise NotImplementedError()
-
+    
+    # Don't add any new arguments to this old version; make people use the new one!
     @deprecated(new_function_name="get_empty_file_store_id")
     def getEmptyFileStoreID(
         self,
@@ -1197,7 +1221,11 @@ class AbstractJobStore(ABC):
         cleanup: bool = False,
         basename: str | None = None,
     ) -> str:
-        return self.get_empty_file_store_id(jobStoreID, cleanup, basename)
+        return self.get_empty_file_store_id(
+            job_id=jobStoreID,
+            cleanup=cleanup,
+            basename=basename
+        )
 
     @abstractmethod
     def get_empty_file_store_id(
@@ -1205,6 +1233,7 @@ class AbstractJobStore(ABC):
         job_id: str | None = None,
         cleanup: bool = False,
         basename: str | None = None,
+        hints: list[str] | None = None,
     ) -> str:
         """
         Creates an empty file in the job store and returns its ID.
@@ -1220,6 +1249,9 @@ class AbstractJobStore(ABC):
         :param basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
+
+        :param hints: Optional human-readable path hints; see
+               :class:`toil.jobStores.abstractJobStore.HintedJobStore` for details.
 
         :return: a jobStoreFileID that references the newly created file and can be used to reference the
                  file in the future.
@@ -1649,6 +1681,189 @@ class AbstractJobStore(ABC):
     def _requireValidSharedFileName(cls, sharedFileName: str) -> None:
         if not cls._validateSharedFileName(sharedFileName):
             raise ValueError("Not a valid shared file name: '%s'." % sharedFileName)
+
+class HintedJobStore:
+    """
+    A job store mixin that helps store files with hints at paths based on the hints.
+
+    File Hints
+    ----------
+
+    File-writing methods on
+    :class:`toil.jobStores.abstractJobStore.AbstractJobStore` accept an
+    optional ``hints`` parameter: a list of strings, such as workflow and task
+    names. Job stores implementing the hints feature use them to hierarchically
+    organize stored files in a human-readable way, so a person browsing the job
+    store can find files by the task that produced them. Files written with the
+    same hints and basename still get distinct IDs.
+
+    UUIDs not created by the caller must never be used as hints.
+
+    Implementing File Hints with HintedJobStore
+    -------------------------------------------
+
+    The inheriting class needs to provide a "hint trees": a place where objects
+    can be created, polled, and deleted at slash-delimited paths. This is
+    probably something like a directory or a key prefix.
+
+    This class will give you slash-delimeted places in there to use for hinted
+    files, which can be used as part of file IDs.
+
+    Before one of those files is deleted, this class needs to be notified via
+    :meth:`tombstone`.
+
+    This class handles producing unique, not-previously-deleted, human-readable
+    names in the presence of duplicate or apparently-colliding hints and
+    basenames.
+    """
+
+    # Subdirectory names within a hints tree that hold live files and
+    # tombstones for deleted files.  These names are banned as hints (see
+    # AbstractJobStore._BANNED_HINTS) so they can never collide with a
+    # user-provided hint component.
+    _HINT_FILES_DIR = "files"
+    _HINT_DELETED_DIR = "deleted"
+
+    # Hints that are reserved for internal use by the file layout and must
+    # never appear as a sanitized hint component.
+    _BANNED_HINTS = frozenset({".", "..", _HINT_FILES_DIR, _HINT_DELETED_DIR})
+
+    def _sanitize_hint(self, hint: str, safe: str = "_.-", max_length: int = 40) -> str:
+        """
+        Sanitize a single hint string into a safe path component.
+
+        ASCII alphanumerics are always kept. ``safe`` is a string of
+        additional characters to keep. The result is truncated to
+        ``max_length``. Returns the empty string if the sanitized hint is
+        reserved by the file layout (see :attr:`_BANNED_HINTS`).
+        """
+        safe_set = set(safe)
+        cleaned = "".join(c for c in hint if c.isascii() and (c.isalnum() or c in safe_set))
+        cleaned = cleaned[:max_length]
+        if cleaned in self._BANNED_HINTS:
+            return ""
+        return cleaned
+
+    def hints_to_string(
+        self,
+        hints: list[str] | None,
+        separator: str = "/",
+        max_length: int = 120,
+        safe: str = "_.-",
+    ) -> str:
+        """
+        Turn user-supplied hints into a path-like string.
+
+        Returns a separator-delimited string of up to max_length containing
+        only sanitized hints.
+
+        If the result is empty, the file CANNOT be stored in the hint tree.
+        """
+        if not hints:
+            return ""
+        parts: list[str] = []
+        total = 0
+        for hint in hints:
+            cleaned = self._sanitize_hint(hint, safe=safe)
+            if not cleaned:
+                continue
+            needed = len(cleaned) + (len(separator) if parts else 0)
+            if total + needed > max_length:
+                break
+            total += needed
+            parts.append(cleaned)
+        return separator.join(parts)
+
+    def claim_hinted_slot(self, hints_str: str, basename: str) -> str:
+        """
+        Claim the next available slot in a hints tree.
+
+        On successful return, an empty placeholder object exists at the
+        assigned path.
+
+        The result is guaranteed to contain "/{self._HINT_FILES_DIR}/" and to
+        end with the basename.
+
+        :param hints_str: Result of :meth:`hints_to_string`. Must be nonempty.
+        :param basename: The file basename.
+        :returns: The location in the hint tree that was assigned.
+        """
+        if len(hints_str) == 0:
+            raise ValueError("Cannot store a file with hints when the hint string is empty!")
+
+        # Try the bare slot, then numbered slots 0, 1, 2, ...
+        slot: int | None = None
+        while True:
+            if slot is None:
+                slot_path = f"{hints_str}/{self._HINT_FILES_DIR}/{basename}"
+                tombstone_path = (
+                    f"{hints_str}/{self._HINT_DELETED_DIR}/{basename}"
+                )
+            else:
+                slot_path = (
+                    f"{hints_str}/{self._HINT_FILES_DIR}/{slot}/{basename}"
+                )
+                tombstone_path = (
+                    f"{hints_str}/{self._HINT_DELETED_DIR}/{slot}/{basename}"
+                )
+
+            if self._hint_tree_exists(tombstone_path):
+                slot = 0 if slot is None else slot + 1
+                continue
+
+            if not self._hint_tree_put_if_absent(slot_path):
+                slot = 0 if slot is None else slot + 1
+                continue
+
+            # Re-check: a concurrent create+delete of this slot between
+            # the first check and the put above would leave a tombstone
+            # we need to honor.
+            if self._hint_tree_exists(tombstone_path):
+                self._hint_tree_delete(slot_path)
+                slot = 0 if slot is None else slot + 1
+                continue
+
+            return slot_path
+
+    def tombstone(self, slot_path: str) -> None:
+        """
+        Create a tombstone for the slot occupied by the given slot path.
+
+        Ensures that the slot will never be re-used even if the object at the
+        slot path vanishes from the hint tree.
+        """
+        marker = f"/{self._HINT_FILES_DIR}/"
+        # The hint components never contain "files", so the first match
+        # here is the boundary we want.
+        idx = slot_path.index(marker)
+        tombstone_path = (
+            slot_path[:idx] + f"/{self._HINT_DELETED_DIR}/" + slot_path[idx + len(marker):]
+        )
+
+        # Leave the tombstone
+        self._hint_tree_put_if_absent(tombstone_path)
+
+    # These need to be implemented by the actual JobStore implementation.
+
+    def _hint_tree_put_if_absent(self, path: str) -> bool:
+        """
+        Create a path in the hint tree if it did not exist.
+
+        Returns True if it was created and False if it existed already.
+        """
+        raise NotImplementedError()
+
+    def _hint_tree_exists(self, path: str) -> bool:
+        """
+        Return True if the given path exists in the hint tree, and False otherwise.
+        """
+        raise NotImplementedError()
+
+    def _hint_tree_delete(self, path: str) -> None:
+        """
+        Delete the given path from the hint tree, if present.
+        """
+        raise NotImplementedError()
 
 
 class JobStoreSupport(AbstractJobStore, URLAccess, metaclass=ABCMeta):

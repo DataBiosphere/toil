@@ -565,6 +565,7 @@ def s3_key_exists(
             and e.operation_name == "HeadObject"
         ):
             # An error occurred (400) when calling the HeadObject operation: Bad Request
+            # TODO: Can this *only* happen if the object actually does exist?
             raise AWSBadEncryptionKeyError(
                 "Your AWS encryption key is most likely configured incorrectly "
                 f"(HeadObject operation on key '{key}': Bad Request)."
