@@ -71,59 +71,54 @@ class TestThreading:
                     "precious"
                 ), f"File {filename} still exists"
     
-    # Tests for ENOLCK (toil#4846)
-    def testSafeLockRetriesOnENOLCK(self) -> None:
-        enolck = OSError(errno.ENOLCK, "No locks available")
-        # First call raises ENOLCK, second call succeeds
-        with patch("fcntl.flock", side_effect=[enolck, None]) as mock_flock:
+class BaseSafeLockingTest:
+    """
+    Base class for testing retry and error-swallowing behavior in safe_lock
+    and safe_unlock_and_close. Subclasses provide the specific OSError to test
+    by implementing get_error().
+    """
+    def get_error(self) -> Exception:
+        """Return the OSError to simulate in tests. Must be implemented by subclasses."""
+        raise NotImplementedError
+
+    def test_safe_lock_retries(self) -> None:
+        """safe_lock should retry on a transient error and succeed on the second attempt."""
+        error = self.get_error()
+        # First call raises error, second call succeeds
+        with patch("fcntl.flock", side_effect=[error, None]) as mock_flock:
             safe_lock(0)
             assert mock_flock.call_count == 2
     
-    def testSafeLockFailsAfterMaxRetriesOnENOLCK(self) -> None:
-        enolck = OSError(errno.ENOLCK, "No locks available")
-        # First call raises ENOLCK, second call succeeds
-        with patch("fcntl.flock", side_effect=enolck):
+    def test_safe_lock_fails_after_max_retries(self) -> None:
+        """safe_lock should raise OSError after exhausting all retries."""
+        error = self.get_error()
+        # First call raises error, second call succeeds
+        with patch("fcntl.flock", side_effect=error):
             with patch("toil.lib.threading.time.sleep"):  # skip the backoff waits
                 try:
                     safe_lock(0)
                     assert False, "Expected OSError to be raised"
                 except OSError as e:
-                    assert e.errno == errno.ENOLCK
+                    assert e.errno == error.errno
     
-    def testSafeLockRetriesOnEIO(self) -> None:
-        eio = OSError(errno.EIO, "Input/Output Error")
-        # First call raises EIO, second call succeeds
-        with patch("fcntl.flock", side_effect=[eio, None]) as mock_flock:
-            safe_lock(0)
-            assert mock_flock.call_count == 2
-    
-    def testSafeLockFailsAfterMaxRetriesOnEIO(self) -> None:
-        eio = OSError(errno.EIO, "Input/Output Error")
-        # First call raises EIO, second call succeeds
-        with patch("fcntl.flock", side_effect=eio):
-            with patch("toil.lib.threading.time.sleep"):  # skip the backoff waits
-                try:
-                    safe_lock(0)
-                    assert False, "Expected OSError to be raised"
-                except OSError as e:
-                    assert e.errno == errno.EIO
-    
-    def testSafeUnlockAndCloseSwallowsENOLCK(self) -> None:
-        enolck = OSError(errno.ENOLCK, "No locks available")
-        # First call raises ENOLCK, second call succeeds
-        with patch("fcntl.flock", side_effect=enolck):
-            with patch("os.close") as mock_close:
-                safe_unlock_and_close(0)
-                mock_close.assert_called_once_with(0)
- 
-    def testSafeUnlockAndCloseSwallowsEIO(self) -> None:
-        # First call raises EIO, second call succeeds
-        eio = OSError(errno.EIO, "Input/output error")
-        with patch("fcntl.flock", side_effect=eio):
+    def test_safe_unlock_and_close_swallows(self) -> None:
+        """safe_unlock_and_close should swallow the error and still close the fd."""
+        error = self.get_error()
+        # First call raises error, second call succeeds
+        with patch("fcntl.flock", side_effect=error):
             with patch("os.close") as mock_close:
                 safe_unlock_and_close(0)
                 mock_close.assert_called_once_with(0)
 
+class TestENOLCKSafeLocking(BaseSafeLockingTest):
+    """Tests safe_lock and safe_unlock_and_close behavior when fcntl raises ENOLCK (NFS lockd unavailable)."""
+    def get_error(self) -> Exception:
+        return OSError(errno.ENOLCK, "No locks available")
+
+class TestEIOSafeLocking(BaseSafeLockingTest):
+    """Tests safe_lock and safe_unlock_and_close behavior when fcntl raises EIO (Ceph IO error)."""
+    def get_error(self) -> Exception:
+        return OSError(errno.EIO, "Input/Output Error")
 
 def _testGlobalMutexOrderingTask(scope: Path, mutex: str, number: int) -> bool:
     try:

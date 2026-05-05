@@ -165,7 +165,8 @@ def safe_lock(fd: int, block: bool = True, shared: bool = False) -> None:
                         )
                     else:
                         logger.critical(
-                            "Too many IO errors talking to lock file. If using Ceph, check for MDS deadlocks. See <https://tracker.ceph.com/issues/62123>."
+                            "Too many IO errors talking to lock file. If using Ceph, "
+                            "check for MDS deadlocks. See <https://tracker.ceph.com/issues/62123>.",
                         )
                     raise
             else:
@@ -179,11 +180,12 @@ def safe_unlock_and_close(fd: int) -> None:
     try:
         fcntl.flock(fd, fcntl.LOCK_UN)
     except OSError as e:
-        if e.errno not in (errno.EIO, errno.ENOLCK):
-            raise
-        # Sometimes Ceph produces EIO. We don't need to retry then because
-        # we're going to close the FD and after that the file can't remain
-        # locked by us.
+        if e.errno in (errno.EIO, errno.ENOLCK):
+            # We don't need to retry then because we're going to close the FD 
+            # and after that the file can't remain locked by us.
+            pass
+        else:
+            raise  
     os.close(fd)
 
 
