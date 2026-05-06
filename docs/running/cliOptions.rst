@@ -253,11 +253,11 @@ levels in toil are based on priority from the logging module:
   --slurmPartition SLURM_PARTITION
                         Partition to send Slurm jobs to.
   --slurmQOS SLURM_QOS
-                        Quality Of Service to send Slurm jobs to.
+                        Quality Of Service to request for Slurm jobs.
   --slurmGPUPartition SLURM_GPU_PARTITION
                         Partition to send Slurm jobs to if they ask for GPUs.
   --slurmGPUQOS SLURM_GPU_QOS
-                        Quality Of Service to send Slurm jobs to if they ask for GPUs.
+                        Quality Of Service to request for Slurm jobs if they ask for GPUs.
   --slurmPE SLURM_PE    Special partition to send Slurm jobs to if they ask
                         for more than 1 CPU. Useful for Slurm clusters that do
                         not offer a partition accepting both single-core and

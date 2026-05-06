@@ -1207,7 +1207,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             dest="slurm_qos",
             default=None,
             env_var="TOIL_SLURM_QOS",
-            help="QOS to send Slurm jobs to.",
+            help="Quality Of Service to request for Slurm jobs.",
         )
         parser.add_argument(
             "--slurmGPUPartition",
@@ -1221,7 +1221,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             dest="slurm_gpu_qos",
             default=None,
             env_var="TOIL_SLURM_GPU_QOS",
-            help="QOS to send Slurm jobs to if they ask for GPUs.",
+            help="Quality Of Service to request for Slurm jobs if they ask for GPUs.",
         )
         parser.add_argument(
             "--slurmPE",
