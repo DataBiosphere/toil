@@ -529,6 +529,7 @@ def needs_kubernetes_installed(test_item: MT) -> MT:
 def _is_kubernetes_installed_and_configured() -> bool:
     try:
         import kubernetes
+        import oauthlib.oauth2.rfc6749.errors  # type: ignore[import-untyped]
 
         try:
             kubernetes.config.load_kube_config()  # type: ignore[attr-defined]
@@ -537,7 +538,13 @@ def _is_kubernetes_installed_and_configured() -> bool:
                 kubernetes.config.load_incluster_config()  # type: ignore[attr-defined]
             except kubernetes.config.ConfigException:  # type: ignore[attr-defined]
                 return False
-    except ImportError:
+        except oauthlib.oauth2.rfc6749.errors.CustomOAuth2Error:
+            logger.warning("Kubernetes credentials are not accepted by the cluster.")
+            return False
+        except Exception:
+            logger.exception("Unexpected error while checking for Kubernetes configuration.")
+            return False
+    except ImportError: # to catch any exception 
         return False
     return True
 
