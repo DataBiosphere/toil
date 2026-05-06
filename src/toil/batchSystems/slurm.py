@@ -157,6 +157,23 @@ def any_option_detector(options: list[str | tuple[str, str]]) -> Callable[[str],
     return is_match
 
 
+def parse_slurm_option_value(args: list[str], i: int) -> tuple[str, int]:
+    """
+    Parse a Slurm option value in either ``--opt=value`` or ``--opt value`` form.
+
+    Returns the extracted value and the last consumed index.
+
+    :param args: list of command-line arguments
+    :param i: index of the option argument in the list to parse
+    """
+    arg = args[i]
+    if "=" not in arg:
+        if i + 1 >= len(args):
+            raise ValueError(f"No value supplied for Slurm {arg} argument")
+        return args[i + 1], i + 1
+    return arg.split("=", 1)[1], i
+
+
 class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     class PartitionInfo(NamedTuple):
         partition_name: str
@@ -915,15 +932,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     elif is_export_option(arg):
                         # Capture the export argument value so we can modify it
                         export_all = False
-                        if "=" not in arg:
-                            if i + 1 >= len(args):
-                                raise ValueError(
-                                    f"No value supplied for Slurm {arg} argument"
-                                )
-                            i += 1
-                            export_list.append(args[i])
-                        else:
-                            export_list.append(arg.split("=", 1)[1])
+                        export_value, i = parse_slurm_option_value(args, i)
+                        export_list.append(export_value)
                     elif is_export_file_option(arg):
                         # Keep --export-file but turn off --export=ALL in that
                         # case.
@@ -931,38 +941,14 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                         sbatch_line.append(arg)
                     elif is_time_option(arg):
                         # Capture the time limit in seconds so we can use it for picking a partition
-                        if "=" not in arg:
-                            if i + 1 >= len(args):
-                                raise ValueError(
-                                    f"No value supplied for Slurm {arg} argument"
-                                )
-                            i += 1
-                            time_string = args[i]
-                        else:
-                            time_string = arg.split("=", 1)[1]
+                        time_string, i = parse_slurm_option_value(args, i)
                         time_limit = parse_slurm_time(time_string)
                     elif is_partition_option(arg):
                         # Capture the partition so we can run checks on it and know not to assign one
-                        if "=" not in arg:
-                            if i + 1 >= len(args):
-                                raise ValueError(
-                                    f"No value supplied for Slurm {arg} argument"
-                                )
-                            i += 1
-                            partition = args[i]
-                        else:
-                            partition = arg.split("=", 1)[1]
+                        partition, i = parse_slurm_option_value(args, i)
                     elif is_qos_option(arg):
                         # Capture the QOS so we can avoid assigning one on top of it
-                        if "=" not in arg:
-                            if i + 1 >= len(args):
-                                raise ValueError(
-                                    f"No value supplied for Slurm {arg} argument"
-                                )
-                            i += 1
-                            qos = args[i]
-                        else:
-                            qos = arg.split("=", 1)[1]
+                        qos, i = parse_slurm_option_value(args, i)
                     else:
                         # Other arguments pass through.
                         sbatch_line.append(arg)
