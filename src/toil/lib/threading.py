@@ -141,7 +141,7 @@ def safe_lock(fd: int, block: bool = True, shared: bool = False) -> None:
             if e.errno in (errno.EACCES, errno.EAGAIN):
                 # Nonblocking lock not available.
                 raise
-            elif e.errno == errno.EIO:
+            elif e.errno in (errno.EIO, errno.ENOLCK):
                 # Sometimes Ceph produces IO errors when talking to lock files.
                 # Back off and try again.
                 # TODO: Should we eventually give up if the disk really is
@@ -156,9 +156,18 @@ def safe_lock(fd: int, block: bool = True, shared: bool = False) -> None:
                     error_tries += 1
                     continue
                 else:
-                    logger.critical(
-                        "Too many IO errors talking to lock file. If using Ceph, check for MDS deadlocks. See <https://tracker.ceph.com/issues/62123>."
-                    )
+                    if e.errno == errno.ENOLCK:
+                        logger.critical(
+                            "No locks available after %d retries. The filesystem at the "
+                            "lock path may not support POSIX file locking (common on some "
+                            "NFS setups). Use --coordinationDir to point at local storage.",
+                            MAX_ERROR_TRIES,
+                        )
+                    else:
+                        logger.critical(
+                            "Too many IO errors talking to lock file. If using Ceph, "
+                            "check for MDS deadlocks. See <https://tracker.ceph.com/issues/62123>.",
+                        )
                     raise
             else:
                 raise
@@ -171,11 +180,12 @@ def safe_unlock_and_close(fd: int) -> None:
     try:
         fcntl.flock(fd, fcntl.LOCK_UN)
     except OSError as e:
-        if e.errno != errno.EIO:
-            raise
-        # Sometimes Ceph produces EIO. We don't need to retry then because
-        # we're going to close the FD and after that the file can't remain
-        # locked by us.
+        if e.errno in (errno.EIO, errno.ENOLCK):
+            # We don't need to retry then because we're going to close the FD 
+            # and after that the file can't remain locked by us.
+            pass
+        else:
+            raise  
     os.close(fd)
 
 
