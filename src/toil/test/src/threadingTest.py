@@ -77,7 +77,7 @@ class BaseSafeLockingTest:
     and safe_unlock_and_close. Subclasses provide the specific OSError to test
     by implementing get_error().
     """
-    def get_error(self) -> Exception:
+    def get_error(self) -> OSError:
         """Return the OSError to simulate in tests. Must be implemented by subclasses."""
         raise NotImplementedError
 
@@ -112,12 +112,12 @@ class BaseSafeLockingTest:
 
 class TestENOLCKSafeLocking(BaseSafeLockingTest):
     """Tests safe_lock and safe_unlock_and_close behavior when fcntl raises ENOLCK (NFS lockd unavailable)."""
-    def get_error(self) -> Exception:
+    def get_error(self) -> OSError:
         return OSError(errno.ENOLCK, "No locks available")
 
 class TestEIOSafeLocking(BaseSafeLockingTest):
     """Tests safe_lock and safe_unlock_and_close behavior when fcntl raises EIO (Ceph IO error)."""
-    def get_error(self) -> Exception:
+    def get_error(self) -> OSError:
         return OSError(errno.EIO, "Input/Output Error")
 
 def _testGlobalMutexOrderingTask(scope: Path, mutex: str, number: int) -> bool:
