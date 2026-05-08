@@ -4215,6 +4215,9 @@ def generate_default_job_store(
 
     try:
         if provisioner_name == "gce":
+            logger.warning(
+                "The GCE provisioner is deprecated and will be removed in a future release. Please use Kubernetes-based autoscaling instead."
+            )
             # With GCE, always use the Google job store
             job_store_type = "google"
         elif provisioner_name == "aws" or batch_system_name in {"mesos", "kubernetes"}:
