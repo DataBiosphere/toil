@@ -3334,7 +3334,15 @@ class Job:
         fileStore: AbstractFileStore,
         threshold_factor: float = 1.05,
     ) -> None:
-        """Log a warning when a job consumes more CPU time than its allocation."""
+        """
+        Log a warning when a job consumes more CPU time than its allocation.
+
+        If *job_time* is non-positive, returns immediately (wall-clock time may
+        lack resolution for very short jobs). If *cores* is non-positive, logs
+        a warning that overuse cannot be assessed and returns, avoiding
+        division by zero. Otherwise, compares *job_cpu_time* to
+        ``job_time * cores * threshold_factor``.
+        """
         if job_time <= 0:
             # The job may have run too quickly for wall-clock resolution.
             return
