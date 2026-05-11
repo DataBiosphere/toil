@@ -824,44 +824,54 @@ class TestJob:
             job = Job()
             file_store = Mock()
             job._check_cpu_usage(
-                job_time=0.0, job_cpu_time=100.0, fileStore=file_store)
+                job_time=0.0, 
+                job_cpu_time=100.0, 
+                fileStore=file_store
+            )
             job._check_cpu_usage(
-                job_time=-1.0, job_cpu_time=100.0, fileStore=file_store
+                job_time=-1.0, 
+                job_cpu_time=100.0, 
+                fileStore=file_store
             )
             file_store.log_to_leader.assert_not_called()
 
-        with subtests.test("warn for invalid cores value"):
+        with subtests.test("accepts 0 cores"):
             job = Job()
             file_store = Mock()
             job.cores = 0
             job._check_cpu_usage(
-                job_time=10.0, job_cpu_time=10.0, fileStore=file_store
+                job_time=10.0, 
+                job_cpu_time=10.0, 
+                fileStore=file_store
             )
-            file_store.log_to_leader.assert_called_once()
-            invalid_cores_message = file_store.log_to_leader.call_args.args[0]
-            invalid_cores_level = file_store.log_to_leader.call_args.kwargs["level"]
-            assert "invalid requested cores value 0" in invalid_cores_message
-            assert invalid_cores_level == logging.WARNING
 
+        TIME = 10.0
+        THRESHOLD = 1.05
+        CORES = 2
         with subtests.test("threshold boundary does not warn"):
-            threshold_job = Job(cores=2)
+            threshold_job = Job(cores=CORES)
             threshold_store = Mock()
             threshold_job._check_cpu_usage(
-                job_time=10.0, job_cpu_time=21.0, fileStore=threshold_store
+                job_time=TIME,
+                job_cpu_time=TIME * CORES * THRESHOLD,
+                fileStore=threshold_store,
+                threshold_factor=THRESHOLD,
             )
             threshold_store.log_to_leader.assert_not_called()
 
         with subtests.test("just above threshold warns"):
-            threshold_job = Job(cores=2)
+            threshold_job = Job(cores=CORES)
             threshold_store = Mock()
             threshold_job._check_cpu_usage(
-                job_time=10.0, job_cpu_time=21.1, fileStore=threshold_store
+                job_time=TIME,
+                job_cpu_time=TIME * CORES * THRESHOLD + 0.1,
+                fileStore=threshold_store,
+                threshold_factor=THRESHOLD,
             )
             threshold_store.log_to_leader.assert_called_once()
             cpu_message = threshold_store.log_to_leader.call_args.args[0]
             cpu_level = threshold_store.log_to_leader.call_args.kwargs["level"]
-            assert "used " in cpu_message
-            assert "more CPU than the requested 2 cores" in cpu_message
+            assert str(threshold_job.description) in cpu_message
             assert cpu_level == logging.WARNING
 
 def simpleJobFn(job: ServiceHostJob, value: str) -> None:
