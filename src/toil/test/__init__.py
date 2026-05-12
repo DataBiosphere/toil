@@ -541,10 +541,10 @@ def _is_kubernetes_installed_and_configured() -> bool:
         except oauthlib.oauth2.rfc6749.errors.CustomOAuth2Error:
             logger.warning("Kubernetes credentials are not accepted by the cluster.")
             return False
-        except Exception:
+        except Exception: # to catch any exception
             logger.exception("Unexpected error while checking for Kubernetes configuration.")
             return False
-    except ImportError: # to catch any exception 
+    except ImportError:
         return False
     return True
 
