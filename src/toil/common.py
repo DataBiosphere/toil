@@ -1058,6 +1058,10 @@ class Toil(ContextManager["Toil"]):
             HistoryManager.record_workflow_creation(
                 config.workflowID, self.canonical_locator(config.jobStore)
             )
+            # And since we have all its metadata now, record that
+            HistoryManager.record_workflow_metadata(
+                config.workflowID, self._workflow_name, self._trs_spec
+            )
         else:
             jobStore.resume()
             # Merge configuration from job store with command line options
@@ -1182,11 +1186,6 @@ class Toil(ContextManager["Toil"]):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
-
-        assert self.config.workflowID is not None
-        HistoryManager.record_workflow_metadata(
-            self.config.workflowID, self._workflow_name, self._trs_spec
-        )
 
         from toil.job import Job
 
