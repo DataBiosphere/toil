@@ -466,6 +466,11 @@ class Config:
             logger.warning(
                 "Toil built-in autoscaling with Mesos is deprecated as Mesos is no longer active. Please use Kubernetes-based autoscaling instead."
             )
+        
+        if self.provisioner == "gce":
+            logger.warning(
+                "Toil's GCE provisioner is deprecated and will be removed in a future release. Please use Kubernetes-based autoscaling instead."
+            )
 
     def check_configuration_consistency(self) -> None:
         """Old checks that cannot be fit into an action class for argparse"""
