@@ -53,9 +53,6 @@ class GCEProvisioner(AbstractProvisioner):
         enable_fuse,
     ):
         self.cloud = "gce"
-        logger.warning(
-            "The GCE provisioner is deprecated and will be removed in a future release. Please use Kubernetes-based autoscaling instead."
-        )
         self._sseKey = sseKey
 
         # Call base class constructor, which will call createClusterSettings()
