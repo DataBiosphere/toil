@@ -1835,6 +1835,60 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         delete_s3_bucket(resource, bucket.name)
 
 
+class GenerateDefaultJobStoreTest(ToilTest):
+    """Tests for generate_default_job_store in toil.jobStores.utils."""
+
+    def setUp(self):
+        super().setUp()
+        from toil.lib.io import mkdtemp
+        self.local_dir = mkdtemp()
+
+    def tearDown(self):
+        super().tearDown()
+        shutil.rmtree(self.local_dir, ignore_errors=True)
+
+    def test_single_machine_returns_local_path(self):
+        """Default batch system should return a file job store under the given local directory."""
+        from toil.jobStores.utils import generate_default_job_store
+        result = generate_default_job_store("single_machine", None, self.local_dir)
+        self.assertEqual(result, self.local_dir)
+
+    def test_none_batch_system_returns_local_path(self):
+        """None batch system should fall back to single_machine and return a file job store."""
+        from toil.jobStores.utils import generate_default_job_store
+        result = generate_default_job_store(None, None, self.local_dir)
+        self.assertEqual(result, self.local_dir)
+
+    def test_slurm_raises_no_available_job_store(self):
+        """Slurm batch system should raise NoAvailableJobStoreException."""
+        from toil.jobStores.utils import generate_default_job_store, NoAvailableJobStoreException
+        with self.assertRaises(NoAvailableJobStoreException):
+            generate_default_job_store("slurm", None, self.local_dir)
+
+    def test_slurm_error_mentions_shared_filesystem(self):
+        """Slurm error message should tell the user to use a shared filesystem."""
+        from toil.jobStores.utils import generate_default_job_store, NoAvailableJobStoreException
+        with self.assertRaises(NoAvailableJobStoreException) as cm:
+            generate_default_job_store("slurm", None, self.local_dir)
+        self.assertIn("shared", str(cm.exception).lower())
+        self.assertIn("--jobStore", str(cm.exception))
+
+    def test_grid_engine_batch_systems_raise_no_available_job_store(self):
+        """All grid engine batch systems should raise NoAvailableJobStoreException."""
+        from toil.jobStores.utils import generate_default_job_store, NoAvailableJobStoreException
+        grid_batch_systems = ["slurm", "lsf", "grid_engine", "torque", "htcondor"]
+        for batch_system in grid_batch_systems:
+            with self.subTest(batch_system=batch_system):
+                with self.assertRaises(NoAvailableJobStoreException):
+                    generate_default_job_store(batch_system, None, self.local_dir)
+
+    def test_decoration_included_when_no_local_suggestion(self):
+        """Decoration string should appear in the auto-generated fallback path when no local suggestion is given."""
+        from toil.jobStores.utils import generate_locator
+        result = generate_locator("file", local_suggestion=None, decoration="wdl")
+        self.assertIn("wdl", result)
+
+
 # @needs_aws_s3
 class InvalidAWSJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):

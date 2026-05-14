@@ -2,6 +2,7 @@ from configargparse import ArgParser
 
 from toil.common import Toil, addOptions
 from toil.test import ToilTest
+from toil.worker import main as worker_main
 
 
 class OptionsTest(ToilTest):
@@ -21,6 +22,13 @@ class OptionsTest(ToilTest):
         with Toil(options) as toil:
             caching_value = toil.config.caching
         self.assertEqual(caching_value, False)
+
+    def test_worker_raises_on_missing_job_store(self):
+        """Worker should raise RuntimeError with a clear message when the job store is unreachable."""
+        with self.assertRaises(RuntimeError) as cm:
+            worker_main(["_toil_worker", "test_job", "file:/nonexistent/path/jobstore", "some_job_id"])
+        self.assertIn("shared", str(cm.exception).lower())
+        self.assertIn("--jobStore", str(cm.exception))
 
     def test_caching_option_priority(self):
         """

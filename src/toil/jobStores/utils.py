@@ -160,4 +160,3 @@ def generate_default_job_store(
             f"--jobStore option."
         )
     # NoAvailableJobStoreException propagates as-is
-
