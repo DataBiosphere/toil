@@ -45,6 +45,7 @@ from toil.bus import (
 )
 from toil.common import Config, ToilMetrics
 from toil.cwl.utils import CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
+from toil.jobStores.utils import TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
 from toil.exceptions import FailedJobsException
 from toil.job import (
     CheckpointJobDescription,
@@ -895,6 +896,16 @@ class Leader:
                     logger.warning("This indicates an unsupported CWL requirement!")
                     self.recommended_fail_exit_code = (
                         CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
+                    )
+                elif update.exitStatus == TOIL_WORKER_NO_JOB_STORE_EXIT_CODE:
+                    # A worker could not access the job store. This is likely
+                    # because the job store is not on a shared filesystem.
+                    logger.warning(
+                        "A worker could not access the job store at '%s'. "
+                        "This usually means the job store path is not on a shared filesystem. "
+                        "Try re-running with --jobStore or jobStore positional argument pointing "
+                        "to a path on shared storage (e.g. NFS, Lustre).",
+                        self.config.jobStore,
                     )
             # Tell everyone it stopped running.
             self._messages.publish(

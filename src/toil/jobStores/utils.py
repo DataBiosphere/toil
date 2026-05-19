@@ -82,8 +82,15 @@ def generate_locator(
             f"libraries for {job_store_type} job store are not installed"
         )
 
+
+# Exit code used by the worker when it cannot access the job store, so the
+# leader can surface a clear error message rather than just a traceback
+TOIL_WORKER_NO_JOB_STORE_EXIT_CODE = 76
+
+
 class NoAvailableJobStoreException(Exception):
     """Indicates that no job store name is available."""
+
 
 def generate_default_job_store(
     batch_system_name: str | None,

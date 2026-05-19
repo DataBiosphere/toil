@@ -49,6 +49,7 @@ from toil.job import (
     JobDescription,
 )
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobStoreException
+from toil.jobStores.utils import TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
 from toil.lib.io import make_public_dir, path_union
 from toil.lib.resources import ResourceMonitor
 from toil.statsAndLogging import StatsDict, configure_root_logger, install_log_color, set_log_level
@@ -988,13 +989,16 @@ def main(argv: list[str] | None = None) -> None:
     try:
         job_store = Toil.resumeJobStore(options.jobStoreLocator)
     except NoSuchJobStoreException:
-        raise RuntimeError(
-            f"Could not access the job store at '{options.jobStoreLocator}'. "
-            f"If you are running with a grid batch system (e.g. Slurm), the job store "
-            f"path must be on a shared filesystem accessible from all worker nodes. "
-            f"Use --jobStore to point to shared storage (e.g. NFS, Lustre) instead of "
-            f"a local path."
+        logger.error(
+            "Could not access the job store at '%s'. "
+            "If you are running with a grid batch system (e.g. Slurm), the job store "
+            "path must be on a shared filesystem accessible from all worker nodes. "
+            "Use --jobStore or adjust the jobStore positional argument to point "
+            "to shared storage (e.g. NFS, Lustre) instead of "
+            "a local path.",
+            options.jobStoreLocator,
         )
+        sys.exit(TOIL_WORKER_NO_JOB_STORE_EXIT_CODE)
     
     config = job_store.config
 
