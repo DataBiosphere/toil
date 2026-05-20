@@ -112,7 +112,7 @@ motd = heredoc('''
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
-    FROM ubuntu:22.04
+    FROM ubuntu:26.04
 
     ARG TARGETARCH
 
@@ -132,7 +132,8 @@ print(heredoc('''
     # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites -m https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
     # ipfs add -r .
     # It contains a GPG key that will expire 2026-09-28
-    RUN echo "deb https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmRXnGNiWk523zgNkuamENVkghMJ2zJtinVfgjHbc4Dcpr/rpm.aventer.biz/Ubuntu/focal focal main" \
+    # This is served out of /public/groups/cgl/public_html on the GI public infrastructure.
+    RUN echo "deb https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmRXnGNiWk523zgNkuamENVkghMJ2zJtinVfgjHbc4Dcpr/rpm.aventer.biz/Ubuntu/noble noble main" \
         > /etc/apt/sources.list.d/mesos.list \
         && curl https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmRXnGNiWk523zgNkuamENVkghMJ2zJtinVfgjHbc4Dcpr/www.aventer.biz/assets/support_aventer.asc | apt-key add -
 
