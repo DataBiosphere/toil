@@ -2193,11 +2193,11 @@ class CWLNamedJob(Job):
     def __init__(
         self,
         cores: float | None = 1,
-        walltime: int | None = 0,
         memory: int | str | None = "1GiB",
         disk: int | str | None = "1MiB",
         accelerators: list[AcceleratorRequirement] | None = None,
         preemptible: bool | None = None,
+        walltime: int | None = 0,
         tool_id: str | None = None,
         parent_name: str | None = None,
         subjob_name: str | None = None,
@@ -2239,11 +2239,11 @@ class CWLNamedJob(Job):
         # Set up the job with the right requirements and names.
         super().__init__(
             cores=cores,
-            walltime=walltime,
             memory=memory,
             disk=disk,
             accelerators=accelerators,
             preemptible=preemptible,
+            walltime=walltime,
             unitName=unit_name,
             displayName=display_name,
             local=local,
@@ -2652,10 +2652,10 @@ class CWLJob(CWLNamedJob):
         super().__init__(
             cores=req["cores"],
             memory=memory,
-            walltime=walltime,
             disk=int(total_disk),
             accelerators=accelerators,
             preemptible=preemptible,
+            walltime=walltime,
             tool_id=self.cwltool.tool["id"],
             parent_name=parent_name,
             local=isinstance(tool, cwltool.command_line_tool.ExpressionTool),

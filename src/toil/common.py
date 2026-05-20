@@ -204,11 +204,11 @@ class Config:
     deadlockCheckInterval: float | int
 
     # Resource requirements
-    defaultWalltime: int
     defaultMemory: int
     defaultCores: float | int
     defaultDisk: int
     defaultPreemptible: bool
+    defaultWalltime: int
     # TODO: These names are generated programmatically in
     # Requirer._fetchRequirement so we can't use snake_case until we fix
     # that (and add compatibility getters/setters?)
@@ -390,7 +390,6 @@ class Config:
             set_option("deadlockCheckInterval")
 
         set_option("defaultMemory")
-        set_option("defaultWalltime")
         set_option("defaultCores")
         set_option("defaultDisk")
         set_option("defaultAccelerators")
@@ -398,6 +397,7 @@ class Config:
         set_option("maxMemory")
         set_option("maxDisk")
         set_option("defaultPreemptible")
+        set_option("defaultWalltime")
 
         # Retrying/rescuing jobs
         set_option("retryCount")

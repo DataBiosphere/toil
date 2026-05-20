@@ -415,14 +415,14 @@ class RequirementsDict(TypedDict):
 
     cores: NotRequired[int | float]
     memory: NotRequired[int]
-    walltime: NotRequired[int]
     disk: NotRequired[int]
     accelerators: NotRequired[list[AcceleratorRequirement]]
     preemptible: NotRequired[bool]
+    walltime: NotRequired[int]
 
 
 # These must be all the key names in RequirementsDict
-REQUIREMENT_NAMES = ["disk", "walltime", "memory", "cores", "accelerators", "preemptible"]
+REQUIREMENT_NAMES = ["disk", "memory", "cores", "accelerators", "preemptible", "walltime"]
 
 # This is the supertype of all value types in RequirementsDict
 ParsedRequirement = Union[int, float, bool, list[AcceleratorRequirement]]
@@ -455,7 +455,7 @@ class Requirer:
     """
     Base class implementing the storage and presentation of requirements.
 
-    Has cores, walltime, memory, disk, and preemptability as properties.
+    Has cores, memory, disk, preemptability, and walltime as properties.
     """
 
     _requirementOverrides: RequirementsDict
@@ -465,8 +465,8 @@ class Requirer:
         Parse and save the given requirements.
 
         :param dict requirements: Dict from string to value
-            describing a set of resource requirments. 'cores', 'walltime', 'memory',
-            'disk', 'preemptible', and 'accelerators' fields, if set, are
+            describing a set of resource requirments. 'cores', 'memory',
+            'disk', 'preemptible', 'accelerators', and 'walltime' fields, if set, are
             parsed and broken out into properties. If unset, the relevant
             property will be unspecified, and will be pulled from the assigned
             Config object if queried (see
@@ -857,7 +857,7 @@ class JobDescription(Requirer):
 
         :param requirements: Dict from string to number, string, or bool
             describing the resource requirements of the job. 'cores', 'memory',
-            'disk', 'walltime', and 'preemptible' fields, if set, are parsed and broken out
+            'disk', 'preemptible', and 'walltime' fields, if set, are parsed and broken out
             into properties. If unset, the relevant property will be
             unspecified, and will be pulled from the assigned Config object if
             queried (see :meth:`toil.job.Requirer.assignConfig`).
@@ -1752,13 +1752,13 @@ class Job:
 
     def __init__(
         self,
-        walltime: ParseableIndivisibleResource | None = None,
         memory: ParseableIndivisibleResource | None = None,
         cores: ParseableDivisibleResource | None = None,
         disk: ParseableIndivisibleResource | None = None,
         accelerators: ParseableAcceleratorRequirement | None = None,
         preemptible: ParseableFlag | None = None,
         preemptable: ParseableFlag | None = None,
+        walltime: ParseableIndivisibleResource | None = None,
         unitName: str | None = "",
         checkpoint: bool | None = False,
         displayName: str | None = "",
@@ -1771,13 +1771,13 @@ class Job:
 
         This method must be called by any overriding constructor.
 
-        :param walltime: the maximum walltime in seconds that the job is allowed to run.
         :param memory: the maximum number of bytes of memory the job will require to run.
         :param cores: the number of CPU cores required.
         :param disk: the amount of local disk space required by the job, expressed in bytes.
         :param accelerators: the computational accelerators required by the job. If a string, can be a string of a number, or a string specifying a model, brand, or API (with optional colon-delimited count).
         :param preemptible: if the job can be run on a preemptible node.
         :param preemptable: legacy preemptible parameter, for backwards compatibility with workflows not using the preemptible keyword
+        :param walltime: the maximum walltime in seconds that the job is allowed to run.
         :param unitName: Human-readable name for this instance of the job.
         :param checkpoint: if any of this job's successor jobs completely fails,
             exhausting all their retries, remove any successor jobs and rerun this job to restart the
@@ -1788,12 +1788,12 @@ class Job:
         :param local: if the job can be run on the leader.
         :param files: Set of Files that the job will want to use.
 
-        :type walltime: int
         :type memory: int or string convertible by toil.lib.conversions.human2bytes to an int
         :type cores: float, int, or string convertible by toil.lib.conversions.human2bytes to an int
         :type disk: int or string convertible by toil.lib.conversions.human2bytes to an int
         :type accelerators: int, string, dict, or list of those. Strings and dicts must be parseable by parse_accelerator.
         :type preemptible: bool, int in {0, 1}, or string in {'false', 'true'} in any case
+        :type walltime: int
         :type unitName: str
         :type checkpoint: bool
         :type displayName: str
@@ -1811,12 +1811,12 @@ class Job:
             preemptible = preemptable
         # Build a requirements dict for the description
         requirements = {
-            "walltime": walltime,
             "memory": memory,
             "cores": cores,
             "disk": disk,
             "accelerators": accelerators,
             "preemptible": preemptible,
+            "walltime": walltime,
         }
         if descriptionClass is None:
             if checkpoint:
@@ -1925,15 +1925,6 @@ class Job:
         self.description.disk = val
 
     @property
-    def walltime(self) -> int:
-        """The maximum walltime in seconds that the job is allowed to run."""
-        return self.description.walltime
-
-    @walltime.setter
-    def walltime(self, val: int) -> None:
-        self.description.walltime = val
-
-    @property
     def memory(self) -> int:
         """The maximum number of bytes of memory the job will require to run."""
         return self.description.memory
@@ -1968,7 +1959,16 @@ class Job:
     @preemptible.setter
     def preemptible(self, val: bool) -> None:
         self.description.preemptible = val
-    
+
+    @property
+    def walltime(self) -> int:
+        """The maximum walltime in seconds that the job is allowed to run."""
+        return self.description.walltime
+
+    @walltime.setter
+    def walltime(self, val: int) -> None:
+        self.description.walltime = val
+
     # Note that unless the two halves of a property are *immediately* adjacent,
     # MyPy throws an error. So the old version has to come later.
     @deprecated(new_function_name="preemptible")
@@ -2715,27 +2715,27 @@ class Job:
 
         def __init__(
             self,
-            walltime: ParseableIndivisibleResource | None = None,
             memory: ParseableIndivisibleResource | None = None,
             cores: ParseableDivisibleResource | None = None,
             disk: ParseableIndivisibleResource | None = None,
             accelerators: ParseableAcceleratorRequirement | None = None,
             preemptible: ParseableFlag | None = None,
+            walltime: ParseableIndivisibleResource | None = None,
             unitName: str | None = "",
         ) -> None:
             """
-            Memory, walltime, core and disk requirements are specified identically to as in \
+            Memory, core, disk and walltime requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
             """
             # Save the requirements in ourselves so they are visible on `self` to user code.
             super().__init__(
                 {
                     "memory": memory,
-                    "walltime": walltime,
                     "cores": cores,
                     "disk": disk,
                     "accelerators": accelerators,
                     "preemptible": preemptible,
+                    "walltime": walltime,
                 }
             )
 
@@ -3523,11 +3523,11 @@ class FunctionWrappingJob(Job):
 
         super().__init__(
             memory=resolve("memory", dehumanize=True),
-            walltime=resolve("walltime"),
             cores=resolve("cores", dehumanize=True),
             disk=resolve("disk", dehumanize=True),
             accelerators=resolve("accelerators"),
             preemptible=resolve("preemptible"),
+            walltime=resolve("walltime"),
             checkpoint=resolve("checkpoint", default=False),
             unitName=resolve("name", default=None),
         )
@@ -3585,11 +3585,11 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     can be specified:
 
         - memory
-        - walltime
         - disk
         - cores
         - accelerators
         - preemptible
+        - walltime
 
     For example to wrap a function into a job we would call::
 

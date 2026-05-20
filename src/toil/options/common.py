@@ -779,16 +779,6 @@ def add_base_toil_options(
         ),
     )
     resource_options.add_argument(
-        "--defaultWalltime",
-        dest="defaultWalltime",
-        default="0",
-        type=int,
-        action=make_open_interval_action(0),
-        help=resource_help_msg.format(
-            "default", "walltime", walltime_note, str(0)
-        ),
-    )
-    resource_options.add_argument(
         "--defaultCores",
         dest="defaultCores",
         default=1,
@@ -857,6 +847,16 @@ def add_base_toil_options(
         action=make_open_interval_action(1),
         help=resource_help_msg.format(
             "max", "disk", disk_mem_note, bytes2human(SYS_MAX_SIZE)
+        ),
+    )
+    resource_options.add_argument(
+        "--defaultWalltime",
+        dest="defaultWalltime",
+        default="0",
+        type=int,
+        action=make_open_interval_action(0),
+        help=resource_help_msg.format(
+            "default", "walltime", walltime_note, str(0)
         ),
     )
 

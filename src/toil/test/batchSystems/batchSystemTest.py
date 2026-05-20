@@ -1025,10 +1025,10 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                                     requirements=dict(
                                         cores=float(coresPerJob),
                                         memory=1,
-                                        walltime=0,
                                         disk=1,
                                         accelerators=[],
                                         preemptible=preemptible,
+                                        walltime=0,
                                     ),
                                     jobName=str(i),
                                     unitName="",
