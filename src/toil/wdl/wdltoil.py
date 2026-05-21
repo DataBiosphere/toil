@@ -6392,7 +6392,7 @@ def main() -> None:
         logger.error("WDL job failed: %s", e)
         sys.exit(e.exit_code)
     except InconsistentConfigurationError as e:
-        logging.error(err)
+        logging.error(e)
         sys.exit(1)
 
 
