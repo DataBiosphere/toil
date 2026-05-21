@@ -74,7 +74,7 @@ from WDL.runtime.task_container import TaskContainer
 from WDL.Tree import ReadSourceResult
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
-from toil.common import Toil, addOptions
+from toil.common import Toil, addOptions, InconsistentConfigurationError
 from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -6385,6 +6385,9 @@ def main() -> None:
     except FailedJobsException as e:
         logger.error("WDL job failed: %s", e)
         sys.exit(e.exit_code)
+    except InconsistentConfigurationError as e:
+        logging.error(err)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

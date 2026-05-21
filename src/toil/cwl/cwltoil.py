@@ -99,7 +99,7 @@ from schema_salad.sourceline import SourceLine
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
-from toil.common import Config, Toil, addOptions
+from toil.common import Config, Toil, addOptions, InconsistentConfigurationError
 from toil.cwl import check_cwltool_version
 from toil.lib.directory import DirectoryContents, decode_directory, encode_directory
 from toil.lib.misc import call_command
@@ -4716,6 +4716,7 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
         UnimplementedURLException,
         JobTooBigError,
         FileNotFoundError,
+        InconsistentConfigurationError,
     ) as err:
         logging.error(err)
         return 1
