@@ -192,9 +192,16 @@ class Leader:
         # using a statically defined cluster
         self.provisioner = provisioner
 
-        # Create cluster scaling thread if the provisioner is not None
+        # Create cluster scaling thread if we want to scale up and down 
         self.clusterScaler = None
         if self.provisioner is not None and self.provisioner.hasAutoscaledNodeTypes():
+            if not isinstance(self.batchSystem, AbstractScalableBatchSystem):
+                # We shouldn't be allowed to use this combination
+                raise RuntimeError(
+                    f"Cannot use in-workflow autoscaling with the {type(self.provisioner)} "
+                    f"provisioner when using a non-scalable {type(self.batchSystem)} "
+                    f"batch system; consider Kuberentes cluster-based autoscaling instead"
+                )
             self.clusterScaler = ScalerThread(self.provisioner, self, self.config)
 
         # A service manager thread to start and terminate services
