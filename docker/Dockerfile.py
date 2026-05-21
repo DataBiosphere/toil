@@ -134,9 +134,11 @@ print(heredoc('''
     # ipfs add -r .
     # It contains a GPG key that will expire 2026-09-28
     # This is served out of /public/groups/cgl/public_html on the GI public infrastructure.
-    RUN echo "deb https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/Qmcd6B5gS42p99BzKjNsWuBJ9X4dEk7JEh7N9Hr6EYMzfn/rpm.aventer.biz/Ubuntu/noble noble main" \
+    # Make sure to use the current signing key setup as described in <https://askubuntu.com/a/1307181>
+    RUN echo "deb [signed-by=/etc/apt/keyrings/support_aventer.asc] https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/Qmcd6B5gS42p99BzKjNsWuBJ9X4dEk7JEh7N9Hr6EYMzfn/rpm.aventer.biz/Ubuntu/noble noble main" \
         > /etc/apt/sources.list.d/mesos.list \
-        && curl https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/Qmcd6B5gS42p99BzKjNsWuBJ9X4dEk7JEh7N9Hr6EYMzfn/www.aventer.biz/assets/support_aventer.asc | apt-key add -
+        && mkdir -p /etc/apt/keyrings/ \
+        && curl https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/Qmcd6B5gS42p99BzKjNsWuBJ9X4dEk7JEh7N9Hr6EYMzfn/www.aventer.biz/assets/support_aventer.asc >/etc/apt/keyrings/support_aventer.asc
 
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
