@@ -126,6 +126,7 @@ from toil.lib.io import (
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
 from toil.lib.resources import ResourceMonitor
+from toil.statsAndLogging import set_logging_from_options
 from toil.lib.threading import global_mutex
 from toil.lib.trs import resolve_workflow
 from toil.lib.url import URLAccess
@@ -6093,30 +6094,35 @@ def main() -> None:
 
     options = parser.parse_args(args)
 
-    # Make sure we have a jobStore
-    if options.jobStore is None:
-        # TODO: Move cwltoil's generate_default_job_store where we can use it
-        options.jobStore = os.path.join(mkdtemp(), "tree")
-
-    # Having an nargs=? option can put a None in our inputs list, so drop that.
-    input_sources = [x for x in options.inputs_uri if x is not None]
-    if len(input_sources) > 1:
-        raise RuntimeError(
-            f"Workflow inputs cannot be specified with both the -i/--input/--inputs flag "
-            f"and as a positional argument at the same time. Cannot use both "
-            f'"{input_sources[0]}" and "{input_sources[1]}".'
-        )
-
-    # Make sure we have an output directory (or URL prefix) and we don't need
-    # to ever worry about a None, and MyPy knows it.
-    # If we don't have a directory assigned, make one in the current directory.
-    output_directory: str = (
-        options.output_directory
-        if options.output_directory
-        else mkdtemp(prefix="wdl-out-", dir=os.getcwd())
-    )
+    # As soon as practicable, set up logging.
+    # TODO: the Toil context manager will do this again.
+    set_logging_from_options(options)
 
     try:
+        # Make sure we have a jobStore
+        if options.jobStore is None:
+            # TODO: Move cwltoil's generate_default_job_store where we can use it
+            options.jobStore = os.path.join(mkdtemp(), "tree")
+
+        # Having an nargs=? option can put a None in our inputs list, so drop that.
+        input_sources = [x for x in options.inputs_uri if x is not None]
+        if len(input_sources) > 1:
+            raise InconsistentConfigurationError(
+                f"Workflow inputs cannot be specified with both the -i/--input/--inputs flag "
+                f"and as a positional argument at the same time. Cannot use both "
+                f'"{input_sources[0]}" and "{input_sources[1]}".'
+            )
+
+        # Make sure we have an output directory (or URL prefix) and we don't need
+        # to ever worry about a None, and MyPy knows it.
+        # If we don't have a directory assigned, make one in the current directory.
+        output_directory: str = (
+            options.output_directory
+            if options.output_directory
+            else mkdtemp(prefix="wdl-out-", dir=os.getcwd())
+        )
+
+
         wdl_uri, trs_spec = resolve_workflow(
             options.wdl_uri, supported_languages={"WDL"}
         )

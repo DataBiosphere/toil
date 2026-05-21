@@ -105,6 +105,7 @@ from toil.lib.directory import DirectoryContents, decode_directory, encode_direc
 from toil.lib.misc import call_command
 from toil.lib.trs import resolve_workflow
 from toil.provisioners.clusterScaler import JobTooBigError
+from toil.statsAndLogging import set_logging_from_options
 
 check_cwltool_version()
 from toil.cwl.utils import (
@@ -4313,6 +4314,10 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
         args = sys.argv[1:]
 
     options = get_options(args)
+
+    # As soon as practicable, set up logging.
+    # TODO: the Toil context manager will do this again.
+    set_logging_from_options(options)
 
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
