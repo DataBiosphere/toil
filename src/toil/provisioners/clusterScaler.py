@@ -68,7 +68,7 @@ class NonScalableBatchSystemError(NotImplementedError):
     in-workflow autoscaler is beiong used with it anyway.
     """
 
-    def __init__(message: str | None) -> None:
+    def __init__(self, message: str | None) -> None:
         """
         Make a new error with either the provided message or a default one.
         """
