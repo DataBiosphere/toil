@@ -914,8 +914,11 @@ def addOptions(
             sys.argv[1:], ignore_help_args=True
         )
         if len(vars(other_options)) != 0:
+            # TODO: We want to tell the user the actual option string, but we only have the variable name.
             raise parser.error(
-                f"{'WDL' if typ == 'cwl' else 'CWL'} options are not allowed on the command line."
+                f"{'WDL' if typ == 'cwl' else 'CWL'} options like those "
+                f"populating {', '.join(vars(other_options).keys())} are not "
+                f"allowed on the command line."
             )
 
     # if cwl is set, format the namespace for cwl and check that wdl options are not set on the command line
