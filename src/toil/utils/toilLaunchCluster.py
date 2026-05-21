@@ -63,6 +63,7 @@ def main() -> None:
     parser.add_argument(
         "--keyPairName",
         dest="keyPairName",
+        required=True,
         help="On AWS, the name of the AWS key pair to include on the instance."
         " On Google/GCE, this is the ssh key pair.",
     )
@@ -280,6 +281,7 @@ def main() -> None:
         enable_fuse=options.allowFuse,
     )
 
+    assert options.keyPairName is not None
     cluster.launchCluster(
         leaderNodeType=options.leaderNodeType,
         leaderStorage=options.leaderStorage,
