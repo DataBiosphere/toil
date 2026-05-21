@@ -105,9 +105,10 @@ logger = logging.getLogger(__name__)
 
 class InconsistentConfigurationError(ValueError):
     """
-    Class representing an error due to a Toil configuration that cannot be used.
+    Represents when a Toil configuration is nonsensical and cannot be used.
 
-    Has an informative user-facing error message which can be logged before terminating the program.
+    Has an informative user-facing error message which can be logged before
+    terminating the program.
     """
     pass
 
