@@ -122,7 +122,7 @@ print(heredoc('''
     # See <https://stackoverflow.com/a/66523384>
     RUN printf 'Acquire::http::Pipeline-Depth "0";\\nAcquire::http::No-Cache=True;\\nAcquire::BrokenProxy=true;\\n' >/etc/apt/apt.conf.d/99fixbadproxy
 
-    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install --no-upgrade apt-transport-https ca-certificates software-properties-common curl && apt-get clean && rm -rf /var/lib/apt/lists/*
+    RUN apt-get -y update --fix-missing && apt-get -y install --no-upgrade apt-transport-https ca-certificates software-properties-common curl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN add-apt-repository -y ppa:deadsnakes/ppa
 
