@@ -55,7 +55,7 @@ from toil.job import (
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
-from toil.provisioners.clusterScaler import ScalerThread
+from toil.provisioners.clusterScaler import ScalerThread, NonScalableBatchSystemError
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
 from toil.toilState import ToilState
@@ -294,11 +294,20 @@ class Leader:
                         if self.clusterScaler is not None:
                             logger.debug("Waiting for workers to shutdown.")
                             startTime = time.time()
-                            self.clusterScaler.shutdown()
-                            logger.debug(
-                                "Worker shutdown complete in %s seconds.",
-                                time.time() - startTime,
-                            )
+                            try:
+                                self.clusterScaler.shutdown()
+                            except NonScalableBatchSystemError:
+                                logger.error(
+                                    "Could not shut down the cluster scaler because "
+                                    "we weren't supposed to use one with this batch "
+                                    "system in the first place. Attempting to complete "
+                                    "workflow anyway."
+                                )
+                            else:
+                                logger.debug(
+                                    "Worker shutdown complete in %s seconds.",
+                                    time.time() - startTime,
+                                )
 
                 finally:
                     # Ensure service manager thread is properly shutdown

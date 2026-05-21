@@ -62,6 +62,18 @@ OS_SIZE = human2bytes("5G")
 # Consists of a resource name and a constraining value for that resource.
 FailedConstraint = tuple[str, Union[int, float, bool]]
 
+class NonScalableBatchSystemError(NotImplementedError):
+    """
+    Error to raise when a batch system that can't work with the Toil
+    in-workflow autoscaler is beiong used with it anyway.
+    """
+
+    def __init__(message: str | None) -> None:
+        """
+        Make a new error with either the provided message or a default one.
+        """
+        super().__init__(message or "Non-scalable batch system abusing a scalable-only function.")
+
 
 class BinPackedFit:
     """
@@ -947,9 +959,7 @@ class ClusterScaler:
                 actual cluster size at the time this method returns.
         """
         if not isinstance(self.leader.batchSystem, AbstractScalableBatchSystem):
-            raise RuntimeError(
-                "Non-scalable batch system abusing a scalable-only function."
-            )
+            raise NonScalableBatchSystemError()
         for attempt in old_retry(predicate=self.provisioner.retryPredicate):
             with attempt:
                 nodes = self.getNodes(preemptible)
@@ -1097,9 +1107,7 @@ class ClusterScaler:
         but which still have workers running.
         """
         if not isinstance(self.leader.batchSystem, AbstractScalableBatchSystem):
-            raise RuntimeError(
-                "Non-scalable batch system abusing a scalable-only function."
-            )
+            raise NonScalableBatchSystemError()
 
         # start with a dictionary of all nodes and filter down
         nodes = self.getNodes()
@@ -1170,9 +1178,7 @@ class ClusterScaler:
                If None, all nodes will be returned.
         """
         if not isinstance(self.leader.batchSystem, AbstractScalableBatchSystem):
-            raise RuntimeError(
-                "Non-scalable batch system abusing a scalable-only function."
-            )
+            raise NonScalableBatchSystemError()
         # nodes seen within the last 600 seconds (10 minutes)
         recent_nodes = self.leader.batchSystem.getNodes(preemptible, timeout=600)
         # all available nodes
@@ -1497,9 +1503,7 @@ class ClusterStats:
             logger.debug("Starting to gather statistics")
             stats: dict[str, list[dict[str, Any]]] = {}
             if not isinstance(self.batchSystem, AbstractScalableBatchSystem):
-                raise RuntimeError(
-                    "Non-scalable batch system abusing a scalable-only function."
-                )
+                raise NonScalableBatchSystemError()
             try:
                 while not self.stop:
                     nodeInfo = self.batchSystem.getNodes(preemptible)
