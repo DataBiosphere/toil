@@ -3,9 +3,6 @@ import os
 import tempfile
 import uuid
 
-from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM, get_batch_system
-from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
-
 logger = logging.getLogger(__name__)
 
 
@@ -83,11 +80,6 @@ def generate_locator(
         )
 
 
-# Exit code used by the worker when it cannot access the job store, so the
-# leader can surface a clear error message rather than just a traceback
-TOIL_WORKER_NO_JOB_STORE_EXIT_CODE = 76
-
-
 class NoAvailableJobStoreException(Exception):
     """Indicates that no job store name is available."""
 
@@ -115,6 +107,9 @@ def generate_default_job_store(
 
     :return str: Job store specifier for a usable job store.
     """
+
+    from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM, get_batch_system
+    from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 
     # Apply default batch system
     batch_system_name = batch_system_name or DEFAULT_BATCH_SYSTEM

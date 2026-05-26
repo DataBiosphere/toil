@@ -48,8 +48,7 @@ from toil.job import (
     Job,
     JobDescription,
 )
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobStoreException
-from toil.jobStores.utils import TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobStoreException, TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
 from toil.lib.io import make_public_dir, path_union
 from toil.lib.resources import ResourceMonitor
 from toil.statsAndLogging import StatsDict, configure_root_logger, install_log_color, set_log_level

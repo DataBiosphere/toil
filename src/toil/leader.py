@@ -45,7 +45,6 @@ from toil.bus import (
 )
 from toil.common import Config, ToilMetrics
 from toil.cwl.utils import CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
-from toil.jobStores.utils import TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
 from toil.exceptions import FailedJobsException
 from toil.job import (
     CheckpointJobDescription,
@@ -53,7 +52,7 @@ from toil.job import (
     ServiceJobDescription,
     TemporaryID,
 )
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.clusterScaler import ScalerThread

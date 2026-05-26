@@ -3,7 +3,7 @@ from configargparse import ArgParser
 from toil.common import Toil, addOptions
 from toil.test import ToilTest
 from toil.worker import main as worker_main
-from toil.jobStores.utils import TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
+from toil.jobStores.abstractJobStore import TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
 
 
 class OptionsTest(ToilTest):
