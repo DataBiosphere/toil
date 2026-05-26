@@ -551,8 +551,17 @@ class Config:
             batch_system = get_batch_system(self.batchSystem)
         except KeyError:
             raise RuntimeError(
-                f"Unrecognized batch system: {self.batchSystem}  "
+                f"Unrecognized batch system: {self.batchSystem} "
                 f'(choose from: {", ".join(get_batch_systems())})'
+            )
+        except ImportError as e:
+            raise RuntimeError(
+                f"The batch system \"{self.batchSystem}\" is known "
+                f"to Toil but cannot be loaded "
+                f"because \"{e.name}\" is not importable ({e}). "
+                f"Did you install Toil with the corresponding extra? "
+                f"If in doubt, use pip or pipx to install 'toil[all]' "
+                f"(with quotes) instead of just toil."
             )
 
         return batch_system

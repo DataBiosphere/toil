@@ -31,13 +31,16 @@ class TestConfig:
         """
         Make sure we're not allowed to try and do autoscaling in the workflow with a batch system that can't handle it.
         """
+        # We need to only use modules we know will be installed, for the batch
+        # system side.
+        # Which means we can't use kubernetes.
         config = Config()
-        config.batchSystem = "kubernetes"
+        config.batchSystem = "single_machine"
         config.provisioner = "aws"
         with pytest.raises(InconsistentConfigurationError) as info:
             config.check_configuration_consistency()
         assert "provisioner" in str(info.value)
-        assert "kubernetes" in str(info.value)
+        assert "single_machine" in str(info.value)
         assert "aws" in str(info.value)
 
 
