@@ -50,6 +50,8 @@ from typing import (
     overload,
 )
 
+from toil.jobStores.utils import generate_default_job_store
+
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
 else:
@@ -6095,8 +6097,11 @@ def main() -> None:
 
     # Make sure we have a jobStore
     if options.jobStore is None:
-        # TODO: Move cwltoil's generate_default_job_store where we can use it
-        options.jobStore = os.path.join(mkdtemp(), "tree")
+        jobstore = mkdtemp(prefix="toil-wdl-", dir=os.getcwd())
+        os.rmdir(jobstore)
+        options.jobStore = generate_default_job_store(
+            options.batchSystem, options.provisioner, jobstore, decoration="wdl"
+        )
 
     # Having an nargs=? option can put a None in our inputs list, so drop that.
     input_sources = [x for x in options.inputs_uri if x is not None]
