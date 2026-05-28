@@ -50,6 +50,8 @@ from typing import (
     overload,
 )
 
+from toil.jobStores.utils import generate_default_job_store
+
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
 else:
@@ -6097,6 +6099,14 @@ def main() -> None:
     # As soon as practicable, set up logging.
     # TODO: the Toil context manager will do this again.
     set_logging_from_options(options)
+
+    # Make sure we have a jobStore
+    if options.jobStore is None:
+        jobstore = mkdtemp(prefix="toil-wdl-", dir=os.getcwd())
+        os.rmdir(jobstore)
+        options.jobStore = generate_default_job_store(
+            options.batchSystem, options.provisioner, jobstore, decoration="wdl"
+        )
 
     try:
         # Make sure we have a jobStore

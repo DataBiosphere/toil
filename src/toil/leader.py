@@ -52,7 +52,7 @@ from toil.job import (
     ServiceJobDescription,
     TemporaryID,
 )
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.clusterScaler import ScalerThread, NonScalableBatchSystemError
@@ -911,6 +911,16 @@ class Leader:
                     logger.warning("This indicates an unsupported CWL requirement!")
                     self.recommended_fail_exit_code = (
                         CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
+                    )
+                elif update.exitStatus == TOIL_WORKER_NO_JOB_STORE_EXIT_CODE:
+                    # A worker could not access the job store. This is likely
+                    # because the job store is not on a shared filesystem.
+                    logger.warning(
+                        "A worker could not access the job store at '%s'. "
+                        "This usually means the job store path is not on a shared filesystem. "
+                        "Try re-running with --jobStore or jobStore positional argument pointing "
+                        "to a path on shared storage (e.g. NFS, Lustre).",
+                        self.config.jobStore,
                     )
             # Tell everyone it stopped running.
             self._messages.publish(

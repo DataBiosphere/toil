@@ -1835,6 +1835,47 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         delete_s3_bucket(resource, bucket.name)
 
 
+class TestGenerateDefaultJobStore:
+    """Tests for generate_default_job_store in toil.jobStores.utils."""
+
+    def test_returns_local_path_for_single_machine(self, tmp_path):
+        """generate_default_job_store should return the given local path for single_machine."""
+        from toil.jobStores.utils import generate_default_job_store
+        result = generate_default_job_store("single_machine", None, str(tmp_path))
+        assert result == str(tmp_path)
+
+    def test_returns_local_path_when_no_batch_system(self, tmp_path):
+        """generate_default_job_store should fall back to single_machine and return the local path."""
+        from toil.jobStores.utils import generate_default_job_store
+        result = generate_default_job_store(None, None, str(tmp_path))
+        assert result == str(tmp_path)
+
+    def test_raises_for_slurm_with_shared_filesystem_message(self, tmp_path):
+        """generate_default_job_store should raise for Slurm with a message about shared storage."""
+        from toil.jobStores.utils import generate_default_job_store, NoAvailableJobStoreException
+        with pytest.raises(NoAvailableJobStoreException) as cm:
+            generate_default_job_store("slurm", None, str(tmp_path))
+        assert "shared" in str(cm.value).lower()
+        assert "--jobStore" in str(cm.value)
+
+    def test_raises_for_all_grid_engine_batch_systems(self, tmp_path):
+        """generate_default_job_store should raise for all grid engine batch systems."""
+        from toil.jobStores.utils import generate_default_job_store, NoAvailableJobStoreException
+        for batch_system in ["slurm", "lsf", "grid_engine", "torque", "htcondor"]:
+            with pytest.raises(NoAvailableJobStoreException):
+                generate_default_job_store(batch_system, None, str(tmp_path))
+
+
+class TestGenerateLocator:
+    """Tests for generate_locator in toil.jobStores.utils."""
+
+    def test_includes_decoration_without_local_suggestion(self):
+        """generate_locator should include the decoration in the auto-generated fallback path."""
+        from toil.jobStores.utils import generate_locator
+        result = generate_locator("file", local_suggestion=None, decoration="wdl")
+        assert "wdl" in result
+
+
 # @needs_aws_s3
 class InvalidAWSJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):

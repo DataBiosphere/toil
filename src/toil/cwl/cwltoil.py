@@ -107,6 +107,8 @@ from toil.lib.trs import resolve_workflow
 from toil.provisioners.clusterScaler import JobTooBigError
 from toil.statsAndLogging import set_logging_from_options
 
+from toil.jobStores.utils import generate_default_job_store
+
 check_cwltool_version()
 from toil.cwl.utils import (
     CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
@@ -4184,74 +4186,6 @@ def determine_load_listing(
     return cast(Literal["no_listing", "shallow_listing", "deep_listing"], load_listing)
 
 
-class NoAvailableJobStoreException(Exception):
-    """Indicates that no job store name is available."""
-
-
-def generate_default_job_store(
-    batch_system_name: str | None,
-    provisioner_name: str | None,
-    local_directory: str,
-) -> str:
-    """
-    Choose a default job store appropriate to the requested batch system and
-    provisioner, and installed modules. Raises an error if no good default is
-    available and the user must choose manually.
-
-    :param batch_system_name: Registry name of the batch system the user has
-           requested, if any. If no name has been requested, should be None.
-    :param provisioner_name: Name of the provisioner the user has requested,
-           if any. Recognized provisioners include 'aws' and 'gce'. None
-           indicates that no provisioner is in use.
-    :param local_directory: Path to a nonexistent local directory suitable for
-           use as a file job store.
-
-    :return str: Job store specifier for a usable job store.
-    """
-
-    # Apply default batch system
-    batch_system_name = batch_system_name or DEFAULT_BATCH_SYSTEM
-
-    # Work out how to describe where we are
-    situation = f"the '{batch_system_name}' batch system"
-    if provisioner_name:
-        situation += f" with the '{provisioner_name}' provisioner"
-
-    # Default to local job store
-    job_store_type = "file"
-
-    try:
-        if provisioner_name == "gce":
-            # With GCE, always use the Google job store
-            job_store_type = "google"
-        elif provisioner_name == "aws" or batch_system_name in {"mesos", "kubernetes"}:
-            # With AWS or these batch systems, always use the AWS job store
-            job_store_type = "aws"
-        elif provisioner_name is not None and provisioner_name not in ["aws", "gce"]:
-            # We 've never heard of this provisioner and don't know what kind
-            # of job store to use with it.
-            raise NoAvailableJobStoreException()
-
-        # Then if we get here a job store type has been selected, so try and
-        # make it
-        return generate_locator(
-            job_store_type, local_suggestion=local_directory, decoration="cwl"
-        )
-
-    except JobStoreUnavailableException as e:
-        raise NoAvailableJobStoreException(
-            f"Could not determine a job store appropriate for "
-            f"{situation} because: {e}. Please specify a jobstore with the "
-            f"--jobStore option."
-        )
-    except (ImportError, NoAvailableJobStoreException):
-        raise NoAvailableJobStoreException(
-            f"Could not determine a job store appropriate for "
-            f"{situation}. Please specify a jobstore with the "
-            f"--jobStore option."
-        )
-
-
 usage_message = "\n\n" + textwrap.dedent("""
             NOTE: If you're trying to specify a jobstore, you must use --jobStore, not a positional argument.
 
@@ -4337,7 +4271,7 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
         # system and provisioner and installed modules, given this available
         # local directory name. Fail if no good default can be used.
         options.jobStore = generate_default_job_store(
-            options.batchSystem, options.provisioner, jobstore
+            options.batchSystem, options.provisioner, jobstore, "cwl"
         )
 
     options.doc_cache = True
