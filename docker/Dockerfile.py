@@ -61,7 +61,7 @@ dependencies = ' '.join(python_packages[python] +
                          'time',
                          # Dependencies for Mesos which the deb doesn't actually list
                          'libsvn1',
-                         'libcurl4-nss-dev',
+                         'libcurl4-openssl-dev',
                          'libapr1',
                          # Dependencies for singularity
                          'containernetworking-plugins',
