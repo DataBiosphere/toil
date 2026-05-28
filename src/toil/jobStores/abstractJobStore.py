@@ -133,6 +133,11 @@ class NoSuchFileException(Exception):
         super().__init__(message)
 
 
+# Exit code used by the worker when it cannot access the job store, so the
+# leader can surface a clear error message rather than just a traceback
+TOIL_WORKER_NO_JOB_STORE_EXIT_CODE = 76
+
+
 class NoSuchJobStoreException(LocatorException):
     """Indicates that the specified job store does not exist."""
 

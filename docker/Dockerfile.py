@@ -123,7 +123,7 @@ print(heredoc('''
     # See <https://stackoverflow.com/a/66523384>
     RUN printf 'Acquire::http::Pipeline-Depth "0";\\nAcquire::http::No-Cache=True;\\nAcquire::BrokenProxy=true;\\n' >/etc/apt/apt.conf.d/99fixbadproxy
 
-    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common curl && apt-get clean && rm -rf /var/lib/apt/lists/*
+    RUN apt-get -y update --fix-missing && apt-get -y install --no-upgrade apt-transport-https ca-certificates software-properties-common curl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN add-apt-repository -y ppa:deadsnakes/ppa
 
@@ -141,9 +141,8 @@ print(heredoc('''
         && curl https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/Qmcd6B5gS42p99BzKjNsWuBJ9X4dEk7JEh7N9Hr6EYMzfn/www.aventer.biz/assets/support_aventer.asc >/etc/apt/keyrings/support_aventer.asc
 
     RUN apt-get -y update --fix-missing && \
-        DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
-        DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
-        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi && \
+        DEBIAN_FRONTEND=noninteractive apt-get -y install --no-upgrade {dependencies} && \
+        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install --no-upgrade mesos ; mesos-agent --help >/dev/null ; fi && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
