@@ -642,7 +642,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                         self._jobs_queue.put(jobs.get_nowait())
                     except Empty:
                         break
-                logger.debug(f"Roughly {self._jobs_queue.qsize} jobs in the queue")
+                logger.debug(f"Roughly {self._jobs_queue.qsize()} jobs in the queue")
 
     def setUserScript(self, userScript: Resource) -> None:
         logger.info(f"Setting user script for deployment: {userScript}")

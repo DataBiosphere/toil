@@ -99,12 +99,13 @@ from schema_salad.sourceline import SourceLine
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
-from toil.common import Config, Toil, addOptions
+from toil.common import Config, Toil, addOptions, InconsistentConfigurationError
 from toil.cwl import check_cwltool_version
 from toil.lib.directory import DirectoryContents, decode_directory, encode_directory
 from toil.lib.misc import call_command
 from toil.lib.trs import resolve_workflow
 from toil.provisioners.clusterScaler import JobTooBigError
+from toil.statsAndLogging import set_logging_from_options
 
 from toil.jobStores.utils import generate_default_job_store
 
@@ -4248,6 +4249,10 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
 
     options = get_options(args)
 
+    # As soon as practicable, set up logging.
+    # TODO: the Toil context manager will do this again.
+    set_logging_from_options(options)
+
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
     tmpdir_prefix = options.tmpdir_prefix = (
@@ -4650,6 +4655,7 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
         UnimplementedURLException,
         JobTooBigError,
         FileNotFoundError,
+        InconsistentConfigurationError,
     ) as err:
         logging.error(err)
         return 1
