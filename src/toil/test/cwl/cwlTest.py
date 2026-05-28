@@ -40,6 +40,7 @@ sys.path.insert(0, pkg_root)  # noqa
 
 from schema_salad.exceptions import ValidationException
 
+from toil.common import Toil
 from toil.cwl.utils import (
     DirectoryStructure,
     download_structure,
@@ -66,6 +67,7 @@ from toil.test import pneeds_slurm as needs_slurm
 from toil.test import pneeds_torque as needs_torque
 from toil.test import pneeds_wes_server as needs_wes_server
 from toil.test import pslow as slow
+from toil.utils.toilStats import get_stats, process_data
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 10000
@@ -481,6 +483,37 @@ class TestCWLWorkflow:
                 assert out["output"]["size"] == 24
                 with open(out["output"]["location"][len("file://") :]) as f:
                     assert f.read().strip() == "When is s4 coming out?"
+
+    @needs_docker
+    @pytest.mark.docker
+    @pytest.mark.online
+    @pytest.mark.timeout(180)
+    def test_cpu_memory_monitoring(self, tmp_path: Path) -> None:
+        """Container CPU and memory usage is recorded in Toil job stats."""
+        from toil.cwl import cwltoil
+
+        with get_data("test/cwl/waste_cpu_memory.cwl") as cwl_file:
+            with get_data("test/cwl/empty.json") as inputs_file:
+                job_store = tmp_path / "jobStore"
+                main_args = [
+                    "--outdir",
+                    str(tmp_path / "output_dir"),
+                    str(cwl_file),
+                    str(inputs_file),
+                    "--jobStore",
+                    str(job_store),
+                    "--stats",
+                ]
+                cwltoil.main(main_args)
+
+                resumed_job_store = Toil.resumeJobStore(str(job_store))
+                stats = get_stats(resumed_job_store)
+                collated_stats = process_data(resumed_job_store.config, stats)
+
+                # The tool burns ~30s of CPU and ~1 GiB of RAM inside Docker.
+                # Per-job stats use KiB for memory and include injected container usage.
+                assert collated_stats.jobs.total_clock >= 30
+                assert collated_stats.jobs.max_memory >= 1024 * 1024
 
     @needs_docker
     @pytest.mark.docker
@@ -2298,6 +2331,84 @@ def test_download_structure(tmp_path: Path) -> None:
         any_order=True,
     )
 
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_cwl_resource_message_parsing_records_cpu_and_memory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Resource monitor messages emitted from a container are translated into
+    Toil's extra CPU and memory accounting.
+    """
+    from toil.lib import interpreter
+
+    message_file = tmp_path / "resources.tsv"
+    # Include malformed and partial lines to exercise parser robustness.
+    message_file.write_text(
+        "CPU\t1000000\n"
+        "Memory\t1024\n"
+        "CPU\t4000000\n"
+        "Memory\t2048\n"
+        "Odd\tline\n"
+        "CPU\t5000000",
+        encoding="utf-8",
+    )
+
+    recorded_memory_ki: list[int] = []
+    recorded_cpu_seconds: list[float] = []
+    monkeypatch.setattr(
+        interpreter.ResourceMonitor,
+        "record_extra_memory",
+        lambda peak_ki: recorded_memory_ki.append(peak_ki),
+    )
+    monkeypatch.setattr(
+        interpreter.ResourceMonitor,
+        "record_extra_cpu",
+        lambda seconds: recorded_cpu_seconds.append(seconds),
+    )
+
+    interpreter.handle_message_file(str(message_file))
+
+    assert recorded_memory_ki == [2]
+    assert recorded_cpu_seconds == [3.0]
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_cwl_job_injection_wraps_container_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Container jobs are wrapped with injected runtime monitoring code.
+    """
+    from toil.cwl import cwltoil
+
+    host_input = tmp_path / "input.txt"
+    host_input.write_text("hello", encoding="utf-8")
+
+    class FakeMapperEntry:
+        type = "File"
+
+        def __init__(self, resolved: str, target: str) -> None:
+            self.resolved = resolved
+            self.target = target
+
+    class FakePathMapper:
+        def __init__(self, entry: FakeMapperEntry) -> None:
+            self._entry = entry
+
+        def files(self) -> list[str]:
+            return ["file://fake-input"]
+
+        def mapper(self, _location: str) -> FakeMapperEntry:
+            return self._entry
+
+    job = object.__new__(cwltoil.ToilDockerCommandLineJob)
+    job.command_line = ["echo", "hello"]
+    job.pathmapper = FakePathMapper(FakeMapperEntry(str(host_input), "/work/input.txt"))
 
 @needs_cwl
 @pytest.mark.cwl
