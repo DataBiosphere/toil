@@ -132,6 +132,11 @@ from toil.lib.threading import global_mutex
 from toil.lib.trs import resolve_workflow
 from toil.lib.url import URLAccess
 from toil.provisioners.clusterScaler import JobTooBigError
+from toil.lib.interpreter import (
+    INJECTED_MESSAGE_DIR,
+    add_injections,
+    handle_message_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -3870,98 +3875,6 @@ class WDLTaskJob(WDLBaseJob):
         self._cache_key = cache_key
         self._mount_spec = mount_spec
 
-    ###
-    # Runtime code injection system
-    ###
-
-    # WDL runtime code injected in the container communicates back to the rest
-    # of the runtime through files in this directory.
-    INJECTED_MESSAGE_DIR = ".toil_wdl_runtime"
-
-    def add_injections(self, command_string: str, task_container: TaskContainer) -> str:
-        """
-        Inject extra Bash code from the Toil WDL runtime into the command for the container.
-
-        Currently doesn't implement the MiniWDL plugin system, but does add
-        resource usage monitoring to Docker containers.
-        """
-
-        parts = []
-
-        if isinstance(task_container, SwarmContainer):
-            # We're running on Docker Swarm, so we need to monitor CPU usage
-            # and so on from inside the container, since it won't be attributed
-            # to Toil child processes in the leader's self-monitoring.
-            # TODO: Mount this from a file Toil installs instead or something.
-            script = textwrap.dedent(
-                """\
-                function _toil_resource_monitor () {
-                    # Turn off error checking and echo in here
-                    set +ex
-                    MESSAGE_DIR="${1}"
-                    mkdir -p "${MESSAGE_DIR}"
-
-                    function sample_cpu_usec() {
-                        if [[ -f  /sys/fs/cgroup/cpu.stat ]] ; then
-                            awk '{ if ($1 == "usage_usec") {print $2} }' /sys/fs/cgroup/cpu.stat
-                        elif [[ -f /sys/fs/cgroup/cpuacct/cpuacct.stat ]] ; then
-                            echo $(( $(head -n 1 /sys/fs/cgroup/cpuacct/cpuacct.stat | cut -f2 -d' ') * 10000 ))
-                        fi
-                    }
-
-                    function sample_memory_bytes() {
-                        if [[ -f /sys/fs/cgroup/memory.stat ]] ; then
-                            awk '{ if ($1 == "anon") { print $2 } }' /sys/fs/cgroup/memory.stat
-                        elif [[ -f /sys/fs/cgroup/memory/memory.stat ]] ; then
-                            awk '{ if ($1 == "total_rss") { print $2 } }' /sys/fs/cgroup/memory/memory.stat
-                        fi
-                    }
-
-                    while true ; do
-                        printf "CPU\\t" >> ${MESSAGE_DIR}/resources.tsv
-                        sample_cpu_usec >> ${MESSAGE_DIR}/resources.tsv
-                        printf "Memory\\t" >> ${MESSAGE_DIR}/resources.tsv
-                        sample_memory_bytes >> ${MESSAGE_DIR}/resources.tsv
-                        sleep 1
-                    done
-                }
-                """
-            )
-            parts.append(script)
-            # Launch in a subshell so that it doesn't interfere with Bash "wait" in the main shell
-            parts.append(f"(_toil_resource_monitor {self.INJECTED_MESSAGE_DIR} &)")
-
-        if isinstance(task_container, SwarmContainer) and platform.system() == "Darwin":
-            # With gRPC FUSE file sharing, files immediately downloaded before
-            # being mounted may appear as size 0 in the container due to a race
-            # condition. Check for this and produce an approperiate error.
-
-            script = textwrap.dedent(
-                """\
-                function _toil_check_size () {
-                    TARGET_FILE="${1}"
-                    GOT_SIZE="$(stat -c %s "${TARGET_FILE}")"
-                    EXPECTED_SIZE="${2}"
-                    if [[ "${GOT_SIZE}" != "${EXPECTED_SIZE}" ]] ; then
-                        echo >&2 "Toil Error:"
-                        echo >&2 "File size visible in container for ${TARGET_FILE} is size ${GOT_SIZE} but should be size ${EXPECTED_SIZE}"
-                        echo >&2 "Are you using gRPC FUSE file sharing in Docker Desktop?"
-                        echo >&2 "It doesn't work: see <https://github.com/DataBiosphere/toil/issues/4542>."
-                        exit 1
-                    fi
-                }
-            """
-            )
-            parts.append(script)
-            for host_path, job_path in task_container.input_path_map.items():
-                expected_size = os.path.getsize(host_path)
-                if expected_size != 0:
-                    parts.append(f'_toil_check_size "{job_path}" {expected_size}')
-
-        parts.append(command_string)
-
-        return "\n".join(parts)
-
     def handle_injection_messages(
         self, outputs_library: ToilWDLStdLibTaskOutputs
     ) -> None:
@@ -3970,60 +3883,11 @@ class WDLTaskJob(WDLBaseJob):
         """
 
         message_files = outputs_library._glob(
-            WDL.Value.String(os.path.join(self.INJECTED_MESSAGE_DIR, "*"))
+            WDL.Value.String(os.path.join(INJECTED_MESSAGE_DIR, "*"))
         )
         logger.debug("Handling message files: %s", message_files)
         for message_file in message_files.value:
-            self.handle_message_file(message_file.value)
-
-    def handle_message_file(self, file_path: str) -> None:
-        """
-        Handle a message file received from in-container injected code.
-
-        Takes the host-side path of the file.
-        """
-        if os.path.basename(file_path) == "resources.tsv":
-            # This is a TSV of resource usage info.
-            first_cpu_usec: int | None = None
-            last_cpu_usec: int | None = None
-            max_memory_bytes: int | None = None
-
-            for line in open(file_path):
-                if not line.endswith("\n"):
-                    # Skip partial lines
-                    continue
-                # For each full line we got
-                parts = line.strip().split("\t")
-                if len(parts) != 2:
-                    # Skip odd-shaped lines
-                    continue
-                if parts[0] == "CPU":
-                    # Parse CPU usage
-                    cpu_usec = int(parts[1])
-                    # Update summary stats
-                    if first_cpu_usec is None:
-                        first_cpu_usec = cpu_usec
-                    last_cpu_usec = cpu_usec
-                elif parts[0] == "Memory":
-                    # Parse memory usage
-                    memory_bytes = int(parts[1])
-                    # Update summary stats
-                    if max_memory_bytes is None or max_memory_bytes < memory_bytes:
-                        max_memory_bytes = memory_bytes
-
-            if max_memory_bytes is not None:
-                logger.info(
-                    "Container used at about %s bytes of memory at peak",
-                    max_memory_bytes,
-                )
-                # Treat it as if used by a child process
-                ResourceMonitor.record_extra_memory(max_memory_bytes // 1024)
-            if last_cpu_usec is not None:
-                assert first_cpu_usec is not None
-                cpu_seconds = (last_cpu_usec - first_cpu_usec) / 1000000
-                logger.info("Container used about %s seconds of CPU time", cpu_seconds)
-                # Treat it as if used by a child process
-                ResourceMonitor.record_extra_cpu(cpu_seconds)
+            handle_message_file(message_file.value)
 
     ###
     # Helper functions to work out what containers runtime we can use
@@ -4500,8 +4364,11 @@ class WDLTaskJob(WDLBaseJob):
                 .value
             )
 
-            # Do any command injection we might need to do
-            command_string = self.add_injections(command_string, task_container)
+            # Do command injection for docker container resource monitoring 
+            # when a docker container is used
+            if isinstance(task_container, SwarmContainer):
+                file_mounts = task_container.input_path_map.items()
+                command_string = add_injections(command_string, file_mounts)
 
             # Grab the standard out and error paths. MyPy complains if we call
             # them because in the current MiniWDL version they are untyped.
