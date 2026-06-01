@@ -179,6 +179,24 @@ def hms_duration_to_seconds(hms: str) -> float:
     return seconds
 
 
+def seconds_to_dhms(seconds: int) -> str:
+    """
+    Convert seconds to a days-hours:minutes:seconds string.
+    """
+    if seconds < 0:
+        raise ValueError("Invalid Time, negative value")
+
+    # A time interval in seconds can be parametrized as
+    # seconds = a * 60*60*24 + b * 60*60 + c * 60 + d, with
+    # a in days, b in hours, c in minutes, d in seconds.
+    a = seconds // (60*60*24)
+    b = (seconds % (60*60*24)) // (60*60)
+    c = (seconds % (60*60)) // 60
+    d = seconds % 60
+
+    return f"{a:02}-{b:02}:{c:02}:{d:02}"
+
+
 def strtobool(val: str) -> bool:
     """
     Make a human-readable string into a bool.

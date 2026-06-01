@@ -217,6 +217,7 @@ class Config:
     defaultCores: float | int
     defaultDisk: int
     defaultPreemptible: bool
+    defaultWalltime: int
     # TODO: These names are generated programmatically in
     # Requirer._fetchRequirement so we can't use snake_case until we fix
     # that (and add compatibility getters/setters?)
@@ -405,6 +406,7 @@ class Config:
         set_option("maxMemory")
         set_option("maxDisk")
         set_option("defaultPreemptible")
+        set_option("defaultWalltime")
 
         # Retrying/rescuing jobs
         set_option("retryCount")
