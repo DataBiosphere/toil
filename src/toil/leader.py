@@ -52,10 +52,10 @@ from toil.job import (
     ServiceJobDescription,
     TemporaryID,
 )
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
-from toil.provisioners.clusterScaler import ScalerThread
+from toil.provisioners.clusterScaler import ScalerThread, NonScalableBatchSystemError
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
 from toil.toilState import ToilState
@@ -192,9 +192,16 @@ class Leader:
         # using a statically defined cluster
         self.provisioner = provisioner
 
-        # Create cluster scaling thread if the provisioner is not None
+        # Create cluster scaling thread if we want to scale up and down 
         self.clusterScaler = None
         if self.provisioner is not None and self.provisioner.hasAutoscaledNodeTypes():
+            if not isinstance(self.batchSystem, AbstractScalableBatchSystem):
+                # We shouldn't be allowed to use this combination
+                raise RuntimeError(
+                    f"Cannot use in-workflow autoscaling with the {type(self.provisioner)} "
+                    f"provisioner when using a non-scalable {type(self.batchSystem)} "
+                    f"batch system; consider Kuberentes cluster-based autoscaling instead"
+                )
             self.clusterScaler = ScalerThread(self.provisioner, self, self.config)
 
         # A service manager thread to start and terminate services
@@ -294,11 +301,20 @@ class Leader:
                         if self.clusterScaler is not None:
                             logger.debug("Waiting for workers to shutdown.")
                             startTime = time.time()
-                            self.clusterScaler.shutdown()
-                            logger.debug(
-                                "Worker shutdown complete in %s seconds.",
-                                time.time() - startTime,
-                            )
+                            try:
+                                self.clusterScaler.shutdown()
+                            except NonScalableBatchSystemError:
+                                logger.error(
+                                    "Could not shut down the cluster scaler because "
+                                    "we weren't supposed to use one with this batch "
+                                    "system in the first place. Attempting to complete "
+                                    "workflow anyway."
+                                )
+                            else:
+                                logger.debug(
+                                    "Worker shutdown complete in %s seconds.",
+                                    time.time() - startTime,
+                                )
 
                 finally:
                     # Ensure service manager thread is properly shutdown
@@ -895,6 +911,16 @@ class Leader:
                     logger.warning("This indicates an unsupported CWL requirement!")
                     self.recommended_fail_exit_code = (
                         CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
+                    )
+                elif update.exitStatus == TOIL_WORKER_NO_JOB_STORE_EXIT_CODE:
+                    # A worker could not access the job store. This is likely
+                    # because the job store is not on a shared filesystem.
+                    logger.warning(
+                        "A worker could not access the job store at '%s'. "
+                        "This usually means the job store path is not on a shared filesystem. "
+                        "Try re-running with --jobStore or jobStore positional argument pointing "
+                        "to a path on shared storage (e.g. NFS, Lustre).",
+                        self.config.jobStore,
                     )
             # Tell everyone it stopped running.
             self._messages.publish(

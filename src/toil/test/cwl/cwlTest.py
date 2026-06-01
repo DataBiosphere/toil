@@ -27,7 +27,7 @@ from functools import partial
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
-from unittest.mock import Mock, call
+from unittest.mock import ANY, Mock, call, patch
 from urllib.request import urlretrieve
 
 if TYPE_CHECKING:
@@ -1177,6 +1177,41 @@ class TestCWLWorkflow:
                 assert ret == 0
                 assert not (tmp_path / "hello_old.zip").exists()
 
+    @needs_docker
+    @pytest.mark.docker
+    @pytest.mark.online
+    @pytest.mark.timeout(120)
+    def test_dockstore(self, tmp_path: Path, subtests: pytest.Subtests) -> None:
+        """
+        Make sure we can run and record the TRS specifications of Dockstore CWL workflows.
+        """
+        from toil.cwl import cwltoil
+
+        # This looks like a good test workflow, though it might really be a sort.
+        TRS_SPEC = '#workflow/github.com/denis-yuen/dockstore-whalesay:0.10'
+
+        for in_file, status in (
+            ("test/cwl/whalesay.json", 0),
+            ("test/cwl/empty.json", 1),
+        ):
+            with subtests.test(msg=f"Testing input {in_file} for status {status}"):
+                with get_data(in_file) as jobfile:
+                    args = [TRS_SPEC, str(jobfile), f"--outdir={str(tmp_path)}"]
+                    with patch("toil.common.HistoryManager.record_workflow_metadata") as mock_record:
+                        # History tracking is off for the tests that aren't really
+                        # history tests, so we check if the TRS ID goes into the
+                        # history system and not really if it goes to Dockstore.
+                        #
+                        # We know that common.py is talking to the
+                        # HistoryManager and that it imports it with as.
+                        # TODO: Is there a way to be less involved in other
+                        # classes' business here?
+                        ret = cwltoil.main(args)
+
+                    # We should get the right status
+                    assert ret == status
+                    # And even for a failing status we should know the TRS ID
+                    mock_record.assert_called_once_with(ANY, ANY, TRS_SPEC)
 
 @pytest.fixture(scope="function")
 def cwl_v1_0_spec(tmp_path: Path) -> Generator[Path]:
@@ -2368,7 +2403,7 @@ def test_rm_tmpdir(tmp_path: Path, subtests: pytest.Subtests) -> None:
     for bypass_filestore in (False, True):
         for successful_workflow in (True, False):
             with subtests.test(msg=f"Bypass filestore: {bypass_filestore} Successful workflow: {successful_workflow}"):
-                
+
                 # Each run needs a separate root
                 base_dir = tmp_path / str(subtest_num)
                 subtest_num += 1
@@ -2380,7 +2415,7 @@ def test_rm_tmpdir(tmp_path: Path, subtests: pytest.Subtests) -> None:
 
                 workflow_path = "test/cwl/echo_string.cwl" if successful_workflow else "test/cwl/echo_string_and_fail.cwl"
 
-                
+
                 with get_data(workflow_path) as cwl_file:
                     # We set both tmpdir-prefix and workDir to be extra special sure
                     # the files go in there. When not bypassing the filestore,

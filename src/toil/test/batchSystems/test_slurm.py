@@ -751,6 +751,19 @@ class SlurmTest(ToilTest):
         self.assertFalse(detector("--no-bazz"))
         self.assertFalse(detector("--foo-bar=--bazz-only"))
 
+    def test_parse_slurm_option_value(self):
+        args = ["--qos", "high", "--partition=gpu"]
+        value, index = toil.batchSystems.slurm.parse_slurm_option_value(args, 0)
+        self.assertEqual(value, "high")
+        self.assertEqual(index, 1)
+
+        value, index = toil.batchSystems.slurm.parse_slurm_option_value(args, 2)
+        self.assertEqual(value, "gpu")
+        self.assertEqual(index, 2)
+
+        with self.assertRaises(ValueError):
+            toil.batchSystems.slurm.parse_slurm_option_value(["--qos"], 0)
+
     def test_sinfo_not_permitted(self):
         """Test when ``sinfo`` is not available.
 

@@ -26,6 +26,15 @@ Tests use pytest. Example commands:
 ./venv/bin/python -m pytest src/toil/test -k "safe" -v
 ```
 
+## Running Make Targets (mypy, tests, etc.)
+
+The `Makefile` targets require the virtualenv to be activated. Some targets (like `test_debug`) enforce this with a `check_venv` guard that checks for `VIRTUAL_ENV` in the environment. Set `PATH` and `VIRTUAL_ENV` to satisfy this without needing `source`:
+
+```bash
+PATH="./venv/bin:$PATH" VIRTUAL_ENV=./venv make mypy
+PATH="./venv/bin:$PATH" VIRTUAL_ENV=./venv make test_debug tests='src/toil/test/path/to/test.py::TestClass::test_name'
+```
+
 ## Running Individual WDL Spec Unit Tests
 
 The WDL spec embeds example workflows as unit tests (under the `wdl-1.1` and `wdl-1.2` branches of `https://github.com/openwdl/wdl`). `TestWDLConformance.test_single_unit_test` in `src/toil/test/wdl/wdltoil_test.py` runs one such test at a time and is controlled by environment variables:
@@ -40,3 +49,7 @@ WDL_UNIT_TEST_ID=serde_pair ./venv/bin/python -m pytest \
 ```
 
 This test clones remote git repos and may be slow. Many WDL spec tasks run inside containers, so **Docker must be running** — if the test fails with a Docker connection error, ask the user to start Docker before retrying.
+
+## Code Style
+
+Docstrings state the contract (what, not how). Implementation strategy goes in comments on the relevant code. Explain a concept once in a canonical docstring; reference it elsewhere. Names must be precise: no redundant qualifiers, invented terms, overclaiming, or test content as examples.

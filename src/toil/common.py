@@ -103,6 +103,15 @@ if TYPE_CHECKING:
 UUID_LENGTH = 32
 logger = logging.getLogger(__name__)
 
+class InconsistentConfigurationError(ValueError):
+    """
+    Represents when a Toil configuration is nonsensical and cannot be used.
+
+    Has an informative user-facing error message which can be logged before
+    terminating the program.
+    """
+    pass
+
 
 @memoize
 def get_default_config_path() -> str:
@@ -462,29 +471,49 @@ class Config:
 
         self.check_configuration_consistency()
 
-        # Check for deprecated Toil built-in autoscaling
-        # --provisioner is guaranteed to be set
-        if self.provisioner is not None and self.batchSystem == "mesos":
-            logger.warning(
-                "Toil built-in autoscaling with Mesos is deprecated as Mesos is no longer active. Please use Kubernetes-based autoscaling instead."
-            )
-
     def check_configuration_consistency(self) -> None:
-        """Old checks that cannot be fit into an action class for argparse"""
+        """
+        Check whether the configuration asked for is self-consistent.
+
+        May modify the configuration to resolve automatically-resolvable
+        contraditions. Responsible for issuing warnings about the
+        configuration.
+
+        Raised exceptions will have messages in terms of command-line options,
+        suitable for showing to the user without a stack trace.
+
+        :raises InconsistentConfigurationError: when the configuration is
+            inconsistent and cannot be fixed.
+        """
+
+        # If possible, checks in here should be moved to option parsing actions
+        # for better error messages.
+
         if self.writeLogs and self.writeLogsGzip:
-            raise ValueError(
+            raise InconsistentConfigurationError(
                 "Cannot use both --writeLogs and --writeLogsGzip at the same time."
             )
         if self.writeLogsFromAllJobs and not self.writeLogs and not self.writeLogsGzip:
-            raise ValueError(
+            raise InconsistentConfigurationError(
                 "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
             )
         for override in self.nodeStorageOverrides:
             tokens = override.split(":")
             if not any(tokens[0] in n[0] for n in self.nodeTypes):
-                raise ValueError(
+                raise InconsistentConfigurationError(
                     "Instance type in --nodeStorageOverrides must be in --nodeTypes"
                 )
+
+        from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem
+        if self.provisioner is not None and not issubclass(
+            self.load_batch_system_class(),
+            AbstractScalableBatchSystem
+        ):
+            raise InconsistentConfigurationError(
+                f"The {self.batchSystem} batch system is not scalable and "
+                f"cannot be used with the {self.provisioner} provisioner; change "
+                f"or remove --provisioner, or pick a different --batchSystem."
+            )
 
         if self.stats:
             if self.clean != "never" and self.clean is not None:
@@ -495,6 +524,49 @@ class Config:
                     "Setting clean to 'never'." % self.clean
                 )
             self.clean = "never"
+
+        # Check for deprecated Toil built-in autoscaling
+        # --provisioner is guaranteed to be set
+        if self.provisioner is not None and self.batchSystem == "mesos":
+            logger.warning(
+                "Toil built-in autoscaling with Mesos is deprecated as Mesos is no longer active. Please use Kubernetes-based autoscaling instead."
+            )
+
+        if self.provisioner == "gce":
+            logger.warning(
+                "Toil's GCE provisioner is deprecated and will be removed in a future release. Please use Kubernetes-based autoscaling instead."
+            )
+
+    def load_batch_system_class(self) -> type["AbstractBatchSystem"]:
+        """
+        Get the class of batch system that is configured.
+
+        :raises RuntimeError: when the configured batch system is not available.
+        """
+
+        # TODO: I'm not sure if this *really* belongs as a config method, but
+        # the config validation logic wants it.
+
+        from toil.batchSystems.registry import get_batch_system, get_batch_systems
+
+        try:
+            batch_system = get_batch_system(self.batchSystem)
+        except KeyError:
+            raise RuntimeError(
+                f"Unrecognized batch system: {self.batchSystem} "
+                f'(choose from: {", ".join(get_batch_systems())})'
+            )
+        except ImportError as e:
+            raise RuntimeError(
+                f"The batch system \"{self.batchSystem}\" is known "
+                f"to Toil but cannot be loaded "
+                f"because \"{e.name}\" is not importable ({e}). "
+                f"Did you install Toil with the corresponding extra? "
+                f"If in doubt, use pip or pipx to install 'toil[all]' "
+                f"(with quotes) instead of just toil."
+            )
+
+        return batch_system
 
     def __eq__(self, other: object) -> bool:
         return self.__dict__ == other.__dict__
@@ -854,8 +926,11 @@ def addOptions(
             sys.argv[1:], ignore_help_args=True
         )
         if len(vars(other_options)) != 0:
+            # TODO: We want to tell the user the actual option string, but we only have the variable name.
             raise parser.error(
-                f"{'WDL' if typ == 'cwl' else 'CWL'} options are not allowed on the command line."
+                f"{'WDL' if typ == 'cwl' else 'CWL'} options like those "
+                f"populating {', '.join(vars(other_options).keys())} are not "
+                f"allowed on the command line."
             )
 
     # if cwl is set, format the namespace for cwl and check that wdl options are not set on the command line
@@ -1035,6 +1110,9 @@ class Toil(ContextManager["Toil"]):
 
         Then load the job store and, on restart, consolidate the derived
         configuration with the one from the previous invocation of the workflow.
+
+        :raises InconsistentConfigurationError: When the Toil configuration is
+            inconsistent and cannot be used.
         """
         set_logging_from_options(self.options)
         config = Config()
@@ -1059,6 +1137,10 @@ class Toil(ContextManager["Toil"]):
             # Record that there is a workflow beign run
             HistoryManager.record_workflow_creation(
                 config.workflowID, self.canonical_locator(config.jobStore)
+            )
+            # And since we have all its metadata now, record that
+            HistoryManager.record_workflow_metadata(
+                config.workflowID, self._workflow_name, self._trs_spec
             )
         else:
             jobStore.resume()
@@ -1184,11 +1266,6 @@ class Toil(ContextManager["Toil"]):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
-
-        assert self.config.workflowID is not None
-        HistoryManager.record_workflow_metadata(
-            self.config.workflowID, self._workflow_name, self._trs_spec
-        )
 
         from toil.job import Job
 
@@ -1375,15 +1452,7 @@ class Toil(ContextManager["Toil"]):
             maxDisk=config.maxDisk,
         )
 
-        from toil.batchSystems.registry import get_batch_system, get_batch_systems
-
-        try:
-            batch_system = get_batch_system(config.batchSystem)
-        except KeyError:
-            raise RuntimeError(
-                f"Unrecognized batch system: {config.batchSystem}  "
-                f'(choose from: {", ".join(get_batch_systems())})'
-            )
+        batch_system = config.load_batch_system_class()
 
         if config.caching and not batch_system.supportsWorkerCleanup():
             raise RuntimeError(
