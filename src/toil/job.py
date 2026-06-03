@@ -3304,20 +3304,8 @@ class Job:
             )
             job_time = time.time() - startTime
             job_cpu_time = totalCpuTime - startClock
-            allocated_cpu_time = job_time * self.cores
 
-            if job_cpu_time > allocated_cpu_time and allocated_cpu_time > 0:
-                # Too much CPU was used by this job! Maybe we're using a batch
-                # system that doesn't/can't sandbox us and we started too many
-                # threads. Complain to the user!
-                excess_factor = job_cpu_time / allocated_cpu_time
-                fileStore.log_to_leader(
-                    f"Job {self.description} used {excess_factor:.2f}x more "
-                    f"CPU than the requested {self.cores} cores. Consider "
-                    f"increasing the job's required CPU cores or limiting the "
-                    f"number of processes/threads launched.",
-                    level=logging.WARNING,
-                )
+            self._check_cpu_usage(job_time, job_cpu_time, fileStore)
 
             # Finish up the stats
             if stats is not None:
@@ -3337,6 +3325,46 @@ class Job:
                         succeeded=str(succeeded),
                     )
                 )
+    
+
+    def _check_cpu_usage(
+        self,
+        job_time: float,
+        job_cpu_time: float,
+        fileStore: AbstractFileStore,
+        threshold_factor: float = 1.05,
+    ) -> None:
+        """
+        Log a warning when a job consumes more CPU time than its allocation.
+
+        If *job_time* is non-positive, returns immediately (wall-clock time may
+        lack resolution for very short jobs). If *cores* is non-positive, logs
+        a warning that overuse cannot be assessed and returns, avoiding
+        division by zero. Otherwise, compares *job_cpu_time* to
+        ``job_time * cores * threshold_factor``.
+        """
+        if job_time <= 0:
+            # The job may have run too quickly for wall-clock resolution.
+            return
+        if self.cores <= 0:
+            # Jobs should not have non-positive core requests, but avoid divide-by-zero.
+            fileStore.log_to_leader(
+                f"Job {self.description} has invalid requested cores value "
+                f"{self.cores}; cannot evaluate CPU overuse.",
+                level=logging.WARNING,
+            )
+            return
+        allocated_cpu_time = job_time * self.cores
+
+        excess_factor = job_cpu_time / allocated_cpu_time
+        if excess_factor > threshold_factor:
+            fileStore.log_to_leader(
+                f"Job {self.description} used {excess_factor:.2f}x more "
+                f"CPU than the requested {self.cores} cores. Consider "
+                f"increasing the job's required CPU cores or limiting the "
+                f"number of processes/threads launched.",
+                level=logging.WARNING,
+            )
 
     def _runner(
         self,

@@ -473,6 +473,7 @@ def suppress_exotic_logging(local_logger: str) -> None:
         "boto3",
         "boto",
         "botocore",
+        "pydot",
     ]  # ensure we suppress even before instantiated
 
     top_level_loggers: list[str] = []

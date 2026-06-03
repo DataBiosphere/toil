@@ -99,12 +99,15 @@ from schema_salad.sourceline import SourceLine
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
-from toil.common import Config, Toil, addOptions
+from toil.common import Config, Toil, addOptions, InconsistentConfigurationError
 from toil.cwl import check_cwltool_version
 from toil.lib.directory import DirectoryContents, decode_directory, encode_directory
 from toil.lib.misc import call_command
 from toil.lib.trs import resolve_workflow
 from toil.provisioners.clusterScaler import JobTooBigError
+from toil.statsAndLogging import set_logging_from_options
+
+from toil.jobStores.utils import generate_default_job_store
 
 check_cwltool_version()
 from toil.cwl.utils import (
@@ -2167,10 +2170,14 @@ def ensure_file_imported(
     logger.debug("Sending file at: %s", file_metadata["location"])
 
 
-def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> FileID:
+def writeGlobalFileWrapper(
+    file_store: AbstractFileStore, fileuri: str, hints: list[str] | None = None
+) -> FileID:
     """Wrap writeGlobalFile to accept file:// URIs."""
     fileuri = fileuri if ":/" in fileuri else f"file://{fileuri}"
-    return file_store.writeGlobalFile(schema_salad.ref_resolver.uri_file_path(fileuri))
+    return file_store.writeGlobalFile(
+        schema_salad.ref_resolver.uri_file_path(fileuri), hints=hints
+    )
 
 
 def remove_empty_listings(rec: CWLDirectoryType) -> None:
@@ -2229,11 +2236,12 @@ class CWLNamedJob(Job):
             # We need something. Put the class.
             name_parts.append(class_name)
 
-        # String together the hierarchical name
-        unit_name = ".".join(name_parts)
+        # Dotted hierarchical name used both as the unit name and as
+        # file hints for writes to the job store.
+        self.task_path = ".".join(name_parts)
 
         # Display as that along with the class
-        display_name = f"{class_name} {unit_name}"
+        display_name = f"{class_name} {self.task_path}"
 
         # Set up the job with the right requirements and names.
         super().__init__(
@@ -2242,7 +2250,7 @@ class CWLNamedJob(Job):
             disk=disk,
             accelerators=accelerators,
             preemptible=preemptible,
-            unitName=unit_name,
+            unitName=self.task_path,
             displayName=display_name,
             local=local,
         )
@@ -2878,9 +2886,10 @@ class CWLJob(CWLNamedJob):
         fs_access = runtime_context.make_fs_access(runtime_context.basedir)
 
         # And a file importer that can go from a file:// URI to a Toil FileID
+        hints = self.task_path.split(".") if self.task_path else None
         def file_import_function(url: str, log_level: int = logging.DEBUG) -> FileID:
             logger.log(log_level, "Loading %s...", url)
-            return writeGlobalFileWrapper(file_store, url)
+            return writeGlobalFileWrapper(file_store, url, hints=hints)
 
         file_visitor = functools.partial(
             ensure_file_imported,
@@ -4177,74 +4186,6 @@ def determine_load_listing(
     return cast(Literal["no_listing", "shallow_listing", "deep_listing"], load_listing)
 
 
-class NoAvailableJobStoreException(Exception):
-    """Indicates that no job store name is available."""
-
-
-def generate_default_job_store(
-    batch_system_name: str | None,
-    provisioner_name: str | None,
-    local_directory: str,
-) -> str:
-    """
-    Choose a default job store appropriate to the requested batch system and
-    provisioner, and installed modules. Raises an error if no good default is
-    available and the user must choose manually.
-
-    :param batch_system_name: Registry name of the batch system the user has
-           requested, if any. If no name has been requested, should be None.
-    :param provisioner_name: Name of the provisioner the user has requested,
-           if any. Recognized provisioners include 'aws' and 'gce'. None
-           indicates that no provisioner is in use.
-    :param local_directory: Path to a nonexistent local directory suitable for
-           use as a file job store.
-
-    :return str: Job store specifier for a usable job store.
-    """
-
-    # Apply default batch system
-    batch_system_name = batch_system_name or DEFAULT_BATCH_SYSTEM
-
-    # Work out how to describe where we are
-    situation = f"the '{batch_system_name}' batch system"
-    if provisioner_name:
-        situation += f" with the '{provisioner_name}' provisioner"
-
-    # Default to local job store
-    job_store_type = "file"
-
-    try:
-        if provisioner_name == "gce":
-            # With GCE, always use the Google job store
-            job_store_type = "google"
-        elif provisioner_name == "aws" or batch_system_name in {"mesos", "kubernetes"}:
-            # With AWS or these batch systems, always use the AWS job store
-            job_store_type = "aws"
-        elif provisioner_name is not None and provisioner_name not in ["aws", "gce"]:
-            # We 've never heard of this provisioner and don't know what kind
-            # of job store to use with it.
-            raise NoAvailableJobStoreException()
-
-        # Then if we get here a job store type has been selected, so try and
-        # make it
-        return generate_locator(
-            job_store_type, local_suggestion=local_directory, decoration="cwl"
-        )
-
-    except JobStoreUnavailableException as e:
-        raise NoAvailableJobStoreException(
-            f"Could not determine a job store appropriate for "
-            f"{situation} because: {e}. Please specify a jobstore with the "
-            f"--jobStore option."
-        )
-    except (ImportError, NoAvailableJobStoreException):
-        raise NoAvailableJobStoreException(
-            f"Could not determine a job store appropriate for "
-            f"{situation}. Please specify a jobstore with the "
-            f"--jobStore option."
-        )
-
-
 usage_message = "\n\n" + textwrap.dedent("""
             NOTE: If you're trying to specify a jobstore, you must use --jobStore, not a positional argument.
 
@@ -4308,6 +4249,10 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
 
     options = get_options(args)
 
+    # As soon as practicable, set up logging.
+    # TODO: the Toil context manager will do this again.
+    set_logging_from_options(options)
+
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
     tmpdir_prefix = options.tmpdir_prefix = (
@@ -4326,7 +4271,7 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
         # system and provisioner and installed modules, given this available
         # local directory name. Fail if no good default can be used.
         options.jobStore = generate_default_job_store(
-            options.batchSystem, options.provisioner, jobstore
+            options.batchSystem, options.provisioner, jobstore, "cwl"
         )
 
     options.doc_cache = True
@@ -4710,6 +4655,7 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
         UnimplementedURLException,
         JobTooBigError,
         FileNotFoundError,
+        InconsistentConfigurationError,
     ) as err:
         logging.error(err)
         return 1

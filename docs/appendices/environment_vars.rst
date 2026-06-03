@@ -156,8 +156,13 @@ There are several environment variables that affect the way Toil runs.
 +--------------------------------------+-----------------------------------------------------+
 | TOIL_SLURM_PARTITION                 | Partition to send Slurm jobs to.                    |
 +--------------------------------------+-----------------------------------------------------+
+| TOIL_SLURM_QOS                       | Quality Of Service to request for Slurm jobs.       |
++--------------------------------------+-----------------------------------------------------+
 | TOIL_SLURM_GPU_PARTITION             | Partition to send Slurm jobs to if they ask for     |
 |                                      | GPUs.                                               |
++--------------------------------------+-----------------------------------------------------+
+| TOIL_SLURM_GPU_QOS                   | Quality Of Service to request for Slurm jobs if     |
+|                                      | they ask for GPUs.                                  |
 +--------------------------------------+-----------------------------------------------------+
 | TOIL_SLURM_PE                        | Name of the slurm partition to use for parallel     |
 |                                      | jobs. Useful for Slurm clusters that do not offer   |

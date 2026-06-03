@@ -29,6 +29,7 @@ import toil
 from toil import resolveEntryPoint
 from toil.common import Config, Toil
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.jobStores.fileJobStore import FileJobStore
 from toil.job import Job
 from toil.lib.bioio import system
 from toil.test import get_data
@@ -422,7 +423,7 @@ class TestUtils:
 
         # TODO: we need to reach into the FileJobStore's files and delete this
         #  shared file. We assume we know its internal layout.
-        os.remove(jobstore / "files/shared/pid.log")
+        os.remove(jobstore / FileJobStore.SHARED_FILES_DIR / "pid.log")
         self.check_status(
             jobstore,
             "QUEUED",
