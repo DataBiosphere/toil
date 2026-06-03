@@ -4264,7 +4264,7 @@ class WDLTaskJob(WDLBaseJob):
             # to the file on a local disk, which the commnad will be able to
             # actually use, accounting for e.g. containers.
             #
-            # TODO: Figure out whan the command template actually uses File
+            # TODO: Figure out when the command template actually uses File
             # values and lazily download them.
             #
             # For now we just grab all the File values in the inside-the-task
