@@ -2204,6 +2204,7 @@ class CWLNamedJob(Job):
         disk: int | str | None = "1MiB",
         accelerators: list[AcceleratorRequirement] | None = None,
         preemptible: bool | None = None,
+        walltime: int | None = 0,
         tool_id: str | None = None,
         parent_name: str | None = None,
         subjob_name: str | None = None,
@@ -2250,6 +2251,7 @@ class CWLNamedJob(Job):
             disk=disk,
             accelerators=accelerators,
             preemptible=preemptible,
+            walltime=walltime,
             unitName=self.task_path,
             displayName=display_name,
             local=local,
@@ -2582,6 +2584,17 @@ class CWLJob(CWLNamedJob):
             # Note: if the job is using the toil default memory, it won't be increased
             memory = max(memory, min_ram)
 
+        # Check if the tool has set a time limit. If yes, use it. Otherwise,
+        # use a None requirement to use the Toil default.
+        tool_max_walltime = tool.get_requirement("ToolTimeLimit")[0] or {}
+        if (
+            "timelimit" in tool_max_walltime
+            and (limit_val := tool_max_walltime["timelimit"]) is not None
+        ):
+            walltime = cast(int, self.builder.do_eval(limit_val))
+        else:
+            walltime = None
+
         accelerators: list[AcceleratorRequirement] | None = None
         if req.get("cudaDeviceCount", 0) > 0:
             # There's a CUDARequirement, which cwltool processed for us
@@ -2650,6 +2663,7 @@ class CWLJob(CWLNamedJob):
             disk=int(total_disk),
             accelerators=accelerators,
             preemptible=preemptible,
+            walltime=walltime,
             tool_id=self.cwltool.tool["id"],
             parent_name=parent_name,
             local=isinstance(tool, cwltool.command_line_tool.ExpressionTool),
