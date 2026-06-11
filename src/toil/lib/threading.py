@@ -668,34 +668,27 @@ def global_mutex(base_dir: StrPath, mutex: str) -> Iterator[None]:
         # complain loudly if something is tampering with our locks or not
         # really enforcing locks on the filesystem, so we will notice if it is
         # the cause of further problems.
-        try:
-            path_stats = os.stat(lock_filename)
-        except FileNotFoundError:
-            path_stats = None
-
-        # Check to make sure it still looks locked before we unlink.
-        if path_stats is None:
-            logger.error(
-                "PID %d had mutex %s disappear while locked! Mutex system is not working!",
-                os.getpid(),
-                lock_filename,
-            )
-        elif (
-            fd_stats.st_dev != path_stats.st_dev or fd_stats.st_ino != path_stats.st_ino
-        ):
-            logger.error(
-                "PID %d had mutex %s get replaced while locked! Mutex system is not working!",
-                os.getpid(),
-                lock_filename,
-            )
-
-        if path_stats is not None:
+        if not locked_file_is(fd, lock_filename):
+            if not os.path.exists(lock_filename):
+                logger.error(
+                    "PID %d had mutex %s disappear while locked! Mutex system is not working!",
+                    os.getpid(),
+                    lock_filename,
+                )
+            else: 
+                logger.error(
+                    "PID %d had mutex %s get replaced while locked! Mutex system is not working!",
+                    os.getpid(),
+                    lock_filename,
+                )
+        else:
+            # File we have is the one there
             try:
                 # Unlink the file
                 os.unlink(lock_filename)
             except FileNotFoundError:
                 logger.error(
-                    "PID %d had mutex %s disappear between stat and unlink while unlocking! Mutex system is not working!",
+                    "PID %d had mutex %s disappear between poll and unlink while unlocking! Mutex system is not working!",
                     os.getpid(),
                     lock_filename,
                 )
