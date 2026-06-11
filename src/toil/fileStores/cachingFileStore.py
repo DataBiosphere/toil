@@ -1472,6 +1472,10 @@ class CachingFileStore(AbstractFileStore):
             # Link or maybe copy
             self.jobStore.read_file(fileStoreID, cachedPath, symlink=False)
 
+        assert os.path.exists(cachedPath), (
+            "Downloaded file vanished: %s" % cachedPath
+        )
+
     def _readGlobalFileMutablyWithCache(self, fileStoreID, localFilePath, readerID):
         """
         Read a mutable copy of a file, putting it into the cache if possible.
@@ -1748,6 +1752,7 @@ class CachingFileStore(AbstractFileStore):
                 "SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?",
                 (fileStoreID, "downloading", me),
             )
+
             if self.cur.fetchone()[0] > 0:
                 # Now we have exclusive control of the cached copy of the file, so we can give it away.
 
@@ -1789,9 +1794,46 @@ class CachingFileStore(AbstractFileStore):
         :rtype: bool
         """
 
-        assert os.path.exists(cachedPath), (
-            "Cannot create link to missing cache file %s" % cachedPath
-        )
+        if not os.path.exists(cachedPath):
+            # This file should exist; nobody should be calling this function
+            # without a ref. So complain the database is bad.
+
+            logger.critical(
+                "Cannot create link to missing cache file %s", cachedPath
+            )
+
+            # Dump relevant bits of the database
+            self._read(
+                "SELECT * FROM files WHERE path = ?",
+                (cachedPath,)
+            )
+            file_id = None
+            row = cur.fetchone()
+            while row is not None:
+                logger.critical("File row: %s", row)
+                file_id = row[0]
+                row = cur.fetchone()
+            self._read(
+                "SELECT * FROM refs WHERE path = ?",
+                (localFilePath,)
+            )
+            row = cur.fetchone()
+            while row is not None:
+                logger.critical("Our ref row: %s", row)
+                row = cur.fetchone()
+            if file_id is not None:
+                self._read(
+                    "SELECT * FROM refs WHERE file_id = ?",
+                    (file_id,)
+                )
+                row = cur.fetchone()
+                while row is not None:
+                    logger.critical("Cache ref row: %s", row)
+                    row = cur.fetchone()
+            else:
+                logger.critical("Cached file not found in database either")
+
+            raise RuntimeError(f"Missing cache file: {cachedPath}")
 
         try:
             # Try and make the hard link.

@@ -23,7 +23,7 @@ from typing_extensions import ParamSpec
 import dill
 
 from toil.lib.io import robust_rmtree
-from toil.lib.threading import safe_lock, safe_unlock_and_close
+from toil.lib.threading import safe_lock, locked_file_is, safe_unlock_and_close
 from toil.realtimeLogger import RealtimeLogger
 from toil.resource import ModuleDescriptor
 
@@ -150,6 +150,8 @@ class DeferredFunctionManager:
             else:
                 # Something else went wrong
                 raise
+        if not locked_file_is(self.stateFD, self.stateFileName):
+            raise RuntimeError(f"Someone tampered with our state file during setup: {self.stateFileName}")
 
         # Rename it to remove the suffix
         os.rename(self.stateFileName, self.stateFileName[: -len(self.WIP_SUFFIX)])
@@ -173,6 +175,7 @@ class DeferredFunctionManager:
         # Hide the state from other processes
         if os.path.exists(self.stateFileName):
             os.unlink(self.stateFileName)
+            logger.debug("Removed own state file %s", self.stateFileName)
 
         # Unlock it
         safe_unlock_and_close(self.stateFD)
@@ -274,7 +277,7 @@ class DeferredFunctionManager:
         Run all of the deferred functions that were registered.
         """
 
-        logger.debug("Running own deferred functions")
+        logger.debug("Running own deferred functions in %s", self.stateFileName)
 
         # Seek back to the start of our file
         self.stateFileIn.seek(0)
@@ -352,10 +355,18 @@ class DeferredFunctionManager:
 
                 logger.debug("Locked file %s" % fullFilename)
 
+                if not loacke_file_is(fd, fullFilename):
+                    # File was removed between open and lock.
+                    safe_unlock_and_close(fd)
+                    logger.debug("Skipping unlinked file %s" % fullFilename)
+                    continue
+
+
                 # File is locked successfully. Our problem now.
                 foundFiles = True
 
-                # Actually run all the stored deferred functions
+                # Actually run all the stored deferred functions.
+                # We re-open the file here, so it had better still be linked.
                 fileObj = open(fullFilename, "rb")
                 self._runAllDeferredFunctions(fileObj)
                 states_handled += 1

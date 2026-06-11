@@ -434,7 +434,7 @@ class hidden:
             job: Job,
             isLocalFile: bool,
             nonLocalDir: str | None = None,
-            fileMB: int = 1, 
+            fileMB: int = 1,
             hints: list[str] | None = None,
         ):
             """
@@ -447,7 +447,7 @@ class hidden:
             :param nonLocalDir: A dir to write the file to.  If unspecified, a local directory
                                     is created.
             :param fileMB: Size of the created file in MB
-            :param hints: Hints to tell the file store when writing the file 
+            :param hints: Hints to tell the file store when writing the file
             """
             if isLocalFile:
                 work_dir = job.fileStore.getLocalTempDir()
@@ -671,7 +671,7 @@ class hidden:
             job: Job,
             isLocalFile: bool,
             nonLocalDir: str | None =None,
-            fileMB: int = 1, 
+            fileMB: int = 1,
             hints: list[str] | None = None,
             expectAsyncUpload: bool = True,
         ):
