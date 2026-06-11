@@ -355,7 +355,7 @@ class DeferredFunctionManager:
 
                 logger.debug("Locked file %s" % fullFilename)
 
-                if not loacke_file_is(fd, fullFilename):
+                if not locked_file_is(fd, fullFilename):
                     # File was removed between open and lock.
                     safe_unlock_and_close(fd)
                     logger.debug("Skipping unlinked file %s" % fullFilename)
