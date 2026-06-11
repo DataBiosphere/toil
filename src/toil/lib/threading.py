@@ -640,7 +640,7 @@ def global_mutex(base_dir: StrPath, mutex: str) -> Iterator[None]:
                 break
             else:
                 # The file we have a lock on is not the file linked to the name
-                # (if any). This usually happens, because before someone
+                # (if any). This usually happens because before someone
                 # releases a lock, they delete the file. Go back and contend
                 # again. TODO: This allows a lot of queue jumping on our mutex.
                 safe_unlock_and_close(fd)
