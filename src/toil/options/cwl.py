@@ -458,3 +458,13 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         " Not to be confused with --caching.",
         dest="cachedir",
     )
+
+    parser.add_argument(
+        "--cwl-loop-iteration-limit",
+        type=int,
+        default=1000,
+        help=suppress_help
+        or "Maximum number of iterations allowed for a single cwltool:Loop "
+        "step before Toil aborts. Guards against runaway loopWhen expressions.",
+        dest="cwl_loop_iteration_limit",
+    )
