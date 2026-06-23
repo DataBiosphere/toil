@@ -63,6 +63,7 @@ dependencies = ' '.join(python_packages[python] +
                          'libsvn1',
                          'libcurl4-openssl-dev',
                          'libapr1',
+                         'libunwind8',
                          # Dependencies for singularity
                          'containernetworking-plugins',
                          'libfuse2',
