@@ -153,7 +153,7 @@ print(heredoc('''
         mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real \
         && /usr/local/libexec/toil/singularity-real version
 
-    RUN mkdir /root/.ssh && \
+    RUN mkdir -p /root/.ssh && \
         chmod 700 /root/.ssh
 
     ADD waitForKey.sh /usr/bin/waitForKey.sh
@@ -165,9 +165,6 @@ print(heredoc('''
     ADD singularity-wrapper.sh /usr/bin/singularity
 
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/bin/singularity
-
-    # The stock pip is too old and can't install from sdist with extras
-    RUN curl -sS https://bootstrap.pypa.io/get-pip.py | {python}
 
     # Include virtualenv, as it is still the recommended way to deploy
     # pipelines.
