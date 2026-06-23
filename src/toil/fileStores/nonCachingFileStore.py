@@ -32,6 +32,7 @@ from toil.lib.io import make_public_dir, robust_rmtree
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import (
     get_process_name,
+    locked_file_is,
     process_name_exists,
     safe_lock,
     safe_unlock_and_close,
@@ -289,23 +290,28 @@ class NonCachingFileStore(AbstractFileStore):
                         raise
                     # Otherwise, we lost the race. Someone else is alive and
                     # has it locked. So loop around again.
-                else:
-                    # We got it
-                    logger.warning(
-                        "Detected that job (%s) prematurely terminated.  Fixing the "
-                        "state of the job on disk.",
-                        jobState["jobName"],
-                    )
+                    continue
 
-                    try:
-                        if not batchSystemShutdown:
-                            logger.debug("Deleting the stale working directory.")
-                            # Delete the old work directory if it still exists.  Do this only during
-                            # the life of the program and dont' do it during the batch system
-                            # cleanup. Leave that to the batch system cleanup code.
-                            robust_rmtree(jobState["jobDir"])
-                    finally:
-                        safe_unlock_and_close(dirFD)
+                if not locked_file_is(dirFD, jobState["jobDir"]):
+                    # We locked something other than what's on disk right now.
+                    continue
+
+                # Otherwise, we got it
+                logger.warning(
+                    "Detected that job (%s) prematurely terminated.  Fixing the "
+                    "state of the job on disk.",
+                    jobState["jobName"],
+                )
+
+                try:
+                    if not batchSystemShutdown:
+                        logger.debug("Deleting the stale working directory.")
+                        # Delete the old work directory if it still exists.  Do this only during
+                        # the life of the program and dont' do it during the batch system
+                        # cleanup. Leave that to the batch system cleanup code.
+                        robust_rmtree(jobState["jobDir"])
+                finally:
+                    safe_unlock_and_close(dirFD)
 
     @classmethod
     def _getAllJobStates(cls, coordination_dir: str) -> Iterator[dict[str, str]]:
