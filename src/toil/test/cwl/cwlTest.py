@@ -722,6 +722,8 @@ class TestCWLWorkflow:
                 )
         assert rc != 0
 
+    # TODO: Test `StepInputExpressionRequirement` https://github.com/common-workflow-language/cwltool/blob/8949fc2d68efe128ce841739d1190645dbd233bb/tests/test_loop_ext.py#L271-L279
+
     @needs_slurm
     @pytest.mark.slurm
     def test_slurm_node_memory(self, tmp_path: Path) -> None:

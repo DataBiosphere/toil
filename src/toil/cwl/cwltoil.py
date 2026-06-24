@@ -178,6 +178,10 @@ class UnresolvedDict(dict[Any, Any]):
     """Tag to indicate a dict contains promises that must be resolved."""
 
 
+# CWL Jobs have inputs and outputs and sometimes we have to do a process of resolution to figure out
+# what inputs get values from what outputs. Sometimes, collectively we call these inputs and outputs 'ports'.
+
+
 class SkipNull:
     """
     Internal sentinel object.
@@ -623,7 +627,12 @@ class LoopOutputSource:
     """
 
     def __init__(self, prev_iter_outputs: Promised[CWLObjectType], output_key: str):
-        """Store the promise and the short-form output key to extract."""
+        """
+        Store the promise and key needed to extract one output value.
+
+        :param prev_iter_outputs: promise for the prior iteration's output dict
+        :param output_key: short-form name of the output port to extract
+        """
         self.prev_iter_outputs = prev_iter_outputs
         self.output_key = output_key
 
@@ -657,7 +666,15 @@ class LoopStepValueFrom:
         requirements: list[CWLObjectType],
         container_engine: str,
     ):
-        """Capture the expression and the values it will evaluate against."""
+        """
+        Capture the expression and the values it will evaluate against.
+
+        :param expr: CWL valueFrom expression string to evaluate
+        :param source: resolver for the loopSource value (becomes `self` in the expression); None if no loopSource
+        :param prev_joborder: the previous iteration's resolved input object (becomes `inputs` in the expression)
+        :param requirements: step-level requirements, needed for InlineJavascriptRequirement
+        :param container_engine: container engine string passed to the CWL expression evaluator
+        """
         self.expr = expr
         self.source = source
         self.prev_joborder = prev_joborder
@@ -3401,7 +3418,7 @@ class CWLLoopAccumulate(Job):
     """
     Extend a running cwltool:Loop accumulator with one iteration's outputs.
 
-    Used by `outputMethod: all` to build the per-port arrays
+    Used by `outputMethod: all_iterations` to build the arrays of each output across all iterations.
     """
 
     def __init__(
@@ -3410,7 +3427,13 @@ class CWLLoopAccumulate(Job):
         iteration_outputs: Promised[CWLObjectType],
         output_keys: list[str],
     ):
-        """Store the promise for the prior accumulation and the promise for the current iteration's outputs."""
+        """
+        Store the promises needed to extend the accumulator by one iteration.
+
+        :param previous_accumulation: the accumulated outputs from all prior iterations, as a dict mapping output key to list; a plain dict for iteration 0, a Promise thereafter
+        :param iteration_outputs: promise for the current iteration's output dict
+        :param output_keys: short-form names of the output ports to accumulate
+        """
         super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
         self.previous_accumulation = previous_accumulation
         self.iteration_outputs = iteration_outputs
@@ -3435,25 +3458,15 @@ class CWLLoop(Job):
     Evaluates `loopWhen` each iteration; if true, spawns the embedded tool
     as a child and chains a successor CWLLoop as a follow-on. Terminates when
     `loopWhen` returns false, emitting the last iteration's outputs
-    (outputMethod: last) or the accumulated per-port arrays
+    (outputMethod: last) or the accumulated arrays of each output
     (outputMethod: all).
 
-    cwltool's own loop_checker rejects combining this requirement with
-    `when` or `scatter`, so this class does not re-check those conditions.
-    cwltool also rejects `MultipleInputFeatureRequirement` missing when
-    multi-source loopSource is used, so we don't re-check that either.
+    Validation is the responsibility of cwltool's own loop_checker.
 
-    Loops nest naturally: when the embedded tool is a Workflow that
-    itself contains a step with the Loop requirement, each iteration
-    of the outer chain spawns an independent CWLWorkflow whose run()
-    recursively creates an inner CWLLoop chain. Scatter wrapping a
-    loop works the same way — a CWLScatter step whose embedded tool
-    is a Workflow with a loop step inside.
-
-    Supported LoopInput features: single- and multi-source `loopSource`,
-    `linkMerge`, `pickValue`, `default`, `valueFrom`. The one runtime
-    gate enforced here is `StepInputExpressionRequirement`, matching
-    cwltool's reference loop_callback.
+    Loops nest naturally because each iteration spawns an independent
+    CWLWorkflow. To combine a loop with scatter, use an intervening
+    subworkflow — cwltool's loop_checker rejects a step that carries
+    both requirements directly.
     """
     def __init__(
         self,
@@ -3466,7 +3479,18 @@ class CWLLoop(Job):
         previous_outputs: Promised[CWLObjectType] | None = None,
         previous_accumulation: Promised[CWLObjectType] | CWLObjectType | None = None,
     ):
-        """Store our context for later execution."""
+        """
+        Store context needed to evaluate one iteration of the loop.
+
+        :param step: the WorkflowStep carrying the cwltool:Loop requirement
+        :param cwljob: the input object for this iteration, as an UnresolvedDict or plain dict
+        :param runtime_context: Toil CWL runtime context (filesystem, container engine, etc.)
+        :param parent_name: human-readable name prefix used for child job naming
+        :param iteration_limit: maximum number of iterations before raising an error
+        :param iteration: zero-based index of the current iteration we would execute
+        :param previous_outputs: promise for the previous iteration's output dict; should be None for iteration 0
+        :param previous_accumulation: accumulated outputs from all prior iterations; used for outputMethod: all_iterations; should be None for iteration 0
+        """
         super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
         self.step = step
         self.cwljob = cwljob
@@ -3479,18 +3503,22 @@ class CWLLoop(Job):
     
     def build_next_inputs(self, cwljob: CWLObjectType, body_followon: Job, loop_inputs: list[CWLObjectType]) -> UnresolvedDict:
         """
-        Build the input object for the next iteration.
+        Build the input object for the next iteration by applying the
+        `loop` rebinding rules from the cwltool:Loop requirement.
 
-        For each step input id named in a LoopInput record:
-          * `loopSource` rebinds the value to one or more of the
-            just-finished iteration's outputs, with optional `linkMerge`
-            and `pickValue`;
-          * `default` provides a fallback when the source resolves to None;
-          * `valueFrom` runs an expression whose `self` is the resolved
-            loopSource (or None) and whose `inputs` is *this* iteration's
-            joborder.
+        Each LoopInput record names a step input and describes how its
+        value is updated:
 
-        Step inputs not named in a LoopInput are carried forward unchanged.
+        - `loopSource` pulls from one or more of the just-finished
+          iteration's outputs (with optional `linkMerge` and `pickValue`
+          for merging multiple sources)
+        - `default` supplies a fallback if the source is absent
+        - `valueFrom` runs a CWL expression to compute the final value,
+          with `self` set to the resolved source and `inputs` set to
+          this iteration's joborder
+
+        Step inputs not named in any LoopInput carry their current value
+        forward unchanged.
         """
         loop_by_id: dict[str, CWLObjectType] = {
             shortname(cast(str, li["id"])): li for li in loop_inputs
@@ -3532,6 +3560,7 @@ class CWLLoop(Job):
                 source = DefaultWithSource(copy.copy(li["default"]), source)
 
             if "valueFrom" in li:
+                # TODO: This is a bit of a hack. We should be able to use the same mechanism as CWLJob to resolve valueFrom expressions, but we need to pass in the previous iteration's outputs as well as the current job order. For now, we just call LoopStepValueFrom directly.
                 result[k] = LoopStepValueFrom(
                     expr=cast(str, li["valueFrom"]),
                     source=source,
@@ -3546,7 +3575,15 @@ class CWLLoop(Job):
         return UnresolvedDict(result)
 
     def run(self, file_store: AbstractFileStore) -> dict[str, Any] | Promised[CWLObjectType]:
-        """Evaluate loopWhen and (for now) either skip or refuse to iterate."""
+        """
+        Evaluate the loop condition and either spawn the next iteration or return the final output.
+
+        If the `loopWhen` expression evaluates to true and the iteration limit has not been
+        reached, spawns the embedded tool as a child job and chains a new CWLLoop as a
+        follow-on. If false, returns the last iteration's outputs directly
+        (outputMethod: last_iteration) or the accumulated per-port arrays
+        (outputMethod: all_iterations).
+        """
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
         if "loop" not in self.step.tool:
@@ -3617,13 +3654,14 @@ class CWLLoop(Job):
             )
             body_followon.addFollowOn(accumulated_loops)
             next_loop_pred = accumulated_loops
+            next_accumulation: Promised[CWLObjectType] | None = accumulated_loops.rv()
         elif output_method == "last_iteration":
             next_loop_pred = body_followon
+            next_accumulation = None
         else:
             raise cwl_utils.errors.WorkflowException(
                 f"Unsupported cwltool:Loop outputMethod {output_method!r}"
             )
-
 
         next_inputs = self.build_next_inputs(cwljob, body_followon, cast(list[CWLObjectType], self.step.tool.get("loop", [])))
 
@@ -3635,7 +3673,7 @@ class CWLLoop(Job):
             iteration_limit=self.iteration_limit,
             iteration=self.iteration + 1,
             previous_outputs=body_followon.rv(),
-            previous_accumulation=next_loop_pred.rv(),
+            previous_accumulation=next_accumulation,
         )
         
         # Attach next loop to its predecessor, which depends on the output method
