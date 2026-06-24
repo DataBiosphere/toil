@@ -187,7 +187,7 @@ See :ref:`cli_stats` for an explanation of what the different fields mean.
 
 **Understanding toil log files**
 
-There is a `worker_log.txt` file for each Toil job. This file is written to while the job is running, and uploaded at the end if the job finishes or if running at debug log level. If uploaded, the contents are printed to the main log file and transferred to a log file in the `--logDir` folder.
+There is a worker log for each Toil job. This log is written to a file on the node while the job is running, and uploaded to the job store at the end if the job fails or if running at debug log level. If uploaded, the contents are later printed to the main log file by the leader, and also transferred to a per-job log file in the ``--writeLogs`` directory, if used.
 
 The new log file will be named something like:
 ::
