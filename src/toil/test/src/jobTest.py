@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import collections
+import logging
 import os
 import random
 import time
+from unittest.mock import Mock
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Callable, NoReturn, cast
@@ -35,6 +37,7 @@ from toil.test import pslow as slow
 
 
 class TestJob:
+
     """Tests the job class."""
 
     @slow
@@ -815,7 +818,61 @@ class TestJob:
             if cyclic(i, visited, []):
                 return False
         return True
+    
+    def test_cpu_usage(self, subtests: pytest.Subtests) -> None:
+        with subtests.test("no warnings for non-positive runtime"):
+            job = Job()
+            file_store = Mock()
+            job._check_cpu_usage(
+                job_time=0.0, 
+                job_cpu_time=100.0, 
+                fileStore=file_store
+            )
+            job._check_cpu_usage(
+                job_time=-1.0, 
+                job_cpu_time=100.0, 
+                fileStore=file_store
+            )
+            file_store.log_to_leader.assert_not_called()
 
+        with subtests.test("accepts 0 cores"):
+            job = Job()
+            file_store = Mock()
+            job.cores = 0
+            job._check_cpu_usage(
+                job_time=10.0, 
+                job_cpu_time=10.0, 
+                fileStore=file_store
+            )
+
+        TIME = 10.0
+        THRESHOLD = 1.05
+        CORES = 2
+        with subtests.test("threshold boundary does not warn"):
+            threshold_job = Job(cores=CORES)
+            threshold_store = Mock()
+            threshold_job._check_cpu_usage(
+                job_time=TIME,
+                job_cpu_time=TIME * CORES * THRESHOLD,
+                fileStore=threshold_store,
+                threshold_factor=THRESHOLD,
+            )
+            threshold_store.log_to_leader.assert_not_called()
+
+        with subtests.test("just above threshold warns"):
+            threshold_job = Job(cores=CORES)
+            threshold_store = Mock()
+            threshold_job._check_cpu_usage(
+                job_time=TIME,
+                job_cpu_time=TIME * CORES * THRESHOLD + 0.1,
+                fileStore=threshold_store,
+                threshold_factor=THRESHOLD,
+            )
+            threshold_store.log_to_leader.assert_called_once()
+            cpu_message = threshold_store.log_to_leader.call_args.args[0]
+            cpu_level = threshold_store.log_to_leader.call_args.kwargs["level"]
+            assert str(threshold_job.description) in cpu_message
+            assert cpu_level == logging.WARNING
 
 def simpleJobFn(job: ServiceHostJob, value: str) -> None:
     job.fileStore.log_to_leader(value)

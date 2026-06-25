@@ -68,7 +68,7 @@ from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
 from toil.lib.compatibility import deprecated
-from toil.lib.conversions import bytes2human, human2bytes
+from toil.lib.conversions import bytes2human, human2bytes, seconds_to_dhms
 from toil.lib.exceptions import UnimplementedURLException
 from toil.lib.expando import Expando
 from toil.lib.resources import ResourceMonitor
@@ -418,10 +418,11 @@ class RequirementsDict(TypedDict):
     disk: NotRequired[int]
     accelerators: NotRequired[list[AcceleratorRequirement]]
     preemptible: NotRequired[bool]
+    walltime: NotRequired[int]
 
 
 # These must be all the key names in RequirementsDict
-REQUIREMENT_NAMES = ["disk", "memory", "cores", "accelerators", "preemptible"]
+REQUIREMENT_NAMES = ["disk", "memory", "cores", "accelerators", "preemptible", "walltime"]
 
 # This is the supertype of all value types in RequirementsDict
 ParsedRequirement = Union[int, float, bool, list[AcceleratorRequirement]]
@@ -454,7 +455,7 @@ class Requirer:
     """
     Base class implementing the storage and presentation of requirements.
 
-    Has cores, memory, disk, and preemptability as properties.
+    Has cores, memory, disk, preemptability, and walltime as properties.
     """
 
     _requirementOverrides: RequirementsDict
@@ -465,7 +466,7 @@ class Requirer:
 
         :param dict requirements: Dict from string to value
             describing a set of resource requirments. 'cores', 'memory',
-            'disk', 'preemptible', and 'accelerators' fields, if set, are
+            'disk', 'preemptible', 'accelerators', and 'walltime' fields, if set, are
             parsed and broken out into properties. If unset, the relevant
             property will be unspecified, and will be pulled from the assigned
             Config object if queried (see
@@ -545,7 +546,7 @@ class Requirer:
     @overload
     @staticmethod
     def _parseResource(
-        name: Literal["memory"] | Literal["disk"],
+        name: Literal["memory"] | Literal["disk"] | Literal["walltime"],
         value: ParseableIndivisibleResource,
     ) -> int: ...
 
@@ -610,7 +611,7 @@ class Requirer:
             # Anything can be None.
             return value
 
-        if name in ("memory", "disk", "cores"):
+        if name in ("memory", "disk", "cores", "walltime"):
             # These should be numbers that accept things like "5G".
             if isinstance(value, bytes):
                 value = value.decode("utf-8")
@@ -723,6 +724,15 @@ class Requirer:
         self._requirementOverrides["memory"] = Requirer._parseResource("memory", val)
 
     @property
+    def walltime(self) -> int:
+        """Get the maximum walltime in seconds allowed."""
+        return cast(int, self._fetchRequirement("walltime"))
+
+    @walltime.setter
+    def walltime(self, val: ParseableIndivisibleResource) -> None:
+        self._requirementOverrides["walltime"] = Requirer._parseResource("walltime", val)
+
+    @property
     def cores(self) -> int | float:
         """Get the number of CPU cores required."""
         return cast(Union[int, float], self._fetchRequirement("cores"))
@@ -791,7 +801,11 @@ class Requirer:
         for k in REQUIREMENT_NAMES:
             v: str | ParsedRequirement | None = self._fetchRequirement(k)
             if v is not None:
-                if isinstance(v, (int, float)) and v > 1000:
+                if k == "walltime":
+                    if v == 0:
+                        continue
+                    v = seconds_to_dhms(cast(int, v))
+                elif isinstance(v, (int, float)) and v > 1000:
                     # Make large numbers readable
                     v = bytes2human(v)
                 parts.append(f"{k}: {v}")
@@ -843,7 +857,7 @@ class JobDescription(Requirer):
 
         :param requirements: Dict from string to number, string, or bool
             describing the resource requirements of the job. 'cores', 'memory',
-            'disk', and 'preemptible' fields, if set, are parsed and broken out
+            'disk', 'preemptible', and 'walltime' fields, if set, are parsed and broken out
             into properties. If unset, the relevant property will be
             unspecified, and will be pulled from the assigned Config object if
             queried (see :meth:`toil.job.Requirer.assignConfig`).
@@ -1744,6 +1758,7 @@ class Job:
         accelerators: ParseableAcceleratorRequirement | None = None,
         preemptible: ParseableFlag | None = None,
         preemptable: ParseableFlag | None = None,
+        walltime: ParseableIndivisibleResource | None = None,
         unitName: str | None = "",
         checkpoint: bool | None = False,
         displayName: str | None = "",
@@ -1762,6 +1777,7 @@ class Job:
         :param accelerators: the computational accelerators required by the job. If a string, can be a string of a number, or a string specifying a model, brand, or API (with optional colon-delimited count).
         :param preemptible: if the job can be run on a preemptible node.
         :param preemptable: legacy preemptible parameter, for backwards compatibility with workflows not using the preemptible keyword
+        :param walltime: the maximum walltime in seconds that the job is allowed to run.
         :param unitName: Human-readable name for this instance of the job.
         :param checkpoint: if any of this job's successor jobs completely fails,
             exhausting all their retries, remove any successor jobs and rerun this job to restart the
@@ -1777,6 +1793,7 @@ class Job:
         :type disk: int or string convertible by toil.lib.conversions.human2bytes to an int
         :type accelerators: int, string, dict, or list of those. Strings and dicts must be parseable by parse_accelerator.
         :type preemptible: bool, int in {0, 1}, or string in {'false', 'true'} in any case
+        :type walltime: int
         :type unitName: str
         :type checkpoint: bool
         :type displayName: str
@@ -1799,6 +1816,7 @@ class Job:
             "disk": disk,
             "accelerators": accelerators,
             "preemptible": preemptible,
+            "walltime": walltime,
         }
         if descriptionClass is None:
             if checkpoint:
@@ -1941,7 +1959,16 @@ class Job:
     @preemptible.setter
     def preemptible(self, val: bool) -> None:
         self.description.preemptible = val
-    
+
+    @property
+    def walltime(self) -> int:
+        """The maximum walltime in seconds that the job is allowed to run."""
+        return self.description.walltime
+
+    @walltime.setter
+    def walltime(self, val: int) -> None:
+        self.description.walltime = val
+
     # Note that unless the two halves of a property are *immediately* adjacent,
     # MyPy throws an error. So the old version has to come later.
     @deprecated(new_function_name="preemptible")
@@ -2693,10 +2720,11 @@ class Job:
             disk: ParseableIndivisibleResource | None = None,
             accelerators: ParseableAcceleratorRequirement | None = None,
             preemptible: ParseableFlag | None = None,
+            walltime: ParseableIndivisibleResource | None = None,
             unitName: str | None = "",
         ) -> None:
             """
-            Memory, core and disk requirements are specified identically to as in \
+            Memory, core, disk and walltime requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
             """
             # Save the requirements in ourselves so they are visible on `self` to user code.
@@ -2707,6 +2735,7 @@ class Job:
                     "disk": disk,
                     "accelerators": accelerators,
                     "preemptible": preemptible,
+                    "walltime": walltime,
                 }
             )
 
@@ -3304,20 +3333,8 @@ class Job:
             )
             job_time = time.time() - startTime
             job_cpu_time = totalCpuTime - startClock
-            allocated_cpu_time = job_time * self.cores
 
-            if job_cpu_time > allocated_cpu_time and allocated_cpu_time > 0:
-                # Too much CPU was used by this job! Maybe we're using a batch
-                # system that doesn't/can't sandbox us and we started too many
-                # threads. Complain to the user!
-                excess_factor = job_cpu_time / allocated_cpu_time
-                fileStore.log_to_leader(
-                    f"Job {self.description} used {excess_factor:.2f}x more "
-                    f"CPU than the requested {self.cores} cores. Consider "
-                    f"increasing the job's required CPU cores or limiting the "
-                    f"number of processes/threads launched.",
-                    level=logging.WARNING,
-                )
+            self._check_cpu_usage(job_time, job_cpu_time, fileStore)
 
             # Finish up the stats
             if stats is not None:
@@ -3337,6 +3354,46 @@ class Job:
                         succeeded=str(succeeded),
                     )
                 )
+    
+
+    def _check_cpu_usage(
+        self,
+        job_time: float,
+        job_cpu_time: float,
+        fileStore: AbstractFileStore,
+        threshold_factor: float = 1.05,
+    ) -> None:
+        """
+        Log a warning when a job consumes more CPU time than its allocation.
+
+        If *job_time* is non-positive, returns immediately (wall-clock time may
+        lack resolution for very short jobs). If *cores* is non-positive, logs
+        a warning that overuse cannot be assessed and returns, avoiding
+        division by zero. Otherwise, compares *job_cpu_time* to
+        ``job_time * cores * threshold_factor``.
+        """
+        if job_time <= 0:
+            # The job may have run too quickly for wall-clock resolution.
+            return
+        if self.cores <= 0:
+            # Jobs should not have non-positive core requests, but avoid divide-by-zero.
+            fileStore.log_to_leader(
+                f"Job {self.description} has invalid requested cores value "
+                f"{self.cores}; cannot evaluate CPU overuse.",
+                level=logging.WARNING,
+            )
+            return
+        allocated_cpu_time = job_time * self.cores
+
+        excess_factor = job_cpu_time / allocated_cpu_time
+        if excess_factor > threshold_factor:
+            fileStore.log_to_leader(
+                f"Job {self.description} used {excess_factor:.2f}x more "
+                f"CPU than the requested {self.cores} cores. Consider "
+                f"increasing the job's required CPU cores or limiting the "
+                f"number of processes/threads launched.",
+                level=logging.WARNING,
+            )
 
     def _runner(
         self,
@@ -3459,7 +3516,7 @@ class FunctionWrappingJob(Job):
                ``**kwargs`` as arguments.
 
         The keywords ``memory``, ``cores``, ``disk``, ``accelerators`,
-        ``preemptible`` and ``checkpoint`` are reserved keyword arguments that
+        ``preemptible``, ``walltime``, and ``checkpoint`` are reserved keyword arguments that
         if specified will be used to determine the resources required for the
         job, as :func:`toil.job.Job.__init__`. If they are keyword arguments to
         the function they will be extracted from the function definition, but
@@ -3498,6 +3555,7 @@ class FunctionWrappingJob(Job):
             disk=resolve("disk", dehumanize=True),
             accelerators=resolve("accelerators"),
             preemptible=resolve("preemptible"),
+            walltime=resolve("walltime"),
             checkpoint=resolve("checkpoint", default=False),
             unitName=resolve("name", default=None),
         )
@@ -3559,10 +3617,11 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
         - cores
         - accelerators
         - preemptible
+        - walltime
 
     For example to wrap a function into a job we would call::
 
-        Job.wrapJobFn(myJob, memory='100k', disk='1M', cores=0.1)
+        Job.wrapJobFn(myJob, memory='100k', disk='1M', cores=0.1, walltime=0)
 
     """
 
@@ -3592,6 +3651,7 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
                 disk="1M",
                 memory="32M",
                 cores=0.1,
+                walltime=0,
                 accelerators=[],
                 preemptible=True,
                 preemptable=True,
@@ -3693,6 +3753,7 @@ class EncapsulatedJob(Job):
                 disk="100M",
                 memory="512M",
                 cores=0.1,
+                walltime=0,
                 unitName=None if unitName is None else unitName + "-followOn",
             )
             Job.addFollowOn(self, self.encapsulatedFollowOn)

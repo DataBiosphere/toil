@@ -50,6 +50,8 @@ from typing import (
     overload,
 )
 
+from toil.jobStores.utils import generate_default_job_store
+
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
 else:
@@ -74,7 +76,7 @@ from WDL.runtime.task_container import TaskContainer
 from WDL.Tree import ReadSourceResult
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
-from toil.common import Toil, addOptions
+from toil.common import Toil, addOptions, InconsistentConfigurationError
 from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -126,6 +128,7 @@ from toil.lib.io import (
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
 from toil.lib.resources import ResourceMonitor
+from toil.statsAndLogging import set_logging_from_options
 from toil.lib.threading import global_mutex
 from toil.lib.trs import resolve_workflow
 from toil.lib.url import URLAccess
@@ -2226,7 +2229,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             if not os.path.exists(abs_filename):
                 raise FileNotFoundError(abs_filename)
 
-            file_id = self._file_store.writeGlobalFile(abs_filename)
+            file_id = self._file_store.writeGlobalFile(
+                abs_filename, hints=self.task_path.split(".")
+            )
 
             file_dir = os.path.dirname(abs_filename)
             result = pack_toil_uri(
@@ -4264,7 +4269,7 @@ class WDLTaskJob(WDLBaseJob):
             # to the file on a local disk, which the commnad will be able to
             # actually use, accounting for e.g. containers.
             #
-            # TODO: Figure out whan the command template actually uses File
+            # TODO: Figure out when the command template actually uses File
             # values and lazily download them.
             #
             # For now we just grab all the File values in the inside-the-task
@@ -6091,30 +6096,43 @@ def main() -> None:
 
     options = parser.parse_args(args)
 
+    # As soon as practicable, set up logging.
+    # TODO: the Toil context manager will do this again.
+    set_logging_from_options(options)
+
     # Make sure we have a jobStore
     if options.jobStore is None:
-        # TODO: Move cwltoil's generate_default_job_store where we can use it
-        options.jobStore = os.path.join(mkdtemp(), "tree")
-
-    # Having an nargs=? option can put a None in our inputs list, so drop that.
-    input_sources = [x for x in options.inputs_uri if x is not None]
-    if len(input_sources) > 1:
-        raise RuntimeError(
-            f"Workflow inputs cannot be specified with both the -i/--input/--inputs flag "
-            f"and as a positional argument at the same time. Cannot use both "
-            f'"{input_sources[0]}" and "{input_sources[1]}".'
+        jobstore = mkdtemp(prefix="toil-wdl-", dir=os.getcwd())
+        os.rmdir(jobstore)
+        options.jobStore = generate_default_job_store(
+            options.batchSystem, options.provisioner, jobstore, decoration="wdl"
         )
 
-    # Make sure we have an output directory (or URL prefix) and we don't need
-    # to ever worry about a None, and MyPy knows it.
-    # If we don't have a directory assigned, make one in the current directory.
-    output_directory: str = (
-        options.output_directory
-        if options.output_directory
-        else mkdtemp(prefix="wdl-out-", dir=os.getcwd())
-    )
-
     try:
+        # Make sure we have a jobStore
+        if options.jobStore is None:
+            # TODO: Move cwltoil's generate_default_job_store where we can use it
+            options.jobStore = os.path.join(mkdtemp(), "tree")
+
+        # Having an nargs=? option can put a None in our inputs list, so drop that.
+        input_sources = [x for x in options.inputs_uri if x is not None]
+        if len(input_sources) > 1:
+            raise InconsistentConfigurationError(
+                f"Workflow inputs cannot be specified with both the -i/--input/--inputs flag "
+                f"and as a positional argument at the same time. Cannot use both "
+                f'"{input_sources[0]}" and "{input_sources[1]}".'
+            )
+
+        # Make sure we have an output directory (or URL prefix) and we don't need
+        # to ever worry about a None, and MyPy knows it.
+        # If we don't have a directory assigned, make one in the current directory.
+        output_directory: str = (
+            options.output_directory
+            if options.output_directory
+            else mkdtemp(prefix="wdl-out-", dir=os.getcwd())
+        )
+
+
         wdl_uri, trs_spec = resolve_workflow(
             options.wdl_uri, supported_languages={"WDL"}
         )
@@ -6383,6 +6401,9 @@ def main() -> None:
     except FailedJobsException as e:
         logger.error("WDL job failed: %s", e)
         sys.exit(e.exit_code)
+    except InconsistentConfigurationError as e:
+        logging.error(e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

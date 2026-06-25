@@ -1207,7 +1207,7 @@ class CachingFileStore(AbstractFileStore):
             # its temp dir and database entry.
             self._deallocateSpaceForJob()
 
-    def writeGlobalFile(self, localFileName, cleanup=False):
+    def writeGlobalFile(self, localFileName, cleanup=False, hints=None):
         """
         Creates a file in the jobstore and returns a FileID reference.
         """
@@ -1224,7 +1224,7 @@ class CachingFileStore(AbstractFileStore):
         # Make sure to pass along the file basename.
         # TODO: this empty file could leak if we die now...
         fileID = self.jobStore.get_empty_file_store_id(
-            creatorID, cleanup, os.path.basename(localFileName)
+            creatorID, cleanup, os.path.basename(localFileName), hints=hints
         )
         # Work out who we are
         with self.as_process() as me:
@@ -1471,6 +1471,10 @@ class CachingFileStore(AbstractFileStore):
         else:
             # Link or maybe copy
             self.jobStore.read_file(fileStoreID, cachedPath, symlink=False)
+
+        assert os.path.exists(cachedPath), (
+            "Downloaded file vanished: %s" % cachedPath
+        )
 
     def _readGlobalFileMutablyWithCache(self, fileStoreID, localFilePath, readerID):
         """
@@ -1748,6 +1752,7 @@ class CachingFileStore(AbstractFileStore):
                 "SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?",
                 (fileStoreID, "downloading", me),
             )
+
             if self.cur.fetchone()[0] > 0:
                 # Now we have exclusive control of the cached copy of the file, so we can give it away.
 
@@ -1789,9 +1794,46 @@ class CachingFileStore(AbstractFileStore):
         :rtype: bool
         """
 
-        assert os.path.exists(cachedPath), (
-            "Cannot create link to missing cache file %s" % cachedPath
-        )
+        if not os.path.exists(cachedPath):
+            # This file should exist; nobody should be calling this function
+            # without a ref. So complain the database is bad.
+
+            logger.critical(
+                "Cannot create link to missing cache file %s", cachedPath
+            )
+
+            # Dump relevant bits of the database
+            self._read(
+                "SELECT * FROM files WHERE path = ?",
+                (cachedPath,)
+            )
+            file_id = None
+            row = cur.fetchone()
+            while row is not None:
+                logger.critical("File row: %s", row)
+                file_id = row[0]
+                row = cur.fetchone()
+            self._read(
+                "SELECT * FROM refs WHERE path = ?",
+                (localFilePath,)
+            )
+            row = cur.fetchone()
+            while row is not None:
+                logger.critical("Our ref row: %s", row)
+                row = cur.fetchone()
+            if file_id is not None:
+                self._read(
+                    "SELECT * FROM refs WHERE file_id = ?",
+                    (file_id,)
+                )
+                row = cur.fetchone()
+                while row is not None:
+                    logger.critical("Cache ref row: %s", row)
+                    row = cur.fetchone()
+            else:
+                logger.critical("Cached file not found in database either")
+
+            raise RuntimeError(f"Missing cache file: {cachedPath}")
 
         try:
             # Try and make the hard link.
