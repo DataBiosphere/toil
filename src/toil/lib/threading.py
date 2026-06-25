@@ -120,6 +120,10 @@ def safe_lock(fd: int, block: bool = True, shared: bool = False) -> None:
     """
     Get an fcntl lock, while retrying on IO errors.
 
+    If the file might be removed or replaced, make sure to use
+    :meth:`locked_file_is` to be sure the thing you locked is still at that
+    path once you've locked it.
+
     Raises OSError with EACCES or EAGAIN when a nonblocking lock is not
     immediately available.
     """
@@ -172,6 +176,49 @@ def safe_lock(fd: int, block: bool = True, shared: bool = False) -> None:
             else:
                 raise
 
+def locked_file_is(fd: int, path: str) -> bool:
+    """
+    Return True if the open file fd is on disk at the given path.
+
+    After locking a file that might get removed, renamed, or replaced, you
+    should check this while holding the lock, to make sure no two people can
+    both think they have the lock when really one has locked an unlinked file.
+
+    The file fd should be locked with :meth:`safe_lock`, or else the returned
+    answer might not be true anymore by the time the function returns.
+    """
+
+    try:
+        # Get the stats from the open file
+        fd_stats = os.fstat(fd)
+    except OSError as e:
+        if e.errno == errno.ESTALE:
+            # The file handle has gone stale, because somebody removed the
+            # file.
+            # So we aren't locking this file on disk right now.
+            return False
+        else:
+            # Something else broke
+            raise
+
+    try:
+        # And get the stats for the name in the directory
+        path_stats: os.stat_result | None = os.stat(path)
+    except FileNotFoundError:
+        path_stats = None
+
+    if (
+        path_stats is None
+        or fd_stats.st_dev != path_stats.st_dev
+        or fd_stats.st_ino != path_stats.st_ino
+    ):
+        # The file we have a lock on is not the file linked to the name (if
+        # any).
+        return False
+    else:
+        # We have a lock on the file that the name points to.
+        return True
+
 
 def safe_unlock_and_close(fd: int) -> None:
     """
@@ -181,11 +228,12 @@ def safe_unlock_and_close(fd: int) -> None:
         fcntl.flock(fd, fcntl.LOCK_UN)
     except OSError as e:
         if e.errno in (errno.EIO, errno.ENOLCK):
-            # We don't need to retry then because we're going to close the FD 
+            # We don't need to retry then because we're going to close the FD
             # and after that the file can't remain locked by us.
+            logger.debug("Observed errno %s when unlocking", e.errno)
             pass
         else:
-            raise  
+            raise
     os.close(fd)
 
 
@@ -457,6 +505,11 @@ def get_process_name(base_dir: str) -> str:
             else:
                 # Something else is wrong
                 raise
+        if not locked_file_is(nameFD, nameFileName):
+            # Someone deleted our name file
+            raise RuntimeError(
+                    f"Someone deleted our process name file at {nameFileName}"
+            )
 
         # Save the basename
         current_process_name_for[base_dir] = os.path.basename(nameFileName)
@@ -514,11 +567,14 @@ def process_name_exists(base_dir: str, name: str) -> bool:
                 raise
         else:
             # Could lock. Process is dead.
-            # Remove the file. We race to be the first to do so.
-            try:
-                os.remove(nameFileName)
-            except:
-                pass
+            if locked_file_is(nameFD, nameFileName):
+                # Remove the file.
+                try:
+                    os.remove(nameFileName)
+                except:
+                    # If someone broke the lock, ignore it. We just want the
+                    # file gone.
+                    pass
             safe_unlock_and_close(nameFD)
             nameFD = None
             # Report process death
@@ -574,49 +630,25 @@ def global_mutex(base_dir: StrPath, mutex: str) -> Iterator[None]:
         try:
             # Wait until we can exclusively lock it, handling error retry.
             safe_lock(fd)
+
+            # Holding the lock, make sure we are looking at the same file on
+            # disk still.
+            if locked_file_is(fd, lock_filename):
+                # We have a lock on the file that the name points to. Since we
+                # hold the lock, nobody will be deleting it or can be in the
+                # process of deleting it. Stop contending; we have the mutex.
+                break
+            else:
+                # The file we have a lock on is not the file linked to the name
+                # (if any). This usually happens because before someone
+                # releases a lock, they delete the file. Go back and contend
+                # again. TODO: This allows a lot of queue jumping on our mutex.
+                safe_unlock_and_close(fd)
+                continue
         except:
             # Something went wrong
             os.close(fd)
             raise
-
-        # Holding the lock, make sure we are looking at the same file on disk still.
-        try:
-            # So get the stats from the open file
-            fd_stats = os.fstat(fd)
-        except OSError as e:
-            if e.errno == errno.ESTALE:
-                # The file handle has gone stale, because somebody removed the
-                # file.
-                # Try again.
-                safe_unlock_and_close(fd)
-                continue
-            else:
-                # Something else broke
-                os.close(fd)
-                raise
-
-        try:
-            # And get the stats for the name in the directory
-            path_stats: os.stat_result | None = os.stat(lock_filename)
-        except FileNotFoundError:
-            path_stats = None
-
-        if (
-            path_stats is None
-            or fd_stats.st_dev != path_stats.st_dev
-            or fd_stats.st_ino != path_stats.st_ino
-        ):
-            # The file we have a lock on is not the file linked to the name (if
-            # any). This usually happens, because before someone releases a
-            # lock, they delete the file. Go back and contend again. TODO: This
-            # allows a lot of queue jumping on our mutex.
-            safe_unlock_and_close(fd)
-            continue
-        else:
-            # We have a lock on the file that the name points to. Since we
-            # hold the lock, nobody will be deleting it or can be in the
-            # process of deleting it. Stop contending; we have the mutex.
-            break
 
     try:
         # When we have it, do the thing we are protecting.
@@ -636,42 +668,35 @@ def global_mutex(base_dir: StrPath, mutex: str) -> Iterator[None]:
         # complain loudly if something is tampering with our locks or not
         # really enforcing locks on the filesystem, so we will notice if it is
         # the cause of further problems.
-        try:
-            path_stats = os.stat(lock_filename)
-        except FileNotFoundError:
-            path_stats = None
-
-        # Check to make sure it still looks locked before we unlink.
-        if path_stats is None:
-            logger.error(
-                "PID %d had mutex %s disappear while locked! Mutex system is not working!",
-                os.getpid(),
-                lock_filename,
-            )
-        elif (
-            fd_stats.st_dev != path_stats.st_dev or fd_stats.st_ino != path_stats.st_ino
-        ):
-            logger.error(
-                "PID %d had mutex %s get replaced while locked! Mutex system is not working!",
-                os.getpid(),
-                lock_filename,
-            )
-
-        if path_stats is not None:
+        if not locked_file_is(fd, lock_filename):
+            if not os.path.exists(lock_filename):
+                logger.error(
+                    "PID %d had mutex %s disappear while locked! Mutex system is not working!",
+                    os.getpid(),
+                    lock_filename,
+                )
+            else: 
+                logger.error(
+                    "PID %d had mutex %s get replaced while locked! Mutex system is not working!",
+                    os.getpid(),
+                    lock_filename,
+                )
+        else:
+            # File we have is the one there
             try:
                 # Unlink the file
                 os.unlink(lock_filename)
             except FileNotFoundError:
                 logger.error(
-                    "PID %d had mutex %s disappear between stat and unlink while unlocking! Mutex system is not working!",
+                    "PID %d had mutex %s disappear between poll and unlink while unlocking! Mutex system is not working!",
                     os.getpid(),
                     lock_filename,
                 )
 
         # Note that we are unlinking it and then unlocking it; a lot of people
         # might have opened it before we unlinked it and will wake up when they
-        # get the worthless lock on the now-unlinked file. We have to do some
-        # stat gymnastics above to work around this.
+        # get the worthless lock on the now-unlinked file. We use
+        # locked_file_is() above to get around this.
         safe_unlock_and_close(fd)
 
 
@@ -815,6 +840,12 @@ class LastProcessStandingArena:
                         # Something else is wrong
                         os.close(fd)
                         raise
+
+                if not locked_file_is(fd, full_path):
+                    # We locked a removed file. Whoever was here just left.
+                    safe_unlock_and_close(fd)
+                    continue
+
                 else:
                     # Could lock. Process is dead.
                     try:

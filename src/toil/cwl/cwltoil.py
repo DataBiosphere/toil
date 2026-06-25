@@ -99,12 +99,13 @@ from schema_salad.sourceline import SourceLine
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
-from toil.common import Config, Toil, addOptions
+from toil.common import Config, Toil, addOptions, InconsistentConfigurationError
 from toil.cwl import check_cwltool_version
 from toil.lib.directory import DirectoryContents, decode_directory, encode_directory
 from toil.lib.misc import call_command
 from toil.lib.trs import resolve_workflow
 from toil.provisioners.clusterScaler import JobTooBigError
+from toil.statsAndLogging import set_logging_from_options
 
 from toil.jobStores.utils import generate_default_job_store
 
@@ -2291,6 +2292,7 @@ class CWLNamedJob(Job):
         disk: int | str | None = "1MiB",
         accelerators: list[AcceleratorRequirement] | None = None,
         preemptible: bool | None = None,
+        walltime: int | None = 0,
         tool_id: str | None = None,
         parent_name: str | None = None,
         subjob_name: str | None = None,
@@ -2337,6 +2339,7 @@ class CWLNamedJob(Job):
             disk=disk,
             accelerators=accelerators,
             preemptible=preemptible,
+            walltime=walltime,
             unitName=self.task_path,
             displayName=display_name,
             local=local,
@@ -2669,6 +2672,17 @@ class CWLJob(CWLNamedJob):
             # Note: if the job is using the toil default memory, it won't be increased
             memory = max(memory, min_ram)
 
+        # Check if the tool has set a time limit. If yes, use it. Otherwise,
+        # use a None requirement to use the Toil default.
+        tool_max_walltime = tool.get_requirement("ToolTimeLimit")[0] or {}
+        if (
+            "timelimit" in tool_max_walltime
+            and (limit_val := tool_max_walltime["timelimit"]) is not None
+        ):
+            walltime = cast(int, self.builder.do_eval(limit_val))
+        else:
+            walltime = None
+
         accelerators: list[AcceleratorRequirement] | None = None
         if req.get("cudaDeviceCount", 0) > 0:
             # There's a CUDARequirement, which cwltool processed for us
@@ -2737,6 +2751,7 @@ class CWLJob(CWLNamedJob):
             disk=int(total_disk),
             accelerators=accelerators,
             preemptible=preemptible,
+            walltime=walltime,
             tool_id=self.cwltool.tool["id"],
             parent_name=parent_name,
             local=isinstance(tool, cwltool.command_line_tool.ExpressionTool),
@@ -4618,6 +4633,10 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
 
     options = get_options(args)
 
+    # As soon as practicable, set up logging.
+    # TODO: the Toil context manager will do this again.
+    set_logging_from_options(options)
+
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
     tmpdir_prefix = options.tmpdir_prefix = (
@@ -5021,6 +5040,7 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
         UnimplementedURLException,
         JobTooBigError,
         FileNotFoundError,
+        InconsistentConfigurationError,
     ) as err:
         logging.error(err)
         return 1

@@ -146,14 +146,14 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 self.boss.config.max_jobs
             ):
                 activity = True
-                jobID, cpu, memory, command, jobName, environment, gpus = (
+                jobID, cpu, memory, walltime, command, jobName, environment, gpus = (
                     self.waitingJobs.pop(0)
                 )
                 if self.boss.config.memory_is_product and cpu > 1:
                     memory = memory // cpu
                 # prepare job submission command
                 subLine = self.prepareSubmission(
-                    cpu, memory, jobID, command, jobName, environment, gpus
+                    cpu, memory, walltime, jobID, command, jobName, environment, gpus
                 )
                 logger.debug("Running %r", subLine)
                 batchJobID = self.boss.with_retries(self.submitJob, subLine)
@@ -364,6 +364,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self,
             cpu: int,
             memory: int,
+            walltime: int,
             jobID: int,
             command: str,
             jobName: str,
@@ -500,6 +501,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                     job_id,
                     job_desc.cores,
                     job_desc.memory,
+                    job_desc.walltime,
                     command,
                     get_job_kind(job_desc.get_names()),
                     job_environment,
