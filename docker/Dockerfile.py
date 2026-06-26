@@ -61,8 +61,9 @@ dependencies = ' '.join(python_packages[python] +
                          'time',
                          # Dependencies for Mesos which the deb doesn't actually list
                          'libsvn1',
-                         'libcurl4-nss-dev',
+                         'libcurl4-openssl-dev',
                          'libapr1',
+                         'libunwind8',
                          # Dependencies for singularity
                          'containernetworking-plugins',
                          'libfuse2',
@@ -70,6 +71,7 @@ dependencies = ' '.join(python_packages[python] +
                          'fuse2fs',
                          'uidmap',
                          'squashfs-tools-ng',
+                         'singularity-container',
                          # Dependencies for singularity on kubernetes
                          'tzdata',
                          # Dependencies for building pysam when we need it for Cactus testing and there's no wheel
@@ -112,7 +114,7 @@ motd = heredoc('''
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
-    FROM ubuntu:22.04
+    FROM ubuntu:26.04
 
     ARG TARGETARCH
 
@@ -132,58 +134,26 @@ print(heredoc('''
     # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites -m https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
     # ipfs add -r .
     # It contains a GPG key that will expire 2026-09-28
-    RUN echo "deb https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmRXnGNiWk523zgNkuamENVkghMJ2zJtinVfgjHbc4Dcpr/rpm.aventer.biz/Ubuntu/focal focal main" \
+    # This is served out of /public/groups/cgl/public_html on the GI public infrastructure.
+    # Make sure to use the current signing key setup as described in <https://askubuntu.com/a/1307181>
+    RUN echo "deb [signed-by=/etc/apt/keyrings/support_aventer.asc] https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/Qmcd6B5gS42p99BzKjNsWuBJ9X4dEk7JEh7N9Hr6EYMzfn/rpm.aventer.biz/Ubuntu/noble noble main" \
         > /etc/apt/sources.list.d/mesos.list \
-        && curl https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmRXnGNiWk523zgNkuamENVkghMJ2zJtinVfgjHbc4Dcpr/www.aventer.biz/assets/support_aventer.asc | apt-key add -
+        && mkdir -p /etc/apt/keyrings/ \
+        && curl https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/Qmcd6B5gS42p99BzKjNsWuBJ9X4dEk7JEh7N9Hr6EYMzfn/www.aventer.biz/assets/support_aventer.asc >/etc/apt/keyrings/support_aventer.asc
 
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install --no-upgrade {dependencies} && \
-        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install --no-upgrade mesos ; mesos-agent --help >/dev/null ; fi && \
+        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install --no-upgrade aventer-mesos ; mesos-agent --help >/dev/null ; fi && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
-    # Install a particular old Debian Sid Singularity from somewhere.
-    # It's 3.10, which is new enough to use cgroups2, but it needs a newer libc
-    # than Ubuntu 20.04 ships. So we need a 22.04+ base.
-    #
-    # But 22.04 ships squashfs-tools 4.4 or 4.5 or so, which is new enough that
-    # errors encountered during extraction produce a nonzero exit code, without
-    # a special option:
-    # <https://github.com/plougher/squashfs-tools/commit/1dd7f32e79b7600d379a4f26fb8d138ebdfc70be>.
-    # If unsquashfs thinks it is root, but it can't change UIDs and GIDs freely, it
-    # will continue but fail the whole command instead of returning success. It complains:
-    #
-    # set_attributes: failed to change uid and gids on /image/rootfs/etc/gshadow, because Invalid argument
-    #
-    # But inside a Kubernetes container we can be root but not actually be
-    # allowed to set UIDs and GIDs arbitrarily. Singularity can't handle this,
-    # and can't pass the flag to ignore these errors, and we can't wrap
-    # unsquashfs with a shell script because of how it gets mounted into the
-    # container under construction along with its libraries (see
-    # <https://github.com/apptainer/singularity/issues/6113#issuecomment-901897566>).
-    #
-    # So we need to make sure to install a downgraded squashfs first.
-    #
-    # TODO: Singularity has since resolved this on their end
-    # https://github.com/sylabs/singularity/pull/267
-    # This works by checking that the UID of the caller is not root
-    # In a Kubernetes pod, the default setup will have UID 0 even if the pod is unprivileged
-    # https://github.com/sylabs/singularity/issues/2727
-    # It is possible to avoid this by changing the user of the pod (such as runAsUser: 1000)
-    # but this may cause permission issues, ex: changed read/write permissions
-    # so the downgraded squashfs stays, but options for updated squashfs are possible
-    ADD extra-debs.tsv /etc/singularity/extra-debs.tsv
-    RUN wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^squashfs-tools.$TARGETARCH" | cut -f4)" && \
-        dpkg -i squashfs-tools_*.deb && \
-        wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^singularity-container.$TARGETARCH" | cut -f4)" && \
-        dpkg -i singularity-container_*.deb && \
-        rm singularity-container_*.deb && \
-        sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
+    # Set up Singularity configuration and move out of the way for wrapper
+    RUN sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
         mkdir -p /usr/local/libexec/toil && \
         mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real \
         && /usr/local/libexec/toil/singularity-real version
 
-    RUN mkdir /root/.ssh && \
+    RUN mkdir -p /root/.ssh && \
         chmod 700 /root/.ssh
 
     ADD waitForKey.sh /usr/bin/waitForKey.sh
@@ -195,9 +165,6 @@ print(heredoc('''
     ADD singularity-wrapper.sh /usr/bin/singularity
 
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/bin/singularity
-
-    # The stock pip is too old and can't install from sdist with extras
-    RUN curl -sS https://bootstrap.pypa.io/get-pip.py | {python}
 
     # Include virtualenv, as it is still the recommended way to deploy
     # pipelines.
@@ -212,9 +179,9 @@ print(heredoc('''
     #
     # TODO: Change to nested virtual environments and .pth files and teach Toil
     # to just ship the user-level one for hot deploy.
-    RUN {pip} install --ignore-installed --upgrade 'virtualenv>=20.25.1,<21'
+    RUN {pip} install --ignore-installed --upgrade --break-system-packages 'virtualenv>=20.25.1,<21'
 
-    RUN {pip} install --ignore-installed --upgrade 'setuptools>=80,<81'
+    RUN {pip} install --ignore-installed --upgrade --break-system-packages 'setuptools>=80,<81'
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
@@ -243,7 +210,7 @@ print(heredoc('''
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
-    RUN {pip} install --ignore-installed --upgrade {sdistName}[all] {extra_python_modules}
+    RUN {pip} install --ignore-installed --upgrade --break-system-packages {sdistName}[all] {extra_python_modules}
     RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect
