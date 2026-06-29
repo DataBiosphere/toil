@@ -624,6 +624,74 @@ class TestWDL:
             assert isinstance(result["read_file.remade_file"], str)
             assert os.path.exists(result["read_file.remade_file"])
 
+    def test_restart_with_bad_worker(self, tmp_path: Path) -> None:
+        """
+        Test that a WDL workflow can recover from --badWorker-induced worker deaths, 
+        restart, and still export its output files.
+        """
+        with get_data("test/wdl/testfiles/read_file.wdl") as wdl:
+            out_dir = tmp_path / "out"
+            file_path = tmp_path / "file"
+            jobstore_path = tmp_path / "tree"
+
+            # Unlike test_restart, create the file upfront so failures only come from --badWorker
+            with open(file_path, "w") as f:
+                f.write("This is a line\n")
+                f.write("This is a different line")
+
+            command = self.base_command + [
+                str(wdl),
+                "-o",
+                str(out_dir),
+                "-i",
+                json.dumps({"read_file.input_string": str(file_path)}),
+                "--jobStore",
+                str(jobstore_path),
+                "--retryCount=0",
+                "--badWorker=0.5",
+                "--badWorkerFailInterval=0.01",
+            ]
+
+            result_json = None
+            try:
+                # With --badWorker, the first attempt will usually fail due to a simulated worker death, but not always
+                result_json = subprocess.check_output(command + ["--logCritical"])
+            except subprocess.CalledProcessError:
+                pass
+
+            if result_json is None:
+                # Keep restarting until the workflow actually finishes, 
+                # or give up after a bounded number of attempts so a hang fails 
+                # loudly instead of looping forever
+                max_attempts = 10
+                for attempt in range(max_attempts):
+                    try:
+                        result_json = subprocess.check_output(
+                            command + ["--restart", "--logCritical"]
+                        )
+                        break
+                    except subprocess.CalledProcessError:
+                        if attempt == max_attempts - 1:
+                            raise
+
+            # Now it should work
+            result = json.loads(result_json)
+
+            assert "read_file.lines" in result
+            assert isinstance(result["read_file.lines"], list)
+            assert result["read_file.lines"] == [
+                "This is a line",
+                "This is a different line",
+            ]
+
+            # Since we were catching
+            # <https://github.com/DataBiosphere/toil/issues/5247> at file
+            # export, make sure we actually exported a file, even after
+            # restarting from a --badWorker-induced failure
+            assert "read_file.remade_file" in result
+            assert isinstance(result["read_file.remade_file"], str)
+            assert os.path.exists(result["read_file.remade_file"])
+
     @needs_singularity_or_docker
     def test_workflow_file_deletion(self, tmp_path: Path) -> None:
         """
