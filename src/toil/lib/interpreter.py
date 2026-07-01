@@ -49,12 +49,12 @@ def command_line_to_shell_script(command_line: list[str]) -> str:
     """
     Extract or synthesize the inner shell script from a cwltool argv list.
 
-    cwltool uses ``["/bin/sh", "-c", script]`` when ShellCommandRequirement is
-    present, and a flat argv list otherwise.
+    cwltool uses ``["/bin/sh", "-c", script]`` in some cases, so that pattern
+    is handled specially.
     """
     if (
-        len(command_line) >= 3
-        and command_line[0] == "/bin/sh"
+        len(command_line) == 3
+        and command_line[0] in ("/bin/sh", "/bin/bash")
         and command_line[1] == "-c"
     ):
         return command_line[2]
@@ -62,7 +62,11 @@ def command_line_to_shell_script(command_line: list[str]) -> str:
 
 
 def shell_script_to_command_line(script: str) -> list[str]:
-    """Wrap a shell script for cwltool/docker (injection requires bash)."""
+    """
+    Wrap a shell script as a list of arguments for launchign a process.
+
+    The resulting command required Bash to be available.
+    """
     return ["/bin/bash", "-c", script]
 
 # Main function
@@ -175,7 +179,10 @@ def handle_message_file(file_path: str) -> None:
     """
     Handle a message file received from injected code from :meth:`add_injections()`.
 
-    Takes the host-side path of the file.
+    Records the described usage as if it had occurred within a child process,
+    by talking to the :class:`toil.lib.resources.ResourceMonitor` system.
+
+    :param file_path: the host-side path of the message file.
     """
     if os.path.basename(file_path) == "resources.tsv":
         # This is a TSV of resource usage info.
