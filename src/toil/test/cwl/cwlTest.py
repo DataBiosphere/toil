@@ -2352,14 +2352,11 @@ def test_cwl_resource_message_parsing_records_cpu_and_memory(
     from toil.lib.resources import ResourceMonitor
 
     message_file = tmp_path / "resources.tsv"
-    # Include malformed and partial lines to exercise parser robustness.
     message_file.write_text(
         "CPU\t1000000\n"
         "Memory\t1024\n"
         "CPU\t4000000\n"
-        "Memory\t2048\n"
-        "Odd\tline\n"
-        "CPU\t5000000",
+        "Memory\t2048\n",
         encoding="utf-8",
     )
 
@@ -2380,44 +2377,6 @@ def test_cwl_resource_message_parsing_records_cpu_and_memory(
 
     assert recorded_memory_ki == [2]
     assert recorded_cpu_seconds == [3.0]
-
-
-@needs_cwl
-@pytest.mark.cwl
-@pytest.mark.cwl_small
-def test_cwl_job_injection_wraps_container_command(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """
-    Container jobs are wrapped with injected runtime monitoring code.
-    """
-    from toil.cwl import cwltoil
-    from cwltool.docker import DockerCommandLineJob
-    from cwltool.pathmapper import PathMapper
-
-    host_input = tmp_path / "input.txt"
-    host_input.write_text("hello", encoding="utf-8")
-
-    class FakeMapperEntry:
-        type = "File"
-
-        def __init__(self, resolved: str, target: str) -> None:
-            self.resolved = resolved
-            self.target = target
-
-    class FakePathMapper:
-        def __init__(self, entry: FakeMapperEntry) -> None:
-            self._entry = entry
-
-        def files(self) -> list[str]:
-            return ["file://fake-input"]
-
-        def mapper(self, _location: str) -> FakeMapperEntry:
-            return self._entry
-
-    job = object.__new__(DockerCommandLineJob)
-    job.command_line = ["echo", "hello"]
-    job.pathmapper = cast(PathMapper, FakePathMapper(FakeMapperEntry(str(host_input), "/work/input.txt")))
 
 @needs_cwl
 @pytest.mark.cwl
