@@ -1105,32 +1105,6 @@ class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
         return super().run_jobs(process, job_order_object, logger, runtime_context)
 
 
-class ToilContainerCommandLineJob(ContainerCommandLineJob):
-    """Container job that collects resource stats from injected in-container code."""
-
-    def _execute(
-        self,
-        runtime: list[str],
-        env: MutableMapping[str, str],
-        runtimeContext: cwltool.context.RuntimeContext,
-        monitor_function: Callable[["subprocess.Popen[str]"], None] | None = None,
-    ) -> None:
-        super()._execute(runtime, env, runtimeContext, monitor_function)
-        handle_injection_messages_from_outdir(self.outdir)
-
-
-class ToilDockerCommandLineJob(ToilContainerCommandLineJob, DockerCommandLineJob):
-    """Docker container job with Toil runtime injection support."""
-
-
-class ToilPodmanCommandLineJob(ToilContainerCommandLineJob, PodmanCommandLineJob):
-    """Podman container job with Toil runtime injection support."""
-
-
-class ToilSingularityCommandLineJob(ToilContainerCommandLineJob, SingularityCommandLineJob):
-    """Singularity container job with Toil runtime injection support."""
-
-
 class ToilTool:
     """Mixin to hook Toil into a cwltool tool type."""
 
@@ -1189,20 +1163,10 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom ToilPathMapper
     and add the monitoring code to the job's container command line."""
 
-    def make_job_runner(
-        self, runtimeContext: cwltool.context.RuntimeContext
-    ) -> type[cwltool.job.JobBase]:
-        """Use Toil container job classes that collect injected runtime messages."""
-        parent_class = super().make_job_runner(runtimeContext)
-        if parent_class is DockerCommandLineJob:
-            return ToilDockerCommandLineJob
-        if parent_class is PodmanCommandLineJob:
-            return ToilPodmanCommandLineJob
-        if parent_class is SingularityCommandLineJob:
-            return ToilSingularityCommandLineJob
-        return parent_class
-
     def _uses_container(self, runtimeContext: cwltool.context.RuntimeContext) -> bool:
+        """
+        Returns True if this tool will be run inside a container.
+        """
         if not runtimeContext.use_container:
             return False
         docker_req, _ = self.get_requirement("DockerRequirement")
@@ -1212,10 +1176,16 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
             return runtimeContext.find_default_container(self) is not None
         return runtimeContext.default_container is not None
 
+    # TODO: Why is this on ToilCommandLineTool?
     @staticmethod
     def _file_mounts_from_pathmapper(
         job: ContainerCommandLineJob,
     ) -> list[tuple[str, str]]:
+        """
+        Get all the container mounts that will be used for a containerized job.
+
+        :returns: a list of (host path, container path) tuples, one per mount.
+        """
         file_mounts: list[tuple[str, str]] = []
         for location in job.pathmapper.files():
             ent = job.pathmapper.mapper(location)
@@ -1244,6 +1214,30 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
                 script = add_injections(script, file_mounts)
                 job.command_line = shell_script_to_command_line(script)
             yield job
+
+     def collect_output_ports(
+        self,
+        ports: CommentedSeq | set[CWLObjectType],
+        builder: cwltool.builder.Builder,
+        outdir: str,
+        rcode: int,
+        compute_checksum: bool = True,
+        jobname: str = "",
+        readers: MutableMapping[str, CWLFileType | CWLDirectoryType] | None = None,
+    ) -> cwltool.command_line_tool.OutputPortsType:
+        """
+        Hook output collection to also collect resource usage statistics.
+        """
+        handle_injection_messages_from_outdir(outdir)
+        return super().collect_output_ports(
+            ports,
+            builder,
+            outdir,
+            rcode,
+            compute_checksum,
+            jobname,
+            readers,
+        )        
 
     def _initialworkdir(
         self, j: cwltool.job.JobBase | None, builder: cwltool.builder.Builder
