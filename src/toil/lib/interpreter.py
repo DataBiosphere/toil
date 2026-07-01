@@ -1,14 +1,5 @@
 """
-Runtime code injection system
-
-When a workflow steps runs inside a container like Docker, where the contained
-process is not a descendant of Toil, the Toil worker process on the host cannot
-see how much CPU and RAM that step actually used.
-
-This system allows Toil to inject code into the container that will colklect
-and export resource usage information back to Toil.
-
-It also allows Toil to do other checks on the container system.
+Shared code for workflow language interpreters implemented with Toil.
 """
 
 # Copyright (C) 2026 Regents of the University of California
@@ -36,6 +27,20 @@ from typing import Iterable
 from toil.lib.resources import ResourceMonitor
 
 logger = logging.getLogger(__name__)
+
+
+####
+# Shell command injection system
+# 
+# When a workflow steps runs inside a container like Docker, where the contained
+# process is not a descendant of Toil, the Toil worker process on the host cannot
+# see how much CPU and RAM that step actually used.
+# 
+# This system allows Toil to inject code into the container that will colklect
+# and export resource usage information back to Toil.
+#
+# It also allows Toil to do other checks on the container system.
+###
 
 # Code injected into the container communicates back to the rest of Toil
 # through files in this directory.
