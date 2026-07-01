@@ -42,6 +42,10 @@ dependencies = ' '.join(python_packages[python] +
                          'curl',
                          'openssh-server',
                          "nodejs",  # CWL support for javascript expressions
+                         # For `rev`, required on the host by the CWL tests.
+                         # See
+                         # <https://github.com/common-workflow-language/cwl-v1.2/issues/307>.
+                         'bsdextrautils',
                          'rsync',
                          'screen',
                          'libarchive13',
