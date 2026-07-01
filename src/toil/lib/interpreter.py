@@ -54,15 +54,9 @@ def command_line_to_shell_script(command_line: list[str]) -> str:
     """
     Extract or synthesize the inner shell script from a cwltool argv list.
 
-    cwltool uses ``["/bin/sh", "-c", script]`` in some cases, so that pattern
-    is handled specially.
+    We don't want to disturb user CWL command line binding lists that
+    explicitly ask for things like ["bash", "-c"].
     """
-    if (
-        len(command_line) == 3
-        and command_line[0] in ("/bin/sh", "/bin/bash")
-        and command_line[1] == "-c"
-    ):
-        return command_line[2]
     return " ".join(shlex.quote(arg) for arg in command_line) # this is the shell script string
 
 
@@ -72,7 +66,7 @@ def shell_script_to_command_line(script: str) -> list[str]:
 
     The resulting command required Bash to be available.
     """
-    return ["/bin/bash", "-c", script]
+    return ["bash", "-c", script]
 
 # Main function
 
