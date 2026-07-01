@@ -512,6 +512,9 @@ class TestCWLWorkflow:
 
                 # The tool burns ~30s of CPU and ~1 GiB of RAM inside Docker.
                 # Per-job stats use KiB for memory and include injected container usage.
+                assert hasattr(collated_stats, "jobs")
+                assert hasattr(collated_stats.jobs, "total_clock")
+                assert hasattr(collated_stats.jobs, "max_memory")
                 assert collated_stats.jobs.total_clock >= 30
                 assert collated_stats.jobs.max_memory >= 1024 * 1024
 
@@ -2343,6 +2346,7 @@ def test_cwl_resource_message_parsing_records_cpu_and_memory(
     Toil's extra CPU and memory accounting.
     """
     from toil.lib import interpreter
+    from toil.lib.resources import ResourceMonitor
 
     message_file = tmp_path / "resources.tsv"
     # Include malformed and partial lines to exercise parser robustness.
@@ -2359,12 +2363,12 @@ def test_cwl_resource_message_parsing_records_cpu_and_memory(
     recorded_memory_ki: list[int] = []
     recorded_cpu_seconds: list[float] = []
     monkeypatch.setattr(
-        interpreter.ResourceMonitor,
+        ResourceMonitor,
         "record_extra_memory",
         lambda peak_ki: recorded_memory_ki.append(peak_ki),
     )
     monkeypatch.setattr(
-        interpreter.ResourceMonitor,
+        ResourceMonitor,
         "record_extra_cpu",
         lambda seconds: recorded_cpu_seconds.append(seconds),
     )
@@ -2385,6 +2389,8 @@ def test_cwl_job_injection_wraps_container_command(
     Container jobs are wrapped with injected runtime monitoring code.
     """
     from toil.cwl import cwltoil
+    from cwltool.docker import DockerCommandLineJob
+    from cwltool.pathmapper import PathMapper
 
     host_input = tmp_path / "input.txt"
     host_input.write_text("hello", encoding="utf-8")
@@ -2406,9 +2412,9 @@ def test_cwl_job_injection_wraps_container_command(
         def mapper(self, _location: str) -> FakeMapperEntry:
             return self._entry
 
-    job = object.__new__(cwltoil.ToilDockerCommandLineJob)
+    job = object.__new__(DockerCommandLineJob)
     job.command_line = ["echo", "hello"]
-    job.pathmapper = FakePathMapper(FakeMapperEntry(str(host_input), "/work/input.txt"))
+    job.pathmapper = cast(PathMapper, FakePathMapper(FakeMapperEntry(str(host_input), "/work/input.txt")))
 
 @needs_cwl
 @pytest.mark.cwl

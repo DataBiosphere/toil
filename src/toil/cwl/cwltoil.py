@@ -84,6 +84,7 @@ from cwltool.software_requirements import (
     get_container_from_software_requirements,
 )
 from cwltool.stdfsaccess import StdFsAccess, abspath
+from cwltool.udocker import UDockerCommandLineJob
 from cwltool.utils import (
     adjustDirObjs,
     aslist,
@@ -1158,6 +1159,13 @@ class ToilTool:
         """Return string representation of this tool type."""
         return f'{self.__class__.__name__}({repr(getattr(self, "tool", {}).get("id", "???"))})'
 
+# We need to know which cwltool container implementations run the container
+# under the calling process's child tree. Unlisted container implementations
+# are assumed to run it elsewhere through a deamon.
+#
+# We have to list it this way around (and not list the implementations that use
+# a daemon) because some of these extend DockerCommandLineJob.
+CHILD_PROCESS_CONTAINER_JOBS = (PodmanCommandLineJob, SingularityCommandLineJob, UDockerCommandLineJob)
 
 class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom ToilPathMapper
@@ -1206,16 +1214,27 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
         the job's container command line.
         """
         for job in super().job(job_order, output_callbacks, runtimeContext):
-            if isinstance(job, ContainerCommandLineJob) and self._uses_container(
-                runtimeContext
+            if (
+                isinstance(job, ContainerCommandLineJob) and
+                not isinstance(job, CHILD_PROCESS_CONTAINER_JOBS) and 
+                self._uses_container(
+                    runtimeContext
+                )
             ):
+                # This job is going to run in a container that makes it not be
+                # a descendant of our process. So we need to inject code to
+                # count its resource usage.
+
+                # That code also checks to make sure files mounted on Docker
+                # for Mac are intact, so we need to tell it ablut the file
+                # mounts we are going to use.
                 file_mounts = self._file_mounts_from_pathmapper(job)
                 script = command_line_to_shell_script(job.command_line)
                 script = add_injections(script, file_mounts)
                 job.command_line = shell_script_to_command_line(script)
             yield job
 
-     def collect_output_ports(
+    def collect_output_ports(
         self,
         ports: CommentedSeq | set[CWLObjectType],
         builder: cwltool.builder.Builder,
@@ -1223,7 +1242,7 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
         rcode: int,
         compute_checksum: bool = True,
         jobname: str = "",
-        readers: MutableMapping[str, CWLFileType | CWLDirectoryType] | None = None,
+        readers: MutableMapping[str, CWLObjectType] | None = None,
     ) -> cwltool.command_line_tool.OutputPortsType:
         """
         Hook output collection to also collect resource usage statistics.
