@@ -1,3 +1,30 @@
+"""
+Runtime code injection system
+
+When a workflow steps runs inside a container like Docker, where the contained
+process is not a descendant of Toil, the Toil worker process on the host cannot
+see how much CPU and RAM that step actually used.
+
+This system allows Toil to inject code into the container that will colklect
+and export resource usage information back to Toil.
+
+It also allows Toil to do other checks on the container system.
+"""
+
+# Copyright (C) 2026 Regents of the University of California
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import glob
 import logging
 import os
@@ -10,22 +37,14 @@ from toil.lib.resources import ResourceMonitor
 
 logger = logging.getLogger(__name__)
 
-###
-# Runtime code injection system
-# When a workflow steps runs inside a container, the Toil worker process on the host
-# often cannot see how much CPU and RAM that step actually used. This system allows
-# the step to inject code into the container that will write resource usage information
-# to files in a directory, which the Toil worker process can then read and use to
-# update the resource usage stats.
-###
-
-# Runtime code injected in the container communicates back to the rest of the
-# runtime through files in this directory.
+# Code injected into the container communicates back to the rest of Toil
+# through files in this directory.
 INJECTED_MESSAGE_DIR = ".toil_runtime"
 
 
-# Helper function to convert a CWL command from argv list to one shell script string
-# that can be executed in the container.
+# We mostly want to work with shell script strings, but CWL works with command
+# argument lists, so we use these functions to convert back and forth.
+
 def command_line_to_shell_script(command_line: list[str]) -> str:
     """
     Extract or synthesize the inner shell script from a cwltool argv list.
@@ -42,30 +61,45 @@ def command_line_to_shell_script(command_line: list[str]) -> str:
     return " ".join(shlex.quote(arg) for arg in command_line) # this is the shell script string
 
 
-# Helper function to convert a shell script back into an argv list that can be used by cwltool.
 def shell_script_to_command_line(script: str) -> list[str]:
     """Wrap a shell script for cwltool/docker (injection requires bash)."""
     return ["/bin/bash", "-c", script]
 
-# Core function to inject the resource usage monitoring code into the command line for the docker swarm container.
-# Takes the command string and the file mounts and returns the modified command string.
+# Main function
+
 def add_injections(
     command_string: str,
     file_mounts: Iterable[tuple[str, str]],
     message_dir: str = INJECTED_MESSAGE_DIR,
 ) -> str:
     """
-    Inject extra Bash code from the Toil runtime into the command for the container.
+    Add resource usage monitoring and file mount checking code to a command.
 
-    Currently doesn't implement the MiniWDL plugin system, but does add
-    resource usage monitoring to Docker containers.
+    The command is expected to be about to run in a container, under a
+    container system that does not itself attribute resource usage to the
+    calling Toil process (such as Docker, which uses a daemon).
+
+    :param command_string: shell command or script to modify
+    :param file_mounts: collection of (host path, container path) tuples for
+        files mounted into the container. Code will be added to require that
+        the container sees the complete file that the host sees.
+    :param message_dir: directory relative to the working directory that the
+        command should record resource usage to
+
+    :returns: shell command string (possibly containing multiple commands) that
+        runs the original command and reports resource usage.
+
     """
 
     parts = []
-    # We're running on Docker Swarm, so we need to monitor CPU usage
-    # and so on from inside the container, since it won't be attributed
-    # to Toil child processes in the leader's self-monitoring.
-    # TODO: Mount this from a file Toil installs instead or something.
+    # We're running on Docker or another platform where Toil isn't an ancestor
+    # process, so we need to monitor CPU usage and so on from inside the
+    # container, since it won't be attributed to Toil child processes in the
+    # leader's self-monitoring.
+
+    # TODO: Mount this script from a file Toil installs instead or something
+    # instead of injecting it in every command line, which makes it show up in
+    # logs.
     script = textwrap.dedent(
         """\
         function _toil_resource_monitor () {
@@ -135,10 +169,11 @@ def add_injections(
 
     return "\n".join(parts)
 
-# Helper function to parse the injected resource usage monitoring code and update the resource usage stats.
+# Helper functions to parse resource usage output
+
 def handle_message_file(file_path: str) -> None:
     """
-    Handle a message file received from in-container injected code.
+    Handle a message file received from injected code from :meth:`add_injections()`.
 
     Takes the host-side path of the file.
     """
@@ -185,9 +220,12 @@ def handle_message_file(file_path: str) -> None:
             # Treat it as if used by a child process
             ResourceMonitor.record_extra_cpu(cpu_seconds)
 
-# Helper function that is a convenience wrapper around the handle_message_file function.
 def handle_injection_messages_from_outdir(outdir: str) -> None:
-    """Read and handle any message files left in the job outdir by injected code."""
+    """
+    Handle any message files in the job outdir.
+
+    Files would have been left by injected code from :meth:`add_injections()`.
+    """
     message_dir = os.path.join(outdir, INJECTED_MESSAGE_DIR)
     for file_path in glob.glob(os.path.join(message_dir, "*")):
         if os.path.isfile(file_path):
