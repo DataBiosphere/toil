@@ -503,6 +503,9 @@ class TestCWLWorkflow:
                     "--jobStore",
                     str(job_store),
                     "--stats",
+                    # TODO: this relies on the default container engine for
+                    # toil-cwl-runner being Docker, because we don't have a
+                    # --docker option to make it explicit.
                 ]
                 cwltoil.main(main_args)
 
