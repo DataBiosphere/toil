@@ -537,7 +537,7 @@ class StepValueFrom:
     """
 
     def __init__(
-        self, expr: str, source: Any, req: list[CWLObjectType], container_engine: str
+        self, expr: str, source: Any, req: list[CWLObjectType], container_engine: str, inputs_override: CWLObjectType | None = None
     ):
         """
         Instantiate an object to carry all know about this valueFrom expression.
@@ -552,6 +552,7 @@ class StepValueFrom:
         self.context = None
         self.req = req
         self.container_engine = container_engine
+        self.inputs_override = inputs_override
 
     def __repr__(self) -> str:
         """Allow for debug printing."""
@@ -607,96 +608,12 @@ class StepValueFrom:
         """
         return cwl_utils.expression.do_eval(
             self.expr,
-            inputs,
+            self.inputs_override if self.inputs_override is not None else step_inputs,
             self.req,
             None,
             None,
             {},
             context=self.context,
-            container_engine=self.container_engine,
-        )
-
-
-class LoopOutputSource:
-    """
-    Pull a single value out of the previous loop iteration's promised outputs.
-
-    Used in the UnresolvedDict that becomes the next iteration's input object:
-    when an embedded-tool output is rebound to a step input via the
-    cwltool:Loop `loop` mapping, the value is held as a LoopOutputSource until
-    the next iteration's controller resolves it.
-    """
-
-    def __init__(self, prev_iter_outputs: Promised[CWLObjectType], output_key: str):
-        """
-        Store the promise and key needed to extract one output value.
-
-        :param prev_iter_outputs: promise for the prior iteration's output dict
-        :param output_key: short-form name of the output port to extract
-        """
-        self.prev_iter_outputs = prev_iter_outputs
-        self.output_key = output_key
-
-    def __repr__(self) -> str:
-        """Allow for debug printing."""
-        return f"LoopOutputSource({self.output_key!r})"
-
-    def resolve(self) -> Any:
-        """Extract the named field from the prior iteration's output dict."""
-        outs = cast(dict[str, Any], unwrap(self.prev_iter_outputs))
-        return outs.get(self.output_key)
-
-
-class LoopStepValueFrom:
-    """
-    A `cwltool:Loop` LoopInput carrying a `valueFrom` expression.
-
-    Per the extension spec, the expression's `self` is the resolved
-    `loopSource` value (or None if no loopSource), and `inputs` is the
-    input object to the *previous* iteration of the step (or the initial
-    step inputs for iteration 0 → 1). Single-phase: `.resolve()` produces
-    the final value, so this slots into UnresolvedDict without the
-    two-pass dance `StepValueFrom` needs.
-    """
-
-    def __init__(
-        self,
-        expr: str,
-        source: Any | None,
-        prev_joborder: CWLObjectType,
-        requirements: list[CWLObjectType],
-        container_engine: str,
-    ):
-        """
-        Capture the expression and the values it will evaluate against.
-
-        :param expr: CWL valueFrom expression string to evaluate
-        :param source: resolver for the loopSource value (becomes `self` in the expression); None if no loopSource
-        :param prev_joborder: the previous iteration's resolved input object (becomes `inputs` in the expression)
-        :param requirements: step-level requirements, needed for InlineJavascriptRequirement
-        :param container_engine: container engine string passed to the CWL expression evaluator
-        """
-        self.expr = expr
-        self.source = source
-        self.prev_joborder = prev_joborder
-        self.requirements = requirements
-        self.container_engine = container_engine
-
-    def __repr__(self) -> str:
-        """Allow for debug printing."""
-        return f"LoopStepValueFrom({self.expr!r}, source={self.source!r})"
-
-    def resolve(self) -> Any:
-        """Resolve `self`, then evaluate the expression."""
-        self_value = self.source.resolve() if self.source is not None else None
-        return cwl_utils.expression.do_eval(
-            self.expr,
-            {shortname(k): v for k, v in self.prev_joborder.items()},
-            self.requirements,
-            None,
-            None,
-            {},
-            context=self_value,
             container_engine=self.container_engine,
         )
 
@@ -3432,7 +3349,6 @@ class CWLGather(Job):
 class CWLLoopAccumulate(Job):
     """
     Extend a running cwltool:Loop accumulator with one iteration's outputs.
-
     Used by `outputMethod: all_iterations` to build the arrays of each output across all iterations.
     """
 
@@ -3552,9 +3468,8 @@ class CWLLoop(Job):
             if "outputSource" in li:
                 raw_sources = aslist(li["outputSource"])
                 if len(raw_sources) == 1 and not li.get("linkMerge") and not li.get("pickValue"):
-                    source = LoopOutputSource(
-                        prev_iter_outputs=body_followon.rv(),
-                        output_key=shortname(cast(str, raw_sources[0])),
+                    source = JustAValue(
+                        body_followon.rv(shortname(cast(str, raw_sources[0])))
                     )
                 else:
                     rs_input: dict[str, Any] = {
@@ -3575,13 +3490,12 @@ class CWLLoop(Job):
                 source = DefaultWithSource(copy.copy(li["default"]), source)
 
             if "valueFrom" in li:
-                # TODO: This is a bit of a hack. We should be able to use the same mechanism as CWLJob to resolve valueFrom expressions, but we need to pass in the previous iteration's outputs as well as the current job order. For now, we just call LoopStepValueFrom directly.
-                result[k] = LoopStepValueFrom(
+                result[k] = StepValueFrom(
                     expr=cast(str, li["valueFrom"]),
                     source=source,
-                    prev_joborder=cwljob,
-                    requirements=self.step.requirements,
+                    req=self.step.requirements,
                     container_engine=container_engine,
+                    inputs_override={shortname(k): v for k, v in cwljob.items()},
                 )
             elif source is not None:
                 result[k] = source
