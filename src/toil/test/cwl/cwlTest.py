@@ -40,6 +40,7 @@ sys.path.insert(0, pkg_root)  # noqa
 
 from schema_salad.exceptions import ValidationException
 
+from toil.common import Toil
 from toil.cwl.utils import (
     DirectoryStructure,
     download_structure,
@@ -66,6 +67,7 @@ from toil.test import pneeds_slurm as needs_slurm
 from toil.test import pneeds_torque as needs_torque
 from toil.test import pneeds_wes_server as needs_wes_server
 from toil.test import pslow as slow
+from toil.utils.toilStats import get_stats, process_data
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 10000
@@ -481,6 +483,43 @@ class TestCWLWorkflow:
                 assert out["output"]["size"] == 24
                 with open(out["output"]["location"][len("file://") :]) as f:
                     assert f.read().strip() == "When is s4 coming out?"
+
+    @needs_docker
+    @pytest.mark.docker
+    @pytest.mark.online
+    @pytest.mark.timeout(180)
+    def test_cpu_memory_monitoring(self, tmp_path: Path) -> None:
+        """Container CPU and memory usage is recorded in Toil job stats."""
+        from toil.cwl import cwltoil
+
+        with get_data("test/cwl/waste_cpu_memory.cwl") as cwl_file:
+            with get_data("test/cwl/empty.json") as inputs_file:
+                job_store = tmp_path / "jobStore"
+                main_args = [
+                    "--outdir",
+                    str(tmp_path / "output_dir"),
+                    str(cwl_file),
+                    str(inputs_file),
+                    "--jobStore",
+                    str(job_store),
+                    "--stats",
+                    # TODO: this relies on the default container engine for
+                    # toil-cwl-runner being Docker, because we don't have a
+                    # --docker option to make it explicit.
+                ]
+                cwltoil.main(main_args)
+
+                resumed_job_store = Toil.resumeJobStore(str(job_store))
+                stats = get_stats(resumed_job_store)
+                collated_stats = process_data(resumed_job_store.config, stats)
+
+                # The tool burns ~30s of CPU and ~1 GiB of RAM inside Docker.
+                # Per-job stats use KiB for memory and include injected container usage.
+                assert hasattr(collated_stats, "jobs")
+                assert hasattr(collated_stats.jobs, "total_clock")
+                assert hasattr(collated_stats.jobs, "max_memory")
+                assert collated_stats.jobs.total_clock >= 30
+                assert collated_stats.jobs.max_memory >= 1024 * 1024
 
     @needs_docker
     @pytest.mark.docker
@@ -2298,6 +2337,46 @@ def test_download_structure(tmp_path: Path) -> None:
         any_order=True,
     )
 
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_cwl_resource_message_parsing_records_cpu_and_memory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Resource monitor messages emitted from a container are translated into
+    Toil's extra CPU and memory accounting.
+    """
+    from toil.lib import interpreter
+    from toil.lib.resources import ResourceMonitor
+
+    message_file = tmp_path / "resources.tsv"
+    message_file.write_text(
+        "CPU\t1000000\n"
+        "Memory\t1024\n"
+        "CPU\t4000000\n"
+        "Memory\t2048\n",
+        encoding="utf-8",
+    )
+
+    recorded_memory_ki: list[int] = []
+    recorded_cpu_seconds: list[float] = []
+    monkeypatch.setattr(
+        ResourceMonitor,
+        "record_extra_memory",
+        lambda peak_ki: recorded_memory_ki.append(peak_ki),
+    )
+    monkeypatch.setattr(
+        ResourceMonitor,
+        "record_extra_cpu",
+        lambda seconds: recorded_cpu_seconds.append(seconds),
+    )
+
+    interpreter.handle_message_file(str(message_file))
+
+    assert recorded_memory_ki == [2]
+    assert recorded_cpu_seconds == [3.0]
 
 @needs_cwl
 @pytest.mark.cwl
