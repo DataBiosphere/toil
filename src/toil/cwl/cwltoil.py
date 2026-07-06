@@ -3567,12 +3567,13 @@ class CWLLoop(Job):
 
         self.addChild(body_job)
         
-        # Depending on the output method, we either do or don't need to run CWLLoopAccumulate between the body and next loop
-        # For all iterations mode, we need the predecessor of the next loop to be CWLLoopAccumulate
-        # For last iteration mode, we need the predecessor of the next loop to be the body job
-        # The approach will be to declare a variable to hold the predecessor job for the next loop iteration.
+        # In all_iterations mode, we need to run CWLLoopAccumulate after the
+        # body job to append this iteration's outputs to the running accumulator
+        # before the next CWLLoop iteration runs. next_accumulation carries the
+        # promise for the updated accumulator into the next iteration.
         if output_method == "all_iterations":
             output_keys = [shortname(cast(str, o["id"])) for o in self.step.tool["outputs"]]
+            # On iteration 0 there is no prior accumulation, so seed with empty lists.
             prev_acc_arg: Promised[CWLObjectType] | CWLObjectType = (
                 cast(CWLObjectType, {k: [] for k in output_keys})
                 if self.iteration == 0
@@ -3584,11 +3585,19 @@ class CWLLoop(Job):
                 output_keys=output_keys,
             )
             body_followon.addFollowOn(accumulated_loops)
+            # The next CWLLoop runs after CWLLoopAccumulate, so it sees the
+            # updated accumulator as its predecessor.
             next_loop_pred = accumulated_loops
             next_accumulation: Promised[CWLObjectType] | None = accumulated_loops.rv()
+        
+        # In last_iteration mode we don't need to accumulate anything -
+        # the next CWLLoop runs directly after the body job, and
+        # next_accumulation stays None since we only care about the final
+        # iteration's outputs.
         elif output_method == "last_iteration":
             next_loop_pred = body_followon
             next_accumulation = None
+        
         else:
             raise cwl_utils.errors.WorkflowException(
                 f"Unsupported cwltool:Loop outputMethod {output_method!r}"
@@ -3777,14 +3786,14 @@ class CWLWorkflow(CWLNamedJob):
                         )
 
                         if "loop" in step.tool:
-                            wfjob: CWLLoop | CWLScatter | CWLWorkflow | CWLJob | CWLJobWrapper = CWLLoop(
+                            wfjob: CWLLoop = CWLLoop(
                                     step,
                                     UnresolvedDict(jobobj),
                                     self.runtime_context,
                                     parent_name=parent_name,
                                     iteration_limit=getattr(self.runtime_context, "cwl_loop_iteration_limit", 1000),
                                 )
-                            followOn: CWLLoop | CWLGather | ResolveIndirect = wfjob
+                            followOn: CWLLoop = wfjob
                             logger.debug(
                                 "Is loop with job %s and follow-on %s",
                                 wfjob,
@@ -3792,7 +3801,7 @@ class CWLWorkflow(CWLNamedJob):
                             )
 
                         elif "scatter" in step.tool:
-                            wfjob: CWLScatter | CWLWorkflow | CWLJob | CWLJobWrapper = (
+                            wfjob: CWLScatter = (
                                 CWLScatter(
                                     step,
                                     UnresolvedDict(jobobj),
@@ -3801,9 +3810,7 @@ class CWLWorkflow(CWLNamedJob):
                                     conditional=conditional,
                                 )
                             )
-                            followOn: (
-                                CWLGather | ResolveIndirect | CWLJob | CWLJobWrapper
-                            ) = CWLGather(step, wfjob.rv())
+                            followOn: CWLGather = CWLGather(step, wfjob.rv())
                             wfjob.addFollowOn(followOn)
                             logger.debug(
                                 "Is scatter with job %s and follow-on %s",
