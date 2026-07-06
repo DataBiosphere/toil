@@ -537,7 +537,7 @@ class StepValueFrom:
     """
 
     def __init__(
-        self, expr: str, source: Any, req: list[CWLObjectType], container_engine: str, inputs_override: CWLObjectType | None = None
+        self, expr: str, source: Any | None, req: list[CWLObjectType], container_engine: str, inputs_override: CWLObjectType | None = None
     ):
         """
         Instantiate an object to carry all know about this valueFrom expression.
@@ -596,7 +596,7 @@ class StepValueFrom:
 
         :return: object that will serve as expression context
         """
-        self.context = self.source.resolve()
+        self.context = self.source.resolve() if self.source is not None else None
         return self.context
 
     def do_eval(self, inputs: CWLObjectType) -> Any:
@@ -3354,7 +3354,7 @@ class CWLLoopAccumulate(Job):
 
     def __init__(
         self,
-        previous_accumulation: Promised[CWLObjectType] | CWLObjectType,
+        previous_accumulation: Promised[dict[str, list[CWLObjectType]]] | dict[str, list[CWLObjectType]],
         iteration_outputs: Promised[CWLObjectType],
         output_keys: list[str],
     ):
@@ -3370,15 +3370,13 @@ class CWLLoopAccumulate(Job):
         self.iteration_outputs = iteration_outputs
         self.output_keys = output_keys
 
-    def run(self, file_store: AbstractFileStore) -> dict[str, list[Any]]:
+    def run(self, file_store: AbstractFileStore) -> dict[str, list[CWLObjectType]]:
         """Append the current iteration's outputs to the prior accumulation for each output key."""
-        previous = cast(dict[str, Any], unwrap(self.previous_accumulation))
+        previous = unwrap(self.previous_accumulation)
         this = cast(dict[str, Any], unwrap(self.iteration_outputs))
         result: dict[str, list[Any]] = {}
         for k in self.output_keys:
-            extended = list(previous.get(k, []))
-            extended.append(this.get(k))
-            result[k] = extended
+            result[k] = previous.get(k, []) + [this.get(k)]
         return result
 
 
