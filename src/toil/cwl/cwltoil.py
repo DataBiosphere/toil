@@ -3393,7 +3393,7 @@ class CWLLoop(Job):
     Validation is the responsibility of cwltool's own loop_checker.
 
     Loops nest naturally because each iteration spawns an independent
-    CWLWorkflow. To combine a loop with scatter, use an intervening
+    embedded tool job. To combine a loop with scatter, use an intervening
     subworkflow — cwltool's loop_checker rejects a step that carries
     both requirements directly.
     """
@@ -3417,8 +3417,10 @@ class CWLLoop(Job):
         :param parent_name: human-readable name prefix used for child job naming
         :param iteration_limit: maximum number of iterations before raising an error
         :param iteration: zero-based index of the current iteration we would execute
-        :param previous_outputs: promise for the previous iteration's output dict; should be None for iteration 0
-        :param previous_accumulation: accumulated outputs from all prior iterations; used for outputMethod: all_iterations; should be None for iteration 0
+        :param previous_outputs: promise for the previous iteration's output dict; 
+        should be None for iteration 0
+        :param previous_accumulation: accumulated outputs from all prior iterations; 
+        used for outputMethod: all_iterations; should be None for iteration 0
         """
         super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
         self.step = step
@@ -3459,6 +3461,7 @@ class CWLLoop(Job):
         for k, v in cwljob.items():
             li = loop_by_id.get(k)
             if li is None:
+                # This input isn't rebound by the loop; carry its current value forward unchanged.
                 result[k] = JustAValue(v)
                 continue
 
@@ -3470,6 +3473,11 @@ class CWLLoop(Job):
                         body_followon.rv(shortname(cast(str, raw_sources[0])))
                     )
                 else:
+                    # ResolveSource expects a CWL input-like dict with an
+                    # "outputSource" key, not the raw LoopInput object (li),
+                    # because li uses "outputSource" to name loop outputs rather
+                    # than workflow-level sources. We forge a minimal input dict
+                    # with just the keys ResolveSource needs.
                     rs_input: dict[str, Any] = {
                         "outputSource": [shortname(cast(str, s)) for s in raw_sources],
                     }
@@ -3485,6 +3493,7 @@ class CWLLoop(Job):
                     )
 
             if "default" in li:
+                # Shallow-copy the default so mutations in one iteration don't affect subsequent ones.
                 source = DefaultWithSource(copy.copy(li["default"]), source)
 
             if "valueFrom" in li:
@@ -3518,6 +3527,7 @@ class CWLLoop(Job):
                 "CWLLoop scheduled for a step without a cwltool:Loop requirement"
             )
 
+        loop_inputs = cast(list[CWLObjectType], self.step.tool["loop"])
         when_expression = cast(str, self.step.tool["when"])
         output_method = cast(str, self.step.tool.get("outputMethod", "last_iteration"))
 
@@ -3603,7 +3613,7 @@ class CWLLoop(Job):
                 f"Unsupported cwltool:Loop outputMethod {output_method!r}"
             )
 
-        next_inputs = self.build_next_inputs(cwljob, body_followon, cast(list[CWLObjectType], self.step.tool.get("loop", [])))
+        next_inputs = self.build_next_inputs(cwljob, body_followon, loop_inputs)
 
         next_loop = CWLLoop(
             step=self.step,
