@@ -114,9 +114,10 @@ from toil.common import Config, Toil, addOptions, InconsistentConfigurationError
 from toil.cwl import check_cwltool_version
 from toil.lib.directory import DirectoryContents, decode_directory, encode_directory
 from toil.lib.interpreter import (
+    INJECTED_MESSAGE_DIR,
     add_injections,
     command_line_to_shell_script,
-    handle_injection_messages_from_outdir,
+    handle_injection_messages_from,
     shell_script_to_command_line,
 )
 from toil.lib.misc import call_command
@@ -1230,7 +1231,17 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
                 # mounts we are going to use.
                 file_mounts = self._file_mounts_from_pathmapper(job)
                 script = command_line_to_shell_script(job.command_line)
-                script = add_injections(script, file_mounts)
+                # TODO: we really need to somehow add another mount to the
+                # container (maybe by making _file_mounts_from_pathmapper()
+                # actually the canonical source for mounts?) so we can put the
+                # messages there, because in CWL we're not allowed to drop
+                # extra stuff in the working directory. We can't just go a
+                # level up from it because that's probably not mounted, and we
+                # can't just work in a temp directory and move the data after
+                # the user code because that won't handle an OOM kill. So right
+                # now we fail initial_workdir_empty_writable_docker, presumably
+                # for having this here.
+                script = add_injections(script, file_mounts, INJECTED_MESSAGE_DIR)
                 job.command_line = shell_script_to_command_line(script)
             yield job
 
@@ -1247,7 +1258,7 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
         """
         Hook output collection to also collect resource usage statistics.
         """
-        handle_injection_messages_from_outdir(outdir)
+        handle_injection_messages_from(os.path.join(outdir, INJECTED_MESSAGE_DIR))
         return super().collect_output_ports(
             ports,
             builder,

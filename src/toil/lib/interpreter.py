@@ -42,10 +42,10 @@ logger = logging.getLogger(__name__)
 # It also allows Toil to do other checks on the container system.
 ###
 
-# Code injected into the container communicates back to the rest of Toil
-# through files in this directory.
+# Code injected into containers container communicates back to the rest of Toil
+# through files in a directory named this.
+# Where the directory actually is is interpreter-specific.
 INJECTED_MESSAGE_DIR = ".toil_runtime"
-
 
 # We mostly want to work with shell script strings, but CWL works with command
 # argument lists, so we use these functions to convert back and forth.
@@ -73,7 +73,7 @@ def shell_script_to_command_line(script: str) -> list[str]:
 def add_injections(
     command_string: str,
     file_mounts: Iterable[tuple[str, str]],
-    message_dir: str = INJECTED_MESSAGE_DIR,
+    message_dir: str, 
 ) -> str:
     """
     Add resource usage monitoring and file mount checking code to a command.
@@ -88,8 +88,8 @@ def add_injections(
     :param file_mounts: collection of (host path, container path) tuples for
         files mounted into the container. Code will be added to require that
         the container sees the complete file that the host sees.
-    :param message_dir: directory relative to the working directory that the
-        command should record resource usage to
+    :param message_dir: directory, absolute or relative to the working
+        directory that the command should record resource usage to
 
     :returns: shell command string (possibly containing multiple commands) that
         runs the original command and reports resource usage.
@@ -246,13 +246,13 @@ def handle_message_file(file_path: str) -> None:
             # Treat it as if used by a child process
             ResourceMonitor.record_extra_cpu(cpu_seconds)
 
-def handle_injection_messages_from_outdir(outdir: str) -> None:
+def handle_injection_messages_from(message_dir: str) -> None:
     """
-    Handle any message files in the job outdir.
+    Handle any message files in the given directory.
 
     Files would have been left by injected code from :meth:`add_injections()`.
     """
-    message_dir = os.path.join(outdir, INJECTED_MESSAGE_DIR)
-    for file_path in glob.glob(os.path.join(message_dir, "*")):
+    for filename in os.listdir(message_dir):
+        file_path = os.path.join(message_dir, filename)
         if os.path.isfile(file_path):
             handle_message_file(file_path)

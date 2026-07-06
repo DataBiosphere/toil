@@ -4369,7 +4369,13 @@ class WDLTaskJob(WDLBaseJob):
             # when a docker container is used
             if isinstance(task_container, SwarmContainer):
                 file_mounts = task_container.input_path_map.items()
-                command_string = add_injections(command_string, file_mounts)
+                # For WDL we're allowed to drop things in the current working
+                # directory.
+                command_string = add_injections(
+                    command_string,
+                    file_mounts,
+                    INJECTED_MESSAGE_DIR
+                )
 
             # Grab the standard out and error paths. MyPy complains if we call
             # them because in the current MiniWDL version they are untyped.
