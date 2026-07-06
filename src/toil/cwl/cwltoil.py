@@ -1231,17 +1231,15 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
                 # mounts we are going to use.
                 file_mounts = self._file_mounts_from_pathmapper(job)
                 script = command_line_to_shell_script(job.command_line)
-                # TODO: we really need to somehow add another mount to the
-                # container (maybe by making _file_mounts_from_pathmapper()
-                # actually the canonical source for mounts?) so we can put the
-                # messages there, because in CWL we're not allowed to drop
-                # extra stuff in the working directory. We can't just go a
-                # level up from it because that's probably not mounted, and we
-                # can't just work in a temp directory and move the data after
-                # the user code because that won't handle an OOM kill. So right
-                # now we fail initial_workdir_empty_writable_docker, presumably
-                # for having this here.
-                script = add_injections(script, file_mounts, INJECTED_MESSAGE_DIR)
+                # Since we're not allowed to drop stuff in the working
+                # directory, we put the resource usage info in the temp
+                # directory, which cwltool mounts, as divined by Anthropic
+                # Claude. See
+                # <https://github.com/common-workflow-language/cwltool/blob/1bf74499ca1c4a5f98e7cffb0ad4aa89aa98cb9e/cwltool/docker.py#L332-L334>
+                script = add_injections(script, file_mounts, os.path.join(job.CONTAINER_TMPDIR, INJECTED_MESSAGE_DIR))
+                # TODO: Can we do the collection somewhere where we have the
+                # job? For now just hide the value on us.
+                self.job_tmpdir = job.tmpdir
                 job.command_line = shell_script_to_command_line(script)
             yield job
 
@@ -1258,7 +1256,9 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
         """
         Hook output collection to also collect resource usage statistics.
         """
-        handle_injection_messages_from(os.path.join(outdir, INJECTED_MESSAGE_DIR))
+        if hasattr(self, "job_tmpdir"):
+            assert isinstance(self.job_tmpdir, str)
+            handle_injection_messages_from(os.path.join(self.job_tmpdir, INJECTED_MESSAGE_DIR))
         return super().collect_output_ports(
             ports,
             builder,
