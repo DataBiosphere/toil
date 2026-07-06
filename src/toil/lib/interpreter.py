@@ -121,7 +121,7 @@ def add_injections(
                 if [ -f  /sys/fs/cgroup/cpu.stat ] ; then
                     awk '{ if ($1 == "usage_usec") {print $2} }' /sys/fs/cgroup/cpu.stat
                 elif [ -f /sys/fs/cgroup/cpuacct/cpuacct.stat ] ; then
-                    echo $(( $(head -n 1 /sys/fs/cgroup/cpuacct/cpuacct.stat | cut -f2 -d' ') * 10000 ))
+                    echo $(( ( $(awk '{ if ($1 == "user") {print $2} }' /sys/fs/cgroup/cpuacct/cpuacct.stat) + $(awk '{ if ($1 == "system") {print $2} }' /sys/fs/cgroup/cpuacct/cpuacct.stat) ) * 10000 ))
                 fi
             }
 
