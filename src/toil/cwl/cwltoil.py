@@ -528,7 +528,7 @@ class ResolveSource:
                 )
 
 
-class StepValueFrom:
+class ValueFrom:
     """
     A workflow step input which has a valueFrom expression attached to it.
 
@@ -557,7 +557,7 @@ class StepValueFrom:
     def __repr__(self) -> str:
         """Allow for debug printing."""
 
-        return f"StepValueFrom({self.expr}, {self.source}, {self.req}, {self.container_engine})"
+        return f"ValueFrom({self.expr}, {self.source}, {self.req}, {self.container_engine})"
 
     def eval_prep(
         self, step_inputs: CWLObjectType, file_store: AbstractFileStore
@@ -565,7 +565,7 @@ class StepValueFrom:
         """
         Resolve the contents of any file in a set of inputs.
 
-        The inputs must be associated with the StepValueFrom object's self.source.
+        The inputs must be associated with the ValueFrom object's self.source.
 
         Called when loadContents is specified.
 
@@ -608,7 +608,7 @@ class StepValueFrom:
         """
         return cwl_utils.expression.do_eval(
             self.expr,
-            self.inputs_override if self.inputs_override is not None else step_inputs,
+            self.inputs_override if self.inputs_override is not None else inputs,
             self.req,
             None,
             None,
@@ -669,7 +669,7 @@ class JustAValue:
 
 
 def resolve_dict_w_promises(
-    dict_w_promises: UnresolvedDict | CWLObjectType | dict[str, str | StepValueFrom],
+    dict_w_promises: UnresolvedDict | CWLObjectType | dict[str, str | ValueFrom],
     file_store: AbstractFileStore | None = None,
 ) -> CWLObjectType:
     """
@@ -689,7 +689,7 @@ def resolve_dict_w_promises(
 
     result: CWLObjectType = {}
     for k, v in dict_w_promises.items():
-        if isinstance(v, StepValueFrom):
+        if isinstance(v, ValueFrom):
             if file_store:
                 v.eval_prep(first_pass_results, file_store)
             result[k] = v.do_eval(inputs=first_pass_results)
@@ -3488,7 +3488,7 @@ class CWLLoop(Job):
                 source = DefaultWithSource(copy.copy(li["default"]), source)
 
             if "valueFrom" in li:
-                result[k] = StepValueFrom(
+                result[k] = ValueFrom(
                     expr=cast(str, li["valueFrom"]),
                     source=source,
                     req=self.step.requirements,
@@ -3501,7 +3501,7 @@ class CWLLoop(Job):
                 result[k] = JustAValue(v)
         return UnresolvedDict(result)
 
-    def run(self, file_store: AbstractFileStore) -> dict[str, Any] | Promised[CWLObjectType]:
+    def run(self, file_store: AbstractFileStore) -> CWLObjectType | Promised[CWLObjectType]:
         """
         Evaluate the loop condition and either spawn the next iteration or return the final output.
 
@@ -3542,8 +3542,12 @@ class CWLLoop(Job):
                 output_keys = [shortname(cast(str, o["id"])) for o in self.step.tool["outputs"]]
                 return {k: empty for k in output_keys}
             if output_method == "all_iterations":
-                return cast(dict[str, Any], unwrap(cast(Promised[CWLObjectType], self.previous_accumulation)))
-            return cast(dict[str, Any], unwrap(cast(Promised[CWLObjectType], self.previous_outputs)))
+                # By this point we've completed at least one iteration, so previous_accumulation is set.
+                assert self.previous_accumulation is not None
+                return unwrap(self.previous_accumulation)
+            # By this point we've completed at least one iteration, so previous_outputs is set.
+            assert self.previous_outputs is not None
+            return unwrap(self.previous_outputs)
 
         if self.iteration >= self.iteration_limit:
             raise cwl_utils.errors.WorkflowException(
@@ -3734,7 +3738,7 @@ class CWLWorkflow(CWLNamedJob):
                     if stepinputs_fufilled:
                         logger.debug("Ready to make job for workflow step %s", step_id)
                         jobobj: dict[
-                            str, ResolveSource | DefaultWithSource | StepValueFrom
+                            str, ResolveSource | DefaultWithSource | ValueFrom
                         ] = {}
 
                         for inp in step.tool["inputs"]:
@@ -3754,7 +3758,7 @@ class CWLWorkflow(CWLNamedJob):
                                 )
 
                             if "valueFrom" in inp and "scatter" not in step.tool:
-                                jobobj[key] = StepValueFrom(
+                                jobobj[key] = ValueFrom(
                                     inp["valueFrom"],
                                     jobobj.get(key, JustAValue(None)),
                                     self.cwlwf.requirements,
