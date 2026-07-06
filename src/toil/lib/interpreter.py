@@ -149,9 +149,15 @@ def add_injections(
         # being mounted may appear as size 0 in the container due to a race
         # condition. Check for this and produce an approperiate error.
 
+        # We can't guarantee that the container has a stat binary, and we can't
+        # measure the size of a file with pure shell without reading it all, so
+        # we poll for stat and skip the check if it isn't there.
         script = textwrap.dedent(
             """\
             _toil_check_size () {
+                if ! which stat >/dev/null 2>/dev/null ; then
+                    return
+                fi
                 TARGET_FILE="${1}"
                 GOT_SIZE="$(stat -c %s "${TARGET_FILE}")"
                 EXPECTED_SIZE="${2}"
