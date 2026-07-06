@@ -117,19 +117,30 @@ def add_injections(
             MESSAGE_DIR="${1}"
             mkdir -p "${MESSAGE_DIR}"
 
+            get_field () {
+                INFILE="${1}"
+                FIELD_NAME="${2}"
+                while IFS=' ' read -r KEY VALUE ; do
+                    if [ "${KEY}" = "${FIELD_NAME}" ] ; then
+                        echo "${VALUE}"
+                        return
+                    fi
+                done < "${INFILE}"
+            }
+
             sample_cpu_usec() {
                 if [ -f  /sys/fs/cgroup/cpu.stat ] ; then
-                    awk '{ if ($1 == "usage_usec") {print $2} }' /sys/fs/cgroup/cpu.stat
+                    get_field /sys/fs/cgroup/cpu.stat usage_usec
                 elif [ -f /sys/fs/cgroup/cpuacct/cpuacct.stat ] ; then
-                    echo $(( ( $(awk '{ if ($1 == "user") {print $2} }' /sys/fs/cgroup/cpuacct/cpuacct.stat) + $(awk '{ if ($1 == "system") {print $2} }' /sys/fs/cgroup/cpuacct/cpuacct.stat) ) * 10000 ))
+                    echo $(( ( $(get_field /sys/fs/cgroup/cpuacct/cpuacct.stat user) + $(get_field /sys/fs/cgroup/cpuacct/cpuacct.stat system) ) * 10000 ))
                 fi
             }
 
             sample_memory_bytes() {
                 if [ -f /sys/fs/cgroup/memory.stat ] ; then
-                    awk '{ if ($1 == "anon") { print $2 } }' /sys/fs/cgroup/memory.stat
+                    get_field /sys/fs/cgroup/memory.stat anon
                 elif [ -f /sys/fs/cgroup/memory/memory.stat ] ; then
-                    awk '{ if ($1 == "total_rss") { print $2 } }' /sys/fs/cgroup/memory/memory.stat
+                    get_field /sys/fs/cgroup/memory/memory.stat total_rss
                 fi
             }
 
