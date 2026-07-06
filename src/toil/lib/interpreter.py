@@ -57,16 +57,16 @@ def command_line_to_shell_script(command_line: list[str]) -> str:
     We don't want to disturb user CWL command line binding lists that
     explicitly ask for things like ["bash", "-c"].
     """
-    return " ".join(shlex.quote(arg) for arg in command_line) # this is the shell script string
+    return " ".join(shlex.quote(arg) for arg in command_line)
 
 
 def shell_script_to_command_line(script: str) -> list[str]:
     """
     Wrap a shell script as a list of arguments for launchign a process.
 
-    The resulting command required Bash to be available.
+    The resulting command only requires a POSIX shell as sh.
     """
-    return ["bash", "-c", script]
+    return ["sh", "-c", script]
 
 # Main function
 
@@ -81,6 +81,8 @@ def add_injections(
     The command is expected to be about to run in a container, under a
     container system that does not itself attribute resource usage to the
     calling Toil process (such as Docker, which uses a daemon).
+
+    All shell code added is compatible with POSIX sh.
 
     :param command_string: shell command or script to modify
     :param file_mounts: collection of (host path, container path) tuples for
@@ -103,35 +105,36 @@ def add_injections(
     # TODO: Mount this script from a file Toil installs instead or something
     # instead of injecting it in every command line, which makes it show up in
     # logs.
+
+    # Use https://www.shellcheck.net/ with #!/bin/sh at the top to make sure
+    # this is all sh-compatible.
+
     script = textwrap.dedent(
         """\
-        function _toil_resource_monitor () {
+        _toil_resource_monitor () {
             # Turn off error checking and echo in here
             set +ex
             MESSAGE_DIR="${1}"
             mkdir -p "${MESSAGE_DIR}"
 
-            function sample_cpu_usec() {
-                if [[ -f  /sys/fs/cgroup/cpu.stat ]] ; then
+            sample_cpu_usec() {
+                if [ -f  /sys/fs/cgroup/cpu.stat ] ; then
                     awk '{ if ($1 == "usage_usec") {print $2} }' /sys/fs/cgroup/cpu.stat
-                elif [[ -f /sys/fs/cgroup/cpuacct/cpuacct.stat ]] ; then
+                elif [ -f /sys/fs/cgroup/cpuacct/cpuacct.stat ] ; then
                     echo $(( $(head -n 1 /sys/fs/cgroup/cpuacct/cpuacct.stat | cut -f2 -d' ') * 10000 ))
                 fi
             }
 
-            function sample_memory_bytes() {
-                if [[ -f /sys/fs/cgroup/memory.stat ]] ; then
+            sample_memory_bytes() {
+                if [ -f /sys/fs/cgroup/memory.stat ] ; then
                     awk '{ if ($1 == "anon") { print $2 } }' /sys/fs/cgroup/memory.stat
-                elif [[ -f /sys/fs/cgroup/memory/memory.stat ]] ; then
+                elif [ -f /sys/fs/cgroup/memory/memory.stat ] ; then
                     awk '{ if ($1 == "total_rss") { print $2 } }' /sys/fs/cgroup/memory/memory.stat
                 fi
             }
 
             while true ; do
-                printf "CPU\\t" >> ${MESSAGE_DIR}/resources.tsv
-                sample_cpu_usec >> ${MESSAGE_DIR}/resources.tsv
-                printf "Memory\\t" >> ${MESSAGE_DIR}/resources.tsv
-                sample_memory_bytes >> ${MESSAGE_DIR}/resources.tsv
+                (printf "CPU\\t" ; sample_cpu_usec ; printf "Memory\\t" ; sample_memory_bytes) >> "${MESSAGE_DIR}"/resources.tsv
                 sleep 1
             done
         }
@@ -148,11 +151,11 @@ def add_injections(
 
         script = textwrap.dedent(
             """\
-            function _toil_check_size () {
+            _toil_check_size () {
                 TARGET_FILE="${1}"
                 GOT_SIZE="$(stat -c %s "${TARGET_FILE}")"
                 EXPECTED_SIZE="${2}"
-                if [[ "${GOT_SIZE}" != "${EXPECTED_SIZE}" ]] ; then
+                if [ "${GOT_SIZE}" != "${EXPECTED_SIZE}" ] ; then
                     echo >&2 "Toil Error:"
                     echo >&2 "File size visible in container for ${TARGET_FILE} is size ${GOT_SIZE} but should be size ${EXPECTED_SIZE}"
                     echo >&2 "Are you using gRPC FUSE file sharing in Docker Desktop?"
