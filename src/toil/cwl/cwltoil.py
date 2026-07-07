@@ -155,6 +155,10 @@ DEFAULT_TMPDIR = gettempdir()
 # directories in the current directory and leave them there.
 DEFAULT_TMPDIR_PREFIX = os.path.join(DEFAULT_TMPDIR, "tmp")
 
+# Memory and disk for internal CWL interpreter jobs.
+INTERPRETER_JOB_MEMORY = "1GiB"
+INTERPRETER_JOB_DISK = "1MiB"
+
 
 def cwltoil_was_removed() -> None:
     """Complain about deprecated entrypoint."""
@@ -3144,7 +3148,7 @@ class CWLScatter(Job):
         conditional: Conditional | None,
     ):
         """Store our context for later execution."""
-        super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
+        super().__init__(cores=1, memory=INTERPRETER_JOB_MEMORY, disk=INTERPRETER_JOB_DISK, local=True)
         self.step = step
         self.cwljob = cwljob
         self.runtime_context = runtime_context
@@ -3304,7 +3308,7 @@ class CWLGather(Job):
         outputs: Promised[CWLObjectType | list[CWLObjectType]],
     ):
         """Collect our context for later gathering."""
-        super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
+        super().__init__(cores=1, memory=INTERPRETER_JOB_MEMORY, disk=INTERPRETER_JOB_DISK, local=True)
         self.step = step
         self.outputs = outputs
 
@@ -3365,7 +3369,7 @@ class CWLLoopAccumulate(Job):
         :param iteration_outputs: promise for the current iteration's output dict
         :param output_keys: short-form names of the output ports to accumulate
         """
-        super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
+        super().__init__(cores=1, memory=INTERPRETER_JOB_MEMORY, disk=INTERPRETER_JOB_DISK, local=True)
         self.previous_accumulation = previous_accumulation
         self.iteration_outputs = iteration_outputs
         self.output_keys = output_keys
@@ -3422,7 +3426,7 @@ class CWLLoop(Job):
         :param previous_accumulation: accumulated outputs from all prior iterations; 
         used for outputMethod: all_iterations; should be None for iteration 0
         """
-        super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
+        super().__init__(cores=1, memory=INTERPRETER_JOB_MEMORY, disk=INTERPRETER_JOB_DISK, local=True)
         self.step = step
         self.cwljob = cwljob
         self.runtime_context = runtime_context
@@ -3497,6 +3501,16 @@ class CWLLoop(Job):
                 source = DefaultWithSource(copy.copy(li["default"]), source)
 
             if "valueFrom" in li:
+                # The presence of a valueFrom expression requires that the StepInputExpressionRequirement be present in the step's or workflow's requirements.
+                # https://github.com/common-workflow-language/cwltool/blob/60dfe96952119f472a57524c19ed214e831b21a4/cwltool/extensions-v1.2.yml#L175-L176
+                # Note: the step's requirements have already included the workflow's requirements
+                # https://github.com/common-workflow-language/cwltool/blob/1bf74499ca1c4a5f98e7cffb0ad4aa89aa98cb9e/cwltool/workflow.py#L207
+                if not bool(self.step.get_requirement("StepInputExpressionRequirement")[0]):
+                    # Raise the same error cwltool does: 
+                    # https://github.com/common-workflow-language/cwltool/blob/1bf74499ca1c4a5f98e7cffb0ad4aa89aa98cb9e/cwltool/workflow_job.py#L622
+                    raise cwl_utils.errors.WorkflowException(
+                        "Workflow step contains valueFrom but StepInputExpressionRequirement not in requirements"
+                    )
                 result[k] = ValueFrom(
                     expr=cast(str, li["valueFrom"]),
                     source=source,
@@ -3637,7 +3651,7 @@ class SelfJob(Job):
 
     def __init__(self, j: "CWLWorkflow", v: CWLObjectType):
         """Record the workflow and dictionary."""
-        super().__init__(cores=1, memory="1GiB", disk="1MiB")
+        super().__init__(cores=1, memory=INTERPRETER_JOB_MEMORY, disk=INTERPRETER_JOB_DISK)
         self.j = j
         self.v = v
 

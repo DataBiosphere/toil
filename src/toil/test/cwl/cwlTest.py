@@ -580,10 +580,8 @@ class TestCWLWorkflow:
     @pytest.mark.cwl
     @pytest.mark.cwl_small
     def test_loop_iteration_limit_exceeded(self, tmp_path: Path) -> None:
-        """--cwl-loop-iteration-limit aborts runaway loops and reports an iteration limit error."""
+        """--cwl-loop-iteration-limit aborts runaway loops."""
         from toil.cwl import cwltoil
-        from io import StringIO
-        stderr_output = StringIO()
         with get_cwltool_data("loop-ext/single-var-loop.cwl") as cwl_file:
             with get_cwltool_data("loop-ext/single-var-loop-job.yml") as job_file:
                 rc = cwltoil.main(
@@ -593,8 +591,7 @@ class TestCWLWorkflow:
                         f"--outdir={tmp_path}",
                         str(cwl_file),
                         str(job_file),
-                    ],
-                    stdout=StringIO()
+                    ]
                 )
         assert rc != 0
 
@@ -714,7 +711,7 @@ class TestCWLWorkflow:
     def test_loop_fail_non_boolean_loop_when(self, tmp_path: Path) -> None:
         """A loopWhen expression that evaluates to a non-boolean fails at runtime."""
         from toil.cwl import cwltoil
-        from io import StringIO
+        from io import StringIO 
         with get_cwltool_data("loop-ext/invalid-non-boolean-loopWhen.cwl") as cwl_file:
             with get_cwltool_data("loop-ext/two-vars-loop-job.yml") as job_file:
                 rc = cwltoil.main(
@@ -727,9 +724,8 @@ class TestCWLWorkflow:
     @needs_cwl
     @pytest.mark.cwl
     @pytest.mark.cwl_small
-    @pytest.mark.xfail
     def test_loop_value_from_fail_no_requirement(self, tmp_path: Path) -> None:
-        """cwltool:Loop with valueFrom but no StepInputExpressionRequirement is rejected at validation time."""
+        """cwltool:Loop with valueFrom but no StepInputExpressionRequirement is rejected."""
         from toil.cwl import cwltoil
         from io import StringIO
         with get_cwltool_data("loop-ext/invalid-value-from-loop-no-requirement.cwl") as cwl_file:
