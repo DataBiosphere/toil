@@ -3439,17 +3439,17 @@ class CWLLoop(Job):
     def build_next_inputs(self, cwljob: CWLObjectType, body_followon: Job, loop_inputs: list[CWLObjectType]) -> UnresolvedDict:
         """
         Build the input object for the next iteration by applying the
-        `loop` rebinding rules from the cwltool:Loop requirement.
+        ``loop`` rebinding rules from the cwltool:Loop requirement.
 
         Each LoopInput record names a step input and describes how its
         value is updated:
 
-        - `loopSource` pulls from one or more of the just-finished
-          iteration's outputs (with optional `linkMerge` and `pickValue`
+        - ``loopSource`` pulls from one or more of the just-finished
+          iteration's outputs (with optional ``linkMerge`` and ``pickValue``
           for merging multiple sources)
-        - `default` supplies a fallback if the source is absent
-        - `valueFrom` runs a CWL expression to compute the final value,
-          with `self` set to the resolved source and `inputs` set to
+        - ``default`` supplies a fallback if the source is absent
+        - ``valueFrom`` runs a CWL expression to compute the final value,
+          with ``self`` set to the resolved source and ``inputs`` set to
           this iteration's joborder
 
         Step inputs not named in any LoopInput carry their current value
@@ -3536,6 +3536,11 @@ class CWLLoop(Job):
         """
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
+        # Validate that loop is present - CWLLoop should only be scheduled for
+        # loop steps, so this is a programming error if missing. We don't
+        # validate when separately because cwltool's loop_checker ensures it
+        # is always present when loop is present. outputMethod uses .get() since
+        # it has a legitimate default of "last_iteration".
         if "loop" not in self.step.tool:
             raise RuntimeError(
                 "CWLLoop scheduled for a step without a cwltool:Loop requirement"
@@ -3562,9 +3567,8 @@ class CWLLoop(Job):
 
         if when_val is False:
             if self.iteration == 0:
-                empty: Any = [] if output_method == "all_iterations" else None
                 output_keys = [shortname(cast(str, o["id"])) for o in self.step.tool["outputs"]]
-                return {k: empty for k in output_keys}
+                return {k: ([] if output_method == "all_iterations" else None) for k in output_keys}
             if output_method == "all_iterations":
                 # By this point we've completed at least one iteration, so previous_accumulation is set.
                 assert self.previous_accumulation is not None
@@ -3591,6 +3595,10 @@ class CWLLoop(Job):
 
         self.addChild(body_job)
         
+        # Declare before the if/else so that mypy can see that they are always defined
+        next_loop_pred: CWLLoopAccumulate | Job
+        next_accumulation: Promised[CWLObjectType] | None
+
         # In all_iterations mode, we need to run CWLLoopAccumulate after the
         # body job to append this iteration's outputs to the running accumulator
         # before the next CWLLoop iteration runs. next_accumulation carries the
@@ -3598,10 +3606,10 @@ class CWLLoop(Job):
         if output_method == "all_iterations":
             output_keys = [shortname(cast(str, o["id"])) for o in self.step.tool["outputs"]]
             # On iteration 0 there is no prior accumulation, so seed with empty lists.
-            prev_acc_arg: Promised[CWLObjectType] | CWLObjectType = (
-                cast(CWLObjectType, {k: [] for k in output_keys})
+            prev_acc_arg: Promised[dict[str, list[CWLObjectType]]] | dict[str, list[CWLObjectType]] = (
+                cast(dict[str, list[CWLObjectType]], {k: [] for k in output_keys})
                 if self.iteration == 0
-                else cast(Promised[CWLObjectType], self.previous_accumulation)
+                else cast(Promised[dict[str, list[CWLObjectType]]], self.previous_accumulation)
             )
             accumulated_loops = CWLLoopAccumulate(
                 previous_accumulation=prev_acc_arg,
@@ -3612,7 +3620,7 @@ class CWLLoop(Job):
             # The next CWLLoop runs after CWLLoopAccumulate, so it sees the
             # updated accumulator as its predecessor.
             next_loop_pred = accumulated_loops
-            next_accumulation: Promised[CWLObjectType] | None = accumulated_loops.rv()
+            next_accumulation = accumulated_loops.rv()
         
         # In last_iteration mode we don't need to accumulate anything -
         # the next CWLLoop runs directly after the body job, and
@@ -3808,16 +3816,20 @@ class CWLWorkflow(CWLNamedJob):
                             requirements=self.cwlwf.requirements,
                             container_engine=get_container_engine(self.runtime_context),
                         )
+                        
+                        # Declare types for mypy so it can see that they are always defined in the if/else below
+                        wfjob: CWLLoop | CWLScatter | CWLWorkflow | CWLJob | CWLJobWrapper
+                        followOn: CWLLoop | CWLGather | ResolveIndirect | CWLJob | CWLJobWrapper
 
                         if "loop" in step.tool:
-                            wfjob: CWLLoop = CWLLoop(
+                            wfjob = CWLLoop(
                                     step,
                                     UnresolvedDict(jobobj),
                                     self.runtime_context,
                                     parent_name=parent_name,
                                     iteration_limit=getattr(self.runtime_context, "cwl_loop_iteration_limit", 1000),
                                 )
-                            followOn: CWLLoop = wfjob
+                            followOn = wfjob
                             logger.debug(
                                 "Is loop with job %s and follow-on %s",
                                 wfjob,
@@ -3825,7 +3837,7 @@ class CWLWorkflow(CWLNamedJob):
                             )
 
                         elif "scatter" in step.tool:
-                            wfjob: CWLScatter = (
+                            wfjob = (
                                 CWLScatter(
                                     step,
                                     UnresolvedDict(jobobj),
@@ -3834,7 +3846,7 @@ class CWLWorkflow(CWLNamedJob):
                                     conditional=conditional,
                                 )
                             )
-                            followOn: CWLGather = CWLGather(step, wfjob.rv())
+                            followOn = CWLGather(step, wfjob.rv())
                             wfjob.addFollowOn(followOn)
                             logger.debug(
                                 "Is scatter with job %s and follow-on %s",
