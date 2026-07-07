@@ -31,11 +31,11 @@ logger = logging.getLogger(__name__)
 
 ####
 # Shell command injection system
-# 
+#
 # When a workflow steps runs inside a container like Docker, where the contained
 # process is not a descendant of Toil, the Toil worker process on the host cannot
 # see how much CPU and RAM that step actually used.
-# 
+#
 # This system allows Toil to inject code into the container that will colklect
 # and export resource usage information back to Toil.
 #
@@ -73,7 +73,7 @@ def shell_script_to_command_line(script: str) -> list[str]:
 def add_injections(
     command_string: str,
     file_mounts: Iterable[tuple[str, str]],
-    message_dir: str, 
+    message_dir: str,
 ) -> str:
     """
     Add resource usage monitoring and file mount checking code to a command.
@@ -114,8 +114,8 @@ def add_injections(
         _toil_resource_monitor () {
             # Turn off error checking and echo in here
             set +ex
-            MESSAGE_DIR="${1}"
-            mkdir -p "${MESSAGE_DIR}"
+            TOIL_MESSAGE_DIR="${1}"
+            mkdir -p "${TOIL_MESSAGE_DIR}"
 
             get_field () {
                 INFILE="${1}"
@@ -145,15 +145,35 @@ def add_injections(
             }
 
             while true ; do
-                (printf "CPU\\t" ; sample_cpu_usec ; printf "Memory\\t" ; sample_memory_bytes) >> "${MESSAGE_DIR}"/resources.tsv
+                (printf "CPU\\t" ; sample_cpu_usec ; printf "Memory\\t" ; sample_memory_bytes) >> "${TOIL_MESSAGE_DIR}"/resources.tsv
                 sleep 1
             done
         }
         """
     )
     parts.append(script)
-    # Launch in a subshell so that it doesn't interfere with Bash "wait" in the main shell
-    parts.append(f"(_toil_resource_monitor {message_dir} &)")
+
+    # Launch in a subshell so that it doesn't interfere with "wait" in the
+    # main shell.
+    #
+    # We need another subshell as a background job, so we can get the PID which
+    # is used as the PGID for the background process group, so we can stop it
+    # later without job control.
+    parts.append(f"(set +m; (_toil_resource_monitor {message_dir} &) ) &")
+    
+    # We use a loop to try and wait on the whole process group the background
+    # monitoring is in by polling it, to make sure it's gone before we exit.
+    # See <https://github.com/chanzuckerberg/miniwdl/issues/902>
+    #
+    # TODO: What if the user also traps EXIT? Then this won't work.
+    stopper_script = textwrap.dedent(
+        """\
+        TOIL_BG_PGID="${!}"
+        wait
+        trap "while kill -0 -'${TOIL_BG_PGID}' 2>/dev/null ; do kill -9 -'${TOIL_BG_PGID}' 2>/dev/null ; done" EXIT
+        """
+    )
+    parts.append(stopper_script)
 
     if platform.system() == "Darwin":
         # With gRPC FUSE file sharing, files immediately downloaded before
@@ -252,6 +272,9 @@ def handle_injection_messages_from(message_dir: str) -> None:
 
     Files would have been left by injected code from :meth:`add_injections()`.
     """
+    if not os.path.isdir(message_dir):
+        # It's possible for the container to never have made this directory
+        return
     for filename in os.listdir(message_dir):
         file_path = os.path.join(message_dir, filename)
         if os.path.isfile(file_path):
