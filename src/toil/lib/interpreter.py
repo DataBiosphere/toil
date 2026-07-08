@@ -166,11 +166,13 @@ def add_injections(
     # See <https://github.com/chanzuckerberg/miniwdl/issues/902>
     #
     # TODO: What if the user also traps EXIT? Then this won't work.
+    # TODO: This also doesn't (always? ever?) work to prevent Docker Swarm from
+    # reporting a container as running with an exit code.
     stopper_script = textwrap.dedent(
         """\
         TOIL_BG_PGID="${!}"
         wait
-        trap "while kill -0 -'${TOIL_BG_PGID}' 2>/dev/null ; do kill -9 -'${TOIL_BG_PGID}' 2>/dev/null ; done" EXIT
+        trap "while kill -0 -${TOIL_BG_PGID} 2>/dev/null ; do kill -9 -${TOIL_BG_PGID} 2>/dev/null ; done" EXIT
         """
     )
     parts.append(stopper_script)
