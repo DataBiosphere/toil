@@ -92,6 +92,7 @@ from cwltool.utils import (
     get_listing,
     normalizeFilesDirs,
     visit_class,
+    OutputCallbackType,
 )
 from cwl_utils.types import (
     CWLDirectoryType,
@@ -1168,106 +1169,126 @@ class ToilTool:
 # a daemon) because some of these extend DockerCommandLineJob.
 CHILD_PROCESS_CONTAINER_JOBS = (PodmanCommandLineJob, SingularityCommandLineJob, UDockerCommandLineJob)
 
-class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
-    """Subclass the cwltool command line tool to provide the custom ToilPathMapper
-    and add the monitoring code to the job's container command line."""
 
-    def _uses_container(self, runtimeContext: cwltool.context.RuntimeContext) -> bool:
-        """
-        Returns True if this tool will be run inside a container.
-        """
-        if not runtimeContext.use_container:
-            return False
-        docker_req, _ = self.get_requirement("DockerRequirement")
-        if docker_req is not None:
-            return True
-        if runtimeContext.find_default_container is not None:
-            return runtimeContext.find_default_container(self) is not None
-        return runtimeContext.default_container is not None
+class ToilDockerCommandLineJob(DockerCommandLineJob):
+    """Container job that collects resource stats from injected in-container code."""
 
-    # TODO: Why is this on ToilCommandLineTool?
-    @staticmethod
-    def _file_mounts_from_pathmapper(
-        job: ContainerCommandLineJob,
-    ) -> list[tuple[str, str]]:
+    def _execute(
+        self,
+        runtime: list[str],
+        env: MutableMapping[str, str],
+        runtimeContext: cwltool.context.RuntimeContext,
+        monitor_function: Callable[["subprocess.Popen[str]"], None] | None = None,
+    ) -> None:
+        # This job is going to run in a container that makes it not be a
+        # descendant of our process. So we need to inject code to count its
+        # resource usage.
+
+        # First we need the command that's actually going to run. To be fully
+        # spec-compliant, we need to make sure Docker ENTRYPOINT keeps working.
+        # So we need to fetch it out, put it in the script, and remember to
+        # override it with a shell later. See
+        # <https://github.com/common-workflow-language/cwltool/blob/1bf74499ca1c4a5f98e7cffb0ad4aa89aa98cb9e/cwltool/schemas/v1.1/CommandLineTool.yml#L785-L792>
+
+        # We know the selected container image is the last element in runtime.
+        # Inspect it to get its entrypoint list
+        image_config = json.loads(
+            subprocess.check_output(
+                [
+                    self.docker_exec,
+                    "inspect",
+                    "-f",
+                    "{{json .Config}}",
+                    runtime[-1],
+                ]
+            )
+        )
+        # Null entrypoints are allowed; Docker doesn't seem to put literal
+        # nulls but who knows how it might change.
+        entrypoint: list[str] = image_config.get("Entrypoint") or []
+
+        # We also need to ensure that if the CWL baseCommand is empty, the
+        # image command list runs.
+        default_command: list[str] = image_config.get("Cmd") or []
+
+        # Make a command string that does the expected user work
+        script = command_line_to_shell_script(entrypoint + (self.command_line or default_command))
+
+        # Our injected code also checks to make sure files mounted on Docker
+        # for Mac are intact, so we need to tell it about the file
+        # mounts we are going to use.
+        file_mounts = self._file_mounts_from_pathmapper()
+
+        # Since we're not allowed to drop stuff in the working directory, we
+        # put the resource usage info in the temp directory, which cwltool
+        # mounts, as divined by Anthropic Claude. See
+        # <https://github.com/common-workflow-language/cwltool/blob/1bf74499ca1c4a5f98e7cffb0ad4aa89aa98cb9e/cwltool/docker.py#L332-L334>
+        script = add_injections(script, file_mounts, os.path.join(self.CONTAINER_TMPDIR, INJECTED_MESSAGE_DIR))
+        self.command_line = shell_script_to_command_line(script)
+
+        # Adjust the runtime to clear the entrypoint.
+        # See <https://github.com/moby/moby/issues/23498>.
+        # Stick the argument and value in before the last element.
+        runtime[-1:-1] = ["--entrypoint", ""]
+
+        # By the time the base class _execute() returns, the temp directory
+        # holding the resource usage information has already been deleted. So
+        # we need to hook into one of the functions it calls, from somewhere
+        # where we have access to our tmpdir (like here).
+        def message_handler_output_callback(
+            output_callbacks: OutputCallbackType | None,
+            outputs: CWLObjectType | None,
+            processStatus: str,
+        ) -> None:
+            """
+            Output callback that processes resource usage messages.
+
+            Needs to be partial'd into a callback chain.
+            """
+            handle_injection_messages_from(os.path.join(self.tmpdir, INJECTED_MESSAGE_DIR))
+            if output_callbacks:
+                output_callbacks(outputs, processStatus)
+        # Hook into the output callback chain
+        self.output_callback = functools.partial(message_handler_output_callback, self.output_callback)
+
+        # Run the container
+        super()._execute(runtime, env, runtimeContext, monitor_function)
+        # By the time we get here, the temp directory where we hide the
+        # resource usage info has already been deleted.
+
+    def _file_mounts_from_pathmapper(self) -> list[tuple[str, str]]:
         """
         Get all the container mounts that will be used for a containerized job.
 
         :returns: a list of (host path, container path) tuples, one per mount.
         """
         file_mounts: list[tuple[str, str]] = []
-        for location in job.pathmapper.files():
-            ent = job.pathmapper.mapper(location)
+        for location in self.pathmapper.files():
+            ent = self.pathmapper.mapper(location)
             if ent.type == "File" and not ent.resolved.startswith("_:"):
                 file_mounts.append((ent.resolved, ent.target))
         return file_mounts
 
-    def job(
-        self,
-        job_order: CWLObjectType,
-        output_callbacks: Callable[[CWLObjectType | None, str], None],
-        runtimeContext: cwltool.context.RuntimeContext,
-    ) -> Generator[
-        cwltool.job.JobBase | cwltool.command_line_tool.CallbackJob, None, None
-    ]:
-        """
-        Override the job method to inject resource (cpu & memory) monitoring code into
-        the job's container command line.
-        """
-        for job in super().job(job_order, output_callbacks, runtimeContext):
-            if (
-                isinstance(job, ContainerCommandLineJob) and
-                not isinstance(job, CHILD_PROCESS_CONTAINER_JOBS) and 
-                self._uses_container(
-                    runtimeContext
-                )
-            ):
-                # This job is going to run in a container that makes it not be
-                # a descendant of our process. So we need to inject code to
-                # count its resource usage.
 
-                # That code also checks to make sure files mounted on Docker
-                # for Mac are intact, so we need to tell it ablut the file
-                # mounts we are going to use.
-                file_mounts = self._file_mounts_from_pathmapper(job)
-                script = command_line_to_shell_script(job.command_line)
-                # Since we're not allowed to drop stuff in the working
-                # directory, we put the resource usage info in the temp
-                # directory, which cwltool mounts, as divined by Anthropic
-                # Claude. See
-                # <https://github.com/common-workflow-language/cwltool/blob/1bf74499ca1c4a5f98e7cffb0ad4aa89aa98cb9e/cwltool/docker.py#L332-L334>
-                script = add_injections(script, file_mounts, os.path.join(job.CONTAINER_TMPDIR, INJECTED_MESSAGE_DIR))
-                # TODO: Can we do the collection somewhere where we have the
-                # job? For now just hide the value on us.
-                self.job_tmpdir = job.tmpdir
-                job.command_line = shell_script_to_command_line(script)
-            yield job
+class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
+    """Subclass the cwltool command line tool to provide the custom ToilPathMapper
+    and add the monitoring code to the job's container command line."""
 
-    def collect_output_ports(
-        self,
-        ports: CommentedSeq | set[CWLObjectType],
-        builder: cwltool.builder.Builder,
-        outdir: str,
-        rcode: int,
-        compute_checksum: bool = True,
-        jobname: str = "",
-        readers: MutableMapping[str, CWLObjectType] | None = None,
-    ) -> cwltool.command_line_tool.OutputPortsType:
+    def make_job_runner(
+        self, runtimeContext: cwltool.context.RuntimeContext
+    ) -> type[cwltool.job.JobBase]:
         """
-        Hook output collection to also collect resource usage statistics.
+        Use a job class that monitors container resource usage if needed.
+
+        We only act on container systems where the container isn't a descendant
+        process of us.
         """
-        if hasattr(self, "job_tmpdir"):
-            assert isinstance(self.job_tmpdir, str)
-            handle_injection_messages_from(os.path.join(self.job_tmpdir, INJECTED_MESSAGE_DIR))
-        return super().collect_output_ports(
-            ports,
-            builder,
-            outdir,
-            rcode,
-            compute_checksum,
-            jobname,
-            readers,
-        )        
+        parent_class = super().make_job_runner(runtimeContext)
+        if parent_class is DockerCommandLineJob:
+            # There's only one daemon-containerized container system: it's
+            # Docker itself (and not any of the subclasses of this),
+            return ToilDockerCommandLineJob
+        return parent_class
 
     def _initialworkdir(
         self, j: cwltool.job.JobBase | None, builder: cwltool.builder.Builder
@@ -1309,7 +1330,7 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
             # Notice that we have downloaded our inputs. Explain which files
             # those are here and what the task will expect to call them.
             self._toil_job.files_downloaded_hook(host_and_job_paths)
-
+    
 
 class ToilExpressionTool(ToilTool, cwltool.command_line_tool.ExpressionTool):
     """Subclass the cwltool expression tool to provide the custom ToilPathMapper."""

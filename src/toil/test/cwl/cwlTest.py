@@ -496,6 +496,7 @@ class TestCWLWorkflow:
             with get_data("test/cwl/empty.json") as inputs_file:
                 job_store = tmp_path / "jobStore"
                 main_args = [
+                    "--logDebug",
                     "--outdir",
                     str(tmp_path / "output_dir"),
                     str(cwl_file),
@@ -518,8 +519,8 @@ class TestCWLWorkflow:
                 assert hasattr(collated_stats, "jobs")
                 assert hasattr(collated_stats.jobs, "total_clock")
                 assert hasattr(collated_stats.jobs, "max_memory")
-                assert collated_stats.jobs.total_clock >= 30
-                assert collated_stats.jobs.max_memory >= 1024 * 1024
+                assert collated_stats.jobs.total_clock >= 30, f"Total clock of {collated_stats.jobs.total_clock} is too low"
+                assert collated_stats.jobs.max_memory >= 1024 * 1024, f"Max memory of {collated_stats.jobs.max_memory} is too low"
 
     @needs_docker
     @pytest.mark.docker

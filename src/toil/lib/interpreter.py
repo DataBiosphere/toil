@@ -225,6 +225,7 @@ def handle_message_file(file_path: str) -> None:
 
     :param file_path: the host-side path of the message file.
     """
+    logger.debug("Handling message file %s", file_path)
     if os.path.basename(file_path) == "resources.tsv":
         # This is a TSV of resource usage info.
         first_cpu_usec: int | None = None
@@ -276,6 +277,7 @@ def handle_injection_messages_from(message_dir: str) -> None:
     """
     if not os.path.isdir(message_dir):
         # It's possible for the container to never have made this directory
+        logger.debug("No message files found")
         return
     for filename in os.listdir(message_dir):
         file_path = os.path.join(message_dir, filename)
