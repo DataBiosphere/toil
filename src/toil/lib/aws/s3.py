@@ -90,6 +90,10 @@ def create_s3_bucket(
     Create an AWS S3 bucket, using the given Boto3 S3 session, with the
     given name, in the given region.
 
+    If the bucket already exists, uses it. (It is difficult to implement
+    retries if this function is not idempotent and AWS can successfully create
+    the bucket but produce an error on the client.)
+
     Supports the us-east-1 region, where bucket creation is special.
 
     *ALL* S3 bucket creation should use this function.
@@ -107,13 +111,18 @@ def create_s3_bucket(
         False.
     """
     logger.info("Creating bucket '%s' in region %s.", bucket_name, region)
-    if region == "us-east-1":  # see https://github.com/boto/boto3/issues/125
-        bucket = s3_resource.create_bucket(Bucket=bucket_name)
-    else:
-        bucket = s3_resource.create_bucket(
-            Bucket=bucket_name,
-            CreateBucketConfiguration={"LocationConstraint": region},
-        )
+    try:
+        if region == "us-east-1":  # see https://github.com/boto/boto3/issues/125
+            bucket = s3_resource.create_bucket(Bucket=bucket_name)
+        else:
+            bucket = s3_resource.create_bucket(
+                Bucket=bucket_name,
+                CreateBucketConfiguration={"LocationConstraint": region},
+            )
+    except s3_resource.meta.client.exceptions.BucketAlreadyOwnedByYou:
+        # We could have created the bucket, then failed, then retried. So use
+        # it.
+        bucket = s3_resource.Bucket(bucket_name)
     # wait until the bucket exists before adding tags
     bucket.wait_until_exists()
 

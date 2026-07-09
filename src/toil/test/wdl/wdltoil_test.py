@@ -624,6 +624,72 @@ class TestWDL:
             assert isinstance(result["read_file.remade_file"], str)
             assert os.path.exists(result["read_file.remade_file"])
 
+    def test_restart_with_bad_worker(self, tmp_path: Path) -> None:
+        """
+        Test that a WDL workflow can recover from --badWorker-induced worker deaths,
+        restart, and still export its output files.
+        """
+        with get_data("test/wdl/testfiles/read_file.wdl") as wdl:
+            out_dir = tmp_path / "out"
+            file_path = tmp_path / "file"
+            jobstore_path = tmp_path / "tree"
+
+            # Unlike test_restart, create the file upfront so failures only come from --badWorker
+            with open(file_path, "w") as f:
+                f.write("This is a line\n")
+                f.write("This is a different line")
+
+            command = self.base_command + [
+                str(wdl),
+                "-o",
+                str(out_dir),
+                "-i",
+                json.dumps({"read_file.input_string": str(file_path)}),
+                "--jobStore",
+                str(jobstore_path),
+                "--retryCount=0",
+                "--badWorker=1.0",
+                "--badWorkerFailInterval=0.01",
+            ]
+
+            # With --badWorker=1.0, the first run is guaranteed to fail
+            result_json = None
+            try:
+                result_json = subprocess.check_output(command + ["--logCritical"])
+            except subprocess.CalledProcessError:
+                pass
+
+            if result_json is None:
+                # Restart without --badWorker so it is guaranteed to succeed
+                restart_command = self.base_command + [
+                    str(wdl),
+                    "-o",
+                    str(out_dir),
+                    "-i",
+                    json.dumps({"read_file.input_string": str(file_path)}),
+                    "--jobStore",
+                    str(jobstore_path),
+                    "--retryCount=0",
+                    "--restart",
+                    "--logCritical",
+                ]
+                result_json = subprocess.check_output(restart_command)
+
+            assert result_json is not None
+            result = json.loads(result_json)
+
+            assert "read_file.lines" in result
+            assert isinstance(result["read_file.lines"], list)
+            assert result["read_file.lines"] == [
+                "This is a line",
+                "This is a different line",
+            ]
+
+            # Make sure we actually exported a file, even after restarting
+            assert "read_file.remade_file" in result
+            assert isinstance(result["read_file.remade_file"], str)
+            assert os.path.exists(result["read_file.remade_file"])
+
     @needs_singularity_or_docker
     def test_workflow_file_deletion(self, tmp_path: Path) -> None:
         """

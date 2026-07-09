@@ -19,6 +19,7 @@ import logging
 import os
 import pickle
 import random
+import re
 import shutil
 import signal
 import socket
@@ -740,10 +741,24 @@ def workerScript(
             failure_exit_code = e.code
         else:
             try:
-                from WDL.runtime.error import CommandFailed
+                from WDL.runtime.error import CommandFailed, Interrupted
 
                 if isinstance(e, CommandFailed):
                     failure_exit_code = e.exit_status
+                elif isinstance(e, Interrupted):
+                    # Try to work around
+                    # https://github.com/chanzuckerberg/miniwdl/issues/902 at
+                    # least enough to pass the tests.
+                    # If we observed a container supposedly running with a
+                    # nonzero exit code, MiniWDL will bail out with an
+                    # Interrupted with "exit code = {exit_code}" in the
+                    # message. We need to parse it out and use it to at least
+                    # cover the cases where that code was indeed supposed to be
+                    # a failure and needs to make it to the leader.
+                    found = re.search("exit code = ([0-9]+)", str(e))
+                    if found:
+                        failure_exit_code = int(found.group(1))
+
             except ImportError:
                 # WDL dependency not available
                 pass
