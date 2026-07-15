@@ -1154,10 +1154,31 @@ class Toil(ContextManager["Toil"]):
         self._start_time = time.time()
         self._inContextManager = True
 
+        self._log_resolved_paths(config)
+
         # This will make sure `self.__exit__()` is called when we get a SIGTERM signal.
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
 
         return self
+
+    def _log_resolved_paths(self, config: "Config") -> None:
+        """
+        Log the resolved job store, work dir, and coordination dir paths
+        at INFO, once, so users can find them without tracing flag
+        precedence themselves. Skips the batch logs dir; the batch system
+        isn't built yet here, and grid systems log their own dir on startup.
+        """
+        assert config.workflowID is not None
+        work_dir = self.getLocalWorkflowDir(config.workflowID, config.workDir)
+        coordination_dir = self.get_local_workflow_coordination_dir(
+            config.workflowID, config.workDir, config.coordination_dir
+        )
+        logger.info(
+            "Resolved Toil run paths: job store: %s, work dir: %s, coordination dir: %s",
+            self.canonical_locator(config.jobStore),
+            work_dir,
+            coordination_dir,
+        )
 
     def __exit__(
         self,

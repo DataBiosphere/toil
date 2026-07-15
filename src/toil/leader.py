@@ -1595,8 +1595,13 @@ class Leader:
                 # reduce the try count here.
                 if replacement_job.logJobStoreFileID is None:
                     logger.warning(
-                        "No log file is present, despite job failing: %s",
-                        replacement_job,
+                        "No log file is present, despite job failing: %s. "
+                        "Toil does not retain worker logs by default; rerun with "
+                        "--writeLogs=PATH or --writeLogsGzip=PATH to save failed "
+                        "jobs' logs to disk, or check the batch system's own "
+                        "logs (see --batchLogsDir) if you are running on a grid "
+                        "engine.",
+                         replacement_job,
                     )
 
                 if batch_system_id is not None:
