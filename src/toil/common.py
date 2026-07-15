@@ -173,6 +173,7 @@ class Config:
     colored_logs: bool
     workDir: str | None
     coordination_dir: str | None
+    runDir: str | None
     noStdOutErr: bool
     stats: bool
 
@@ -356,6 +357,27 @@ class Config:
         # TODO: LOG LEVEL STRING
         set_option("workDir")
         set_option("coordination_dir")
+        set_option("runDir")
+
+        if self.runDir is not None:
+            # A single --runDir was given. Derive defaults for anything the
+            # user didn't set explicitly; explicit flags always win.
+            self.runDir = os.path.abspath(self.runDir)
+            if self.workDir is None:
+                self.workDir = os.path.join(self.runDir, "work")
+                os.makedirs(self.workDir, exist_ok=True)
+            if self.coordination_dir is None:
+                self.coordination_dir = os.path.join(self.runDir, "coordination")
+                os.makedirs(self.coordination_dir, exist_ok=True)
+            if self.jobStore is None:
+                # Only reachable when --jobStore is optional (the CWL/WDL
+                # runners); the plain `toil` entry point requires jobStore
+                # as a positional argument, so it can never be None here.
+                from toil.options.common import parse_jobstore
+
+                self.jobStore = parse_jobstore(
+                    os.path.join(self.runDir, "jobstore")
+                )
 
         set_option("noStdOutErr")
         set_option("stats")

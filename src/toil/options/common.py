@@ -358,6 +358,16 @@ def add_base_toil_options(
         "shared between the containers.",
     )
     core_options.add_argument(
+        "--runDir",
+        dest="runDir",
+        default=None,
+        env_var="TOIL_RUN_DIR",
+        metavar="PATH",
+        help="Directory under which to place the job store, work dir, coordination "
+        "dir, and CWL/WDL image caches for this run, unless overridden individually. "
+        "Toil creates the directory and its subdirectories.",
+    )
+    core_options.add_argument(
         "--noStdOutErr",
         dest="noStdOutErr",
         default=False,
