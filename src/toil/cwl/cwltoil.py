@@ -187,23 +187,124 @@ def cwltoil_was_removed() -> None:
     )
 
 
-# The job object passed into CWLJob and CWLWorkflow
-# is a dict mapping to tuple of (key, dict)
-# the final dict is derived by evaluating each
-# tuple looking up the key in the supplied dict.
-#
-# This is necessary because Toil jobs return a single value (a dict)
-# but CWL permits steps to have multiple output parameters that may
-# feed into multiple other steps.  This transformation maps the key in the
-# output object to the correct key of the input object.
+def simplify_list(maybe_list: Any) -> Any:
+    """
+    Turn a length one list loaded by cwltool into a scalar.
 
+    Anything else is passed as-is, by reference.
+    """
+    if isinstance(maybe_list, MutableSequence):
+        is_list = aslist(maybe_list)
+        if len(is_list) == 1:
+            return is_list[0]
+    return maybe_list
+
+
+def ensure_no_collisions(
+    directory: CWLDirectoryType, dir_description: str | None = None
+) -> None:
+    """
+    Make sure no items in the given CWL Directory have the same name.
+
+    If any do, raise a WorkflowException about a "File staging conflict".
+
+    Does not recurse into subdirectories.
+    """
+
+    if dir_description is None:
+        # Work out how to describe the directory we are working on.
+        dir_description = f"the directory \"{directory.get('basename')}\""
+
+    seen_names = set()
+
+    for child in directory.get("listing", []):
+        if "basename" in child:
+            # For each child that actually has a path to go at in its parent
+            wanted_name = child["basename"]
+            if wanted_name in seen_names:
+                # We used this name already so bail out
+                raise cwl_utils.errors.WorkflowException(
+                    f'File staging conflict: Duplicate entries for "{wanted_name}"'
+                    f" prevent actually creating {dir_description}"
+                )
+            seen_names.add(wanted_name)
+
+
+def get_container_engine(runtime_context: cwltool.context.RuntimeContext) -> str:
+    if runtime_context.podman:
+        return "podman"
+    elif runtime_context.singularity:
+        return "singularity"
+    return "docker"
+
+
+def try_prepull(
+    cwl_tool_uri: str, runtime_context: cwltool.context.RuntimeContext, batchsystem: str
+) -> None:
+    """
+    Try to prepull all containers in a CWL workflow with Singularity or Docker.
+    This will not prepull the default container specified on the command line.
+    :param cwl_tool_uri: CWL workflow URL. Fragments are accepted as well
+    :param runtime_context: runtime context of cwltool
+    :param batchsystem: type of Toil batchsystem
+    :return:
+    """
+    if runtime_context.singularity:
+        if "CWL_SINGULARITY_CACHE" in os.environ:
+            logger.info("Prepulling the workflow's containers with Singularity...")
+            call_command(
+                [
+                    "cwl-docker-extract",
+                    "--singularity",
+                    "--dir",
+                    os.environ["CWL_SINGULARITY_CACHE"],
+                    cwl_tool_uri,
+                ]
+            )
+    elif not runtime_context.user_space_docker_cmd and not runtime_context.podman:
+        # For udocker and podman prefetching is unimplemented
+        # This is docker
+        if batchsystem == "single_machine":
+            # Only on single machine will the docker daemon be accessible by all workers and the leader
+            logger.info("Prepulling the workflow's containers with Docker...")
+            call_command(["cwl-docker-extract", cwl_tool_uri])
+
+#####
+#
+# This section deals with the CWL promise system.
+#
+# This is not to be confused with the Toil promise system, except under
+# fconfusing circumstances.
+#
+# The CWL language has a lot of machinery around specifying where input values
+# come from: there's valueFrom, something called linkMerge, a system for
+# specifying default values, all as YAML structures, and then on top of *that*
+# there's a way to evaluate string expressions, if the appropriate requirement
+# is required.
+#
+# The implementation side of this in cwltool is all about resolve()-ing things.
+#
+# We need to reimplement a lot of this because in Toil we only have access to
+# information from previous jobs, so we can't use whatever global state
+# cwltool's implementations use.
+#
+#####
+
+# CWL Jobs have inputs and outputs and sometimes we have to do a process of
+# resolution to figure out what inputs get values from what outputs. Sometimes,
+# collectively we call these inputs and outputs 'ports'.
+
+# The job object passed into CWLJob and CWLWorkflow is a dict mapping to tuple
+# of (key, dict). The final dict is derived by evaluating each tuple looking up
+# the key in the supplied dict.
+#
+# This is necessary because Toil jobs return a single value (here we use a
+# dict) but CWL permits steps to have multiple output parameters that may feed
+# into multiple other steps. This transformation maps the key in the output
+# object to the correct key of the input object.
 
 class UnresolvedDict(dict[Any, Any]):
     """Tag to indicate a dict contains promises that must be resolved."""
-
-
-# CWL Jobs have inputs and outputs and sometimes we have to do a process of resolution to figure out
-# what inputs get values from what outputs. Sometimes, collectively we call these inputs and outputs 'ports'.
 
 
 class SkipNull:
@@ -255,68 +356,6 @@ def _filter_skip_null(value: Any, err_flag: list[bool]) -> Any:
         case dict(val_dict):
             return {k: _filter_skip_null(v, err_flag) for k, v in val_dict.items()}
     return value
-
-
-def ensure_no_collisions(
-    directory: CWLDirectoryType, dir_description: str | None = None
-) -> None:
-    """
-    Make sure no items in the given CWL Directory have the same name.
-
-    If any do, raise a WorkflowException about a "File staging conflict".
-
-    Does not recurse into subdirectories.
-    """
-
-    if dir_description is None:
-        # Work out how to describe the directory we are working on.
-        dir_description = f"the directory \"{directory.get('basename')}\""
-
-    seen_names = set()
-
-    for child in directory.get("listing", []):
-        if "basename" in child:
-            # For each child that actually has a path to go at in its parent
-            wanted_name = child["basename"]
-            if wanted_name in seen_names:
-                # We used this name already so bail out
-                raise cwl_utils.errors.WorkflowException(
-                    f'File staging conflict: Duplicate entries for "{wanted_name}"'
-                    f" prevent actually creating {dir_description}"
-                )
-            seen_names.add(wanted_name)
-
-
-def try_prepull(
-    cwl_tool_uri: str, runtime_context: cwltool.context.RuntimeContext, batchsystem: str
-) -> None:
-    """
-    Try to prepull all containers in a CWL workflow with Singularity or Docker.
-    This will not prepull the default container specified on the command line.
-    :param cwl_tool_uri: CWL workflow URL. Fragments are accepted as well
-    :param runtime_context: runtime context of cwltool
-    :param batchsystem: type of Toil batchsystem
-    :return:
-    """
-    if runtime_context.singularity:
-        if "CWL_SINGULARITY_CACHE" in os.environ:
-            logger.info("Prepulling the workflow's containers with Singularity...")
-            call_command(
-                [
-                    "cwl-docker-extract",
-                    "--singularity",
-                    "--dir",
-                    os.environ["CWL_SINGULARITY_CACHE"],
-                    cwl_tool_uri,
-                ]
-            )
-    elif not runtime_context.user_space_docker_cmd and not runtime_context.podman:
-        # For udocker and podman prefetching is unimplemented
-        # This is docker
-        if batchsystem == "single_machine":
-            # Only on single machine will the docker daemon be accessible by all workers and the leader
-            logger.info("Prepulling the workflow's containers with Docker...")
-            call_command(["cwl-docker-extract", cwl_tool_uri])
 
 
 class Conditional:
@@ -722,18 +761,372 @@ def resolve_dict_w_promises(
     return result
 
 
-def simplify_list(maybe_list: Any) -> Any:
-    """
-    Turn a length one list loaded by cwltool into a scalar.
+#####
+#
+# In this next section, we override a bunch of cwltool classes and put Toil
+# hooks all over them.
+#
+# cwltool has a lot of moving parts here. See
+# <https://github.com/common-workflow-language/cwltool#cwl-tool-control-flow>
+# for some information on them.
+#
+# There's the "tool", a descendant of cwltool.process.Process, which could be a
+# cwltool.command_line_tool.CommandLineTool or a
+# cwltool.command_line_tool.ExpressionTool. This corresponds to the .cwl file.
+#
+# There's a "job order", sometimes (in Toil's code to orchestrate the workflow)
+# just called the "cwl job", which corresponds to the YAML/JSON inputs that we
+# want to run on.
+#
+# The tool Process also has a .job() method, which yields any of a few types
+# (see
+# <https://github.com/common-workflow-language/cwltool/blob/b97d8f491252a6e4145d36af4a1ddcd02dd3ea7a/cwltool/utils.py#L88-L90>)
+# like cwltool.command_line_tool.CommandLineJob or
+# cwltool.command_line_tool.ExpressionJob. Each of these types has a .run()
+# method. Despite the confusion this causes with e.g. CWLJob and the "CWL job
+# order", these objects are also called "CWL jobs".
+#
+# The Process gets used in combination with an "executor" descended from
+# cwltool.executors.JobExecutor. Toil uses a
+# cwltool.executors.SingleJobExecutor descendant. This has a .run_jobs() that
+# hands the job order to the Process's .job() to get a CWL job, and then, after
+# some more ceremony, runs it via its .run() method. In theory there can be
+# multiple CWL jobs kicking around, but Toil only uses Processes that produce
+# and executors that expect just one job.
+#
+# There are a lot of cwltool extension points here, but they're all about
+# letting you replace the classes uses by overriding factory functions. We
+# really want to get inside the giant methods cwltool defines that do the work
+# of setting up, running, and cleaning up afterwards, all in one method, and
+# cwltool doesn't have good extension points for that. So mostly we provide our
+# own classes for things and then those classes try to patch their way into
+# random methods that happen to run at the right times in cwltool's flow in
+# order to affect its behavior.
+#
+#####
 
-    Anything else is passed as-is, by reference.
-    """
-    if isinstance(maybe_list, MutableSequence):
-        is_list = aslist(maybe_list)
-        if len(is_list) == 1:
-            return is_list[0]
-    return maybe_list
+#####
+# Our root hook is to hook the function that picks what Process type to use to represent a .cwl file.
+#####
 
+def toil_make_tool(
+    toolpath_object: CommentedMap,
+    loadingContext: cwltool.context.LoadingContext,
+) -> Process:
+    """
+    Factory function that uses Toil-hooked tool classes to load CWL tools.
+
+    This factory function is meant to be passed to cwltool.load_tool().
+    """
+    if isinstance(toolpath_object, Mapping):
+        if toolpath_object.get("class") == "CommandLineTool":
+            return ToilCommandLineTool(toolpath_object, loadingContext)
+        elif toolpath_object.get("class") == "ExpressionTool":
+            return ToilExpressionTool(toolpath_object, loadingContext)
+    return cwltool.workflow.default_make_tool(toolpath_object, loadingContext)
+
+#####
+# Then we define a base Toil-flavored CWL Process, and command-line and expression variants of it.
+# This goes on to install our PathMapper hooks.
+#####
+
+class ToilTool(Process):
+    """Mixin to hook Toil into a cwltool tool type."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """
+        Init hook to set up member variables.
+        """
+        super().__init__(*args, **kwargs)
+        # Reserve a spot for the Toil job that ends up executing this tool.
+        self._toil_job: Job | None = None
+        # Remember path mappers we have used so we can interrogate them later to find out what the job mapped.
+        self._path_mappers: list[cwltool.pathmapper.PathMapper] = []
+
+    def connect_toil_job(self, job: Job) -> None:
+        """
+        Attach the Toil tool to the Toil job that is executing it. This allows
+        it to use the Toil job to stop at certain points if debugging flags are
+        set.
+        """
+        self._toil_job = job
+
+
+    def make_path_mapper(
+        self,
+        reffiles: MutableSequence[CWLFileType | CWLDirectoryType],
+        stagedir: str,
+        runtimeContext: cwltool.context.RuntimeContext,
+        separateDirs: bool,
+    ) -> cwltool.pathmapper.PathMapper:
+        """Create the appropriate PathMapper for the situation."""
+        if getattr(runtimeContext, "bypass_file_store", False):
+            # We only need to understand cwltool's supported URIs
+            mapper = PathMapper(
+                reffiles, runtimeContext.basedir, stagedir, separateDirs=separateDirs
+            )
+        else:
+            # We need to be able to read from Toil-provided URIs
+            mapper = ToilPathMapper(
+                reffiles,
+                runtimeContext.basedir,
+                stagedir,
+                separateDirs,
+                get_file=getattr(runtimeContext, "toil_get_file", None),
+                streaming_allowed=runtimeContext.streaming_allowed,
+            )
+
+        # Remember the path mappers
+        self._path_mappers.append(mapper)
+        return mapper
+
+    def __str__(self) -> str:
+        """Return string representation of this tool type."""
+        return f'{self.__class__.__name__}({repr(getattr(self, "tool", {}).get("id", "???"))})'
+
+class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
+    """
+    CWL CommandLineTool that connects to ToilPathMapper and other hooks.
+    """
+
+    def make_job_runner(
+        self, runtimeContext: cwltool.context.RuntimeContext
+    ) -> type[cwltool.job.JobBase]:
+        """
+        Use a job class that monitors container resource usage if needed.
+
+        We only act on container systems where the container isn't a descendant
+        process of us.
+        """
+        parent_class = super().make_job_runner(runtimeContext)
+        if parent_class is DockerCommandLineJob:
+            # There's only one daemon-containerized container system: it's
+            # Docker itself (and not any of the subclasses of this),
+            return ToilDockerCommandLineJob
+        return parent_class
+
+    def _initialworkdir(
+        self, j: cwltool.job.JobBase | None, builder: cwltool.builder.Builder
+    ) -> None:
+        """
+        Hook the InitialWorkDirRequirement setup to make sure that there are no
+        name conflicts at the top level of the work directory and support
+        Toil's files downloaded hook.
+        """
+
+        # Set up the initial work dir with all its files
+        super()._initialworkdir(j, builder)
+
+        if j is None:
+            return  # Only testing
+
+        # The initial work dir listing is now in j.generatefiles["listing"]
+        # Also j.generatefiles is a CWL Directory.
+        # So check the initial working directory.
+        logger.debug("Initial work dir: %s", j.generatefiles)
+        ensure_no_collisions(
+            j.generatefiles,
+            "the job's working directory as specified by the InitialWorkDirRequirement",
+        )
+
+        if self._toil_job is not None:
+            # Make a table of all the places we mapped files to when downloading the inputs.
+
+            # We want to hint which host paths and container (if any) paths correspond
+            host_and_job_paths: list[tuple[str, str]] = []
+
+            for pm in self._path_mappers:
+                for _, mapper_entry in pm.items_exclude_children():
+                    # We know that mapper_entry.target as seen by the task is
+                    # mapper_entry.resolved on the host.
+                    host_and_job_paths.append(
+                        (mapper_entry.resolved, mapper_entry.target)
+                    )
+
+            # Notice that we have downloaded our inputs. Explain which files
+            # those are here and what the task will expect to call them.
+            self._toil_job.files_downloaded_hook(host_and_job_paths)
+
+
+class ToilExpressionTool(ToilTool, cwltool.command_line_tool.ExpressionTool):
+    """Subclass the cwltool expression tool to provide the custom ToilPathMapper."""
+    # TODO: Don't expression tools also want the resource monitoring hooks?
+
+#####
+# Our other entry point into cwltool for customizing running things is by
+# providing our own executor. We construct this ourselves and then use it to
+# run our also-customized Processes.
+#####
+
+class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
+    """
+    A SingleJobExecutor that does not assume it is at the top level of the workflow.
+
+    We need this because otherwise every job thinks it is top level and tries
+    to discover secondary files, which may exist when they haven't actually
+    been passed at the top level and thus aren't supposed to be visible.
+    """
+
+    def run_jobs(
+        self,
+        process: Process,
+        job_order_object: CWLObjectType,
+        logger: logging.Logger,
+        runtime_context: cwltool.context.RuntimeContext,
+    ) -> None:
+        """run_jobs from SingleJobExecutor, but not in a top level runtime context."""
+        runtime_context.toplevel = False
+        if isinstance(
+            process, cwltool.command_line_tool.CommandLineTool
+        ) and isinstance(
+            process.make_job_runner(runtime_context), SingularityCommandLineJob
+        ):
+            # Set defaults for singularity cache environment variables, similar to what we do in wdltoil
+            # Use the same place as the default singularity cache directory
+            singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity")
+            os.environ["SINGULARITY_CACHEDIR"] = os.environ.get(
+                "SINGULARITY_CACHEDIR", singularity_cache
+            )
+
+            # If singularity is detected, prepull the image to ensure locking
+            docker_req, docker_is_req = process.get_requirement(
+                feature="DockerRequirement"
+            )
+            with global_mutex(
+                os.environ["SINGULARITY_CACHEDIR"], "toil_singularity_cache_mutex"
+            ):
+                SingularityCommandLineJob.get_image(
+                    dockerRequirement=cast(dict[str, str], docker_req),
+                    pull_image=runtime_context.pull_image,
+                    force_pull=runtime_context.force_docker_pull,
+                    tmp_outdir_prefix=runtime_context.tmp_outdir_prefix,
+                )
+
+        return super().run_jobs(process, job_order_object, logger, runtime_context)
+
+#####
+# The customized Process objects install hooks to use therse customized CWL job
+# objects, which customize either their .run() method or things we know it goes
+# on to call.
+#####
+
+# We need to know which cwltool container implementations run the container
+# under the calling process's child tree. Unlisted container implementations
+# are assumed to run it elsewhere through a deamon.
+#
+# We have to list it this way around (and not list the implementations that use
+# a daemon) because some of these extend DockerCommandLineJob.
+CHILD_PROCESS_CONTAINER_JOBS = (PodmanCommandLineJob, SingularityCommandLineJob, UDockerCommandLineJob)
+
+
+class ToilDockerCommandLineJob(DockerCommandLineJob):
+    """Container job that collects resource stats from injected in-container code."""
+
+    def _execute(
+        self,
+        runtime: list[str],
+        env: MutableMapping[str, str],
+        runtimeContext: cwltool.context.RuntimeContext,
+        monitor_function: Callable[["subprocess.Popen[str]"], None] | None = None,
+    ) -> None:
+        # This job is going to run in a container that makes it not be a
+        # descendant of our process. So we need to inject code to count its
+        # resource usage.
+
+        # First we need the command that's actually going to run. To be fully
+        # spec-compliant, we need to make sure Docker ENTRYPOINT keeps working.
+        # So we need to fetch it out, put it in the script, and remember to
+        # override it with a shell later. See
+        # <https://github.com/common-workflow-language/cwltool/blob/1bf74499ca1c4a5f98e7cffb0ad4aa89aa98cb9e/cwltool/schemas/v1.1/CommandLineTool.yml#L785-L792>
+
+        # We know the selected container image is the last element in runtime.
+        # Inspect it to get its entrypoint list
+        image_config = json.loads(
+            subprocess.check_output(
+                [
+                    self.docker_exec,
+                    "inspect",
+                    "-f",
+                    "{{json .Config}}",
+                    runtime[-1],
+                ]
+            )
+        )
+        # Null entrypoints are allowed; Docker doesn't seem to put literal
+        # nulls but who knows how it might change.
+        entrypoint: list[str] = image_config.get("Entrypoint") or []
+
+        # We also need to ensure that if the CWL baseCommand is empty, the
+        # image command list runs.
+        default_command: list[str] = image_config.get("Cmd") or []
+
+        # Make a command string that does the expected user work
+        script = command_line_to_shell_script(entrypoint + (self.command_line or default_command))
+
+        # Our injected code also checks to make sure files mounted on Docker
+        # for Mac are intact, so we need to tell it about the file
+        # mounts we are going to use.
+        file_mounts = self._file_mounts_from_pathmapper()
+
+        # Since we're not allowed to drop stuff in the working directory, we
+        # put the resource usage info in the temp directory, which cwltool
+        # mounts, as divined by Anthropic Claude. See
+        # <https://github.com/common-workflow-language/cwltool/blob/1bf74499ca1c4a5f98e7cffb0ad4aa89aa98cb9e/cwltool/docker.py#L332-L334>
+        script = add_injections(script, file_mounts, os.path.join(self.CONTAINER_TMPDIR, INJECTED_MESSAGE_DIR))
+        self.command_line = shell_script_to_command_line(script)
+
+        # Adjust the runtime to clear the entrypoint.
+        # See <https://github.com/moby/moby/issues/23498>.
+        # Stick the argument and value in before the last element.
+        runtime[-1:-1] = ["--entrypoint", ""]
+
+        # By the time the base class _execute() returns, the temp directory
+        # holding the resource usage information has already been deleted. So
+        # we need to hook into one of the functions it calls, from somewhere
+        # where we have access to our tmpdir (like here).
+        def message_handler_output_callback(
+            output_callbacks: OutputCallbackType | None,
+            outputs: CWLObjectType | None,
+            processStatus: str,
+        ) -> None:
+            """
+            Output callback that processes resource usage messages.
+
+            Needs to be partial'd into a callback chain.
+            """
+            handle_injection_messages_from(os.path.join(self.tmpdir, INJECTED_MESSAGE_DIR))
+            if output_callbacks:
+                output_callbacks(outputs, processStatus)
+        # Hook into the output callback chain
+        self.output_callback = functools.partial(message_handler_output_callback, self.output_callback)
+
+        # Run the container
+        super()._execute(runtime, env, runtimeContext, monitor_function)
+        # By the time we get here, the temp directory where we hide the
+        # resource usage info has already been deleted.
+
+    def _file_mounts_from_pathmapper(self) -> list[tuple[str, str]]:
+        """
+        Get all the container mounts that will be used for a containerized job.
+
+        :returns: a list of (host path, container path) tuples, one per mount.
+        """
+        file_mounts: list[tuple[str, str]] = []
+        for location in self.pathmapper.files():
+            ent = self.pathmapper.mapper(location)
+            if ent.type == "File" and not ent.resolved.startswith("_:"):
+                file_mounts.append((ent.resolved, ent.target))
+        return file_mounts
+
+#####
+#
+# In this section, we define the classes for hooking CWL's file management into
+# Toil's FileStore. This is mostly based around a PathMapper implementation and
+# an StdFsAccess impolementation. Since cwltool doesn't provide very specific
+# requirements for what these implementations need to guarantee, a lot of this
+# has been learned by trial and error
+#
+#####
 
 class ToilPathMapper(PathMapper):
     """
@@ -1068,299 +1461,6 @@ class ToilPathMapper(PathMapper):
                 copy=copy,
                 staged=staged,
             )
-
-
-class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
-    """
-    A SingleJobExecutor that does not assume it is at the top level of the workflow.
-
-    We need this because otherwise every job thinks it is top level and tries
-    to discover secondary files, which may exist when they haven't actually
-    been passed at the top level and thus aren't supposed to be visible.
-    """
-
-    def run_jobs(
-        self,
-        process: Process,
-        job_order_object: CWLObjectType,
-        logger: logging.Logger,
-        runtime_context: cwltool.context.RuntimeContext,
-    ) -> None:
-        """run_jobs from SingleJobExecutor, but not in a top level runtime context."""
-        runtime_context.toplevel = False
-        if isinstance(
-            process, cwltool.command_line_tool.CommandLineTool
-        ) and isinstance(
-            process.make_job_runner(runtime_context), SingularityCommandLineJob
-        ):
-            # Set defaults for singularity cache environment variables, similar to what we do in wdltoil
-            # Use the same place as the default singularity cache directory
-            singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity")
-            os.environ["SINGULARITY_CACHEDIR"] = os.environ.get(
-                "SINGULARITY_CACHEDIR", singularity_cache
-            )
-
-            # If singularity is detected, prepull the image to ensure locking
-            docker_req, docker_is_req = process.get_requirement(
-                feature="DockerRequirement"
-            )
-            with global_mutex(
-                os.environ["SINGULARITY_CACHEDIR"], "toil_singularity_cache_mutex"
-            ):
-                SingularityCommandLineJob.get_image(
-                    dockerRequirement=cast(dict[str, str], docker_req),
-                    pull_image=runtime_context.pull_image,
-                    force_pull=runtime_context.force_docker_pull,
-                    tmp_outdir_prefix=runtime_context.tmp_outdir_prefix,
-                )
-
-        return super().run_jobs(process, job_order_object, logger, runtime_context)
-
-
-class ToilTool:
-    """Mixin to hook Toil into a cwltool tool type."""
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        """
-        Init hook to set up member variables.
-        """
-        super().__init__(*args, **kwargs)
-        # Reserve a spot for the Toil job that ends up executing this tool.
-        self._toil_job: Job | None = None
-        # Remember path mappers we have used so we can interrogate them later to find out what the job mapped.
-        self._path_mappers: list[cwltool.pathmapper.PathMapper] = []
-
-    def connect_toil_job(self, job: Job) -> None:
-        """
-        Attach the Toil tool to the Toil job that is executing it. This allows
-        it to use the Toil job to stop at certain points if debugging flags are
-        set.
-        """
-        self._toil_job = job
-
-    def make_path_mapper(
-        self,
-        reffiles: MutableSequence[CWLFileType | CWLDirectoryType],
-        stagedir: str,
-        runtimeContext: cwltool.context.RuntimeContext,
-        separateDirs: bool,
-    ) -> cwltool.pathmapper.PathMapper:
-        """Create the appropriate PathMapper for the situation."""
-        if getattr(runtimeContext, "bypass_file_store", False):
-            # We only need to understand cwltool's supported URIs
-            mapper = PathMapper(
-                reffiles, runtimeContext.basedir, stagedir, separateDirs=separateDirs
-            )
-        else:
-            # We need to be able to read from Toil-provided URIs
-            mapper = ToilPathMapper(
-                reffiles,
-                runtimeContext.basedir,
-                stagedir,
-                separateDirs,
-                get_file=getattr(runtimeContext, "toil_get_file", None),
-                streaming_allowed=runtimeContext.streaming_allowed,
-            )
-
-        # Remember the path mappers
-        self._path_mappers.append(mapper)
-        return mapper
-
-    def __str__(self) -> str:
-        """Return string representation of this tool type."""
-        return f'{self.__class__.__name__}({repr(getattr(self, "tool", {}).get("id", "???"))})'
-
-# We need to know which cwltool container implementations run the container
-# under the calling process's child tree. Unlisted container implementations
-# are assumed to run it elsewhere through a deamon.
-#
-# We have to list it this way around (and not list the implementations that use
-# a daemon) because some of these extend DockerCommandLineJob.
-CHILD_PROCESS_CONTAINER_JOBS = (PodmanCommandLineJob, SingularityCommandLineJob, UDockerCommandLineJob)
-
-
-class ToilDockerCommandLineJob(DockerCommandLineJob):
-    """Container job that collects resource stats from injected in-container code."""
-
-    def _execute(
-        self,
-        runtime: list[str],
-        env: MutableMapping[str, str],
-        runtimeContext: cwltool.context.RuntimeContext,
-        monitor_function: Callable[["subprocess.Popen[str]"], None] | None = None,
-    ) -> None:
-        # This job is going to run in a container that makes it not be a
-        # descendant of our process. So we need to inject code to count its
-        # resource usage.
-
-        # First we need the command that's actually going to run. To be fully
-        # spec-compliant, we need to make sure Docker ENTRYPOINT keeps working.
-        # So we need to fetch it out, put it in the script, and remember to
-        # override it with a shell later. See
-        # <https://github.com/common-workflow-language/cwltool/blob/1bf74499ca1c4a5f98e7cffb0ad4aa89aa98cb9e/cwltool/schemas/v1.1/CommandLineTool.yml#L785-L792>
-
-        # We know the selected container image is the last element in runtime.
-        # Inspect it to get its entrypoint list
-        image_config = json.loads(
-            subprocess.check_output(
-                [
-                    self.docker_exec,
-                    "inspect",
-                    "-f",
-                    "{{json .Config}}",
-                    runtime[-1],
-                ]
-            )
-        )
-        # Null entrypoints are allowed; Docker doesn't seem to put literal
-        # nulls but who knows how it might change.
-        entrypoint: list[str] = image_config.get("Entrypoint") or []
-
-        # We also need to ensure that if the CWL baseCommand is empty, the
-        # image command list runs.
-        default_command: list[str] = image_config.get("Cmd") or []
-
-        # Make a command string that does the expected user work
-        script = command_line_to_shell_script(entrypoint + (self.command_line or default_command))
-
-        # Our injected code also checks to make sure files mounted on Docker
-        # for Mac are intact, so we need to tell it about the file
-        # mounts we are going to use.
-        file_mounts = self._file_mounts_from_pathmapper()
-
-        # Since we're not allowed to drop stuff in the working directory, we
-        # put the resource usage info in the temp directory, which cwltool
-        # mounts, as divined by Anthropic Claude. See
-        # <https://github.com/common-workflow-language/cwltool/blob/1bf74499ca1c4a5f98e7cffb0ad4aa89aa98cb9e/cwltool/docker.py#L332-L334>
-        script = add_injections(script, file_mounts, os.path.join(self.CONTAINER_TMPDIR, INJECTED_MESSAGE_DIR))
-        self.command_line = shell_script_to_command_line(script)
-
-        # Adjust the runtime to clear the entrypoint.
-        # See <https://github.com/moby/moby/issues/23498>.
-        # Stick the argument and value in before the last element.
-        runtime[-1:-1] = ["--entrypoint", ""]
-
-        # By the time the base class _execute() returns, the temp directory
-        # holding the resource usage information has already been deleted. So
-        # we need to hook into one of the functions it calls, from somewhere
-        # where we have access to our tmpdir (like here).
-        def message_handler_output_callback(
-            output_callbacks: OutputCallbackType | None,
-            outputs: CWLObjectType | None,
-            processStatus: str,
-        ) -> None:
-            """
-            Output callback that processes resource usage messages.
-
-            Needs to be partial'd into a callback chain.
-            """
-            handle_injection_messages_from(os.path.join(self.tmpdir, INJECTED_MESSAGE_DIR))
-            if output_callbacks:
-                output_callbacks(outputs, processStatus)
-        # Hook into the output callback chain
-        self.output_callback = functools.partial(message_handler_output_callback, self.output_callback)
-
-        # Run the container
-        super()._execute(runtime, env, runtimeContext, monitor_function)
-        # By the time we get here, the temp directory where we hide the
-        # resource usage info has already been deleted.
-
-    def _file_mounts_from_pathmapper(self) -> list[tuple[str, str]]:
-        """
-        Get all the container mounts that will be used for a containerized job.
-
-        :returns: a list of (host path, container path) tuples, one per mount.
-        """
-        file_mounts: list[tuple[str, str]] = []
-        for location in self.pathmapper.files():
-            ent = self.pathmapper.mapper(location)
-            if ent.type == "File" and not ent.resolved.startswith("_:"):
-                file_mounts.append((ent.resolved, ent.target))
-        return file_mounts
-
-
-class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
-    """Subclass the cwltool command line tool to provide the custom ToilPathMapper
-    and add the monitoring code to the job's container command line."""
-
-    def make_job_runner(
-        self, runtimeContext: cwltool.context.RuntimeContext
-    ) -> type[cwltool.job.JobBase]:
-        """
-        Use a job class that monitors container resource usage if needed.
-
-        We only act on container systems where the container isn't a descendant
-        process of us.
-        """
-        parent_class = super().make_job_runner(runtimeContext)
-        if parent_class is DockerCommandLineJob:
-            # There's only one daemon-containerized container system: it's
-            # Docker itself (and not any of the subclasses of this),
-            return ToilDockerCommandLineJob
-        return parent_class
-
-    def _initialworkdir(
-        self, j: cwltool.job.JobBase | None, builder: cwltool.builder.Builder
-    ) -> None:
-        """
-        Hook the InitialWorkDirRequirement setup to make sure that there are no
-        name conflicts at the top level of the work directory.
-        """
-
-        # Set up the initial work dir with all its files
-        super()._initialworkdir(j, builder)
-
-        if j is None:
-            return  # Only testing
-
-        # The initial work dir listing is now in j.generatefiles["listing"]
-        # Also j.generatefiles is a CWL Directory.
-        # So check the initial working directory.
-        logger.debug("Initial work dir: %s", j.generatefiles)
-        ensure_no_collisions(
-            j.generatefiles,
-            "the job's working directory as specified by the InitialWorkDirRequirement",
-        )
-
-        if self._toil_job is not None:
-            # Make a table of all the places we mapped files to when downloading the inputs.
-
-            # We want to hint which host paths and container (if any) paths correspond
-            host_and_job_paths: list[tuple[str, str]] = []
-
-            for pm in self._path_mappers:
-                for _, mapper_entry in pm.items_exclude_children():
-                    # We know that mapper_entry.target as seen by the task is
-                    # mapper_entry.resolved on the host.
-                    host_and_job_paths.append(
-                        (mapper_entry.resolved, mapper_entry.target)
-                    )
-
-            # Notice that we have downloaded our inputs. Explain which files
-            # those are here and what the task will expect to call them.
-            self._toil_job.files_downloaded_hook(host_and_job_paths)
-    
-
-class ToilExpressionTool(ToilTool, cwltool.command_line_tool.ExpressionTool):
-    """Subclass the cwltool expression tool to provide the custom ToilPathMapper."""
-
-
-def toil_make_tool(
-    toolpath_object: CommentedMap,
-    loadingContext: cwltool.context.LoadingContext,
-) -> Process:
-    """
-    Emit custom ToilCommandLineTools.
-
-    This factory function is meant to be passed to cwltool.load_tool().
-    """
-    if isinstance(toolpath_object, Mapping):
-        if toolpath_object.get("class") == "CommandLineTool":
-            return ToilCommandLineTool(toolpath_object, loadingContext)
-        elif toolpath_object.get("class") == "ExpressionTool":
-            return ToilExpressionTool(toolpath_object, loadingContext)
-    return cwltool.workflow.default_make_tool(toolpath_object, loadingContext)
-
 
 # When a file we want to have is missing, we can give it this sentinel location
 # URI instead of raising an error right away, in case it is optional.
@@ -2345,90 +2445,6 @@ def remove_empty_listings(rec: CWLDirectoryType) -> None:
         return
 
 
-class CWLNamedJob(Job):
-    """
-    Base class for all CWL jobs that do user work, to give them useful names.
-    """
-
-    def __init__(
-        self,
-        cores: float | None = 1,
-        memory: int | str | None = "1GiB",
-        disk: int | str | None = "1MiB",
-        accelerators: list[AcceleratorRequirement] | None = None,
-        preemptible: bool | None = None,
-        walltime: int | None = 0,
-        tool_id: str | None = None,
-        parent_name: str | None = None,
-        subjob_name: str | None = None,
-        local: bool | None = None,
-    ) -> None:
-        """
-        Make a new job and set up its requirements and naming.
-
-        :param tool_id: Full CWL tool ID for the job, if applicable.
-        :param parent_name: Shortened name of the parent CWL job, if applicable.
-        :param subjob_name: Name qualifier for when one CWL tool becomes multiple jobs.
-        """
-
-        # Get the name of the class we are, as a final fallback or a name
-        # component.
-        class_name = self.__class__.__name__
-
-        name_parts = []
-
-        if parent_name is not None:
-            # Scope to parent
-            name_parts.append(parent_name)
-        if tool_id is not None:
-            # Start with the short name of the tool
-            name_parts.append(shortname(tool_id))
-        if subjob_name is not None:
-            # We aren't this whole thing, we're a sub-component
-            name_parts.append(subjob_name)
-        if tool_id is None and subjob_name is None:
-            # We need something. Put the class.
-            name_parts.append(class_name)
-
-        # Dotted hierarchical name used both as the unit name and as
-        # file hints for writes to the job store.
-        self.task_path = ".".join(name_parts)
-
-        # Display as that along with the class
-        display_name = f"{class_name} {self.task_path}"
-
-        # Set up the job with the right requirements and names.
-        super().__init__(
-            cores=cores,
-            memory=memory,
-            disk=disk,
-            accelerators=accelerators,
-            preemptible=preemptible,
-            walltime=walltime,
-            unitName=self.task_path,
-            displayName=display_name,
-            local=local,
-        )
-
-
-class ResolveIndirect(CWLNamedJob):
-    """
-    Helper Job.
-
-    Accepts an unresolved dict (containing promises) and produces a dictionary
-    of actual values.
-    """
-
-    def __init__(self, cwljob: Promised[CWLObjectType], parent_name: str | None = None):
-        """Store the dictionary of promises for later resolution."""
-        super().__init__(parent_name=parent_name, subjob_name="_resolve", local=True)
-        self.cwljob = cwljob
-
-    def run(self, file_store: AbstractFileStore) -> CWLObjectType:
-        """Evaluate the promises and return their values."""
-        return resolve_dict_w_promises(unwrap(self.cwljob))
-
-
 def toilStageFiles(
     toil: Toil,
     cwljob: CWLObjectType | list[CWLObjectType],
@@ -2616,6 +2632,101 @@ def toilStageFiles(
         return f
 
     visit_class(cwljob, ("File", "Directory"), _check_adjust)
+
+
+#####
+#
+# In this section, we define the Toil Job classes used to build the Toil job
+# graph that runs a CWL workflow.
+#
+# We have a base CWLNamedJob, and from that we get a CWLJobWrapper and CWLJob
+# for actually executing steps, and some other jobs to glue those together into
+# workflows with the right control flow structures.
+#
+###
+
+class CWLNamedJob(Job):
+    """
+    Base class for all CWL jobs that do user work, to give them useful names.
+    """
+
+    def __init__(
+        self,
+        cores: float | None = 1,
+        memory: int | str | None = "1GiB",
+        disk: int | str | None = "1MiB",
+        accelerators: list[AcceleratorRequirement] | None = None,
+        preemptible: bool | None = None,
+        walltime: int | None = 0,
+        tool_id: str | None = None,
+        parent_name: str | None = None,
+        subjob_name: str | None = None,
+        local: bool | None = None,
+    ) -> None:
+        """
+        Make a new job and set up its requirements and naming.
+
+        :param tool_id: Full CWL tool ID for the job, if applicable.
+        :param parent_name: Shortened name of the parent CWL job, if applicable.
+        :param subjob_name: Name qualifier for when one CWL tool becomes multiple jobs.
+        """
+
+        # Get the name of the class we are, as a final fallback or a name
+        # component.
+        class_name = self.__class__.__name__
+
+        name_parts = []
+
+        if parent_name is not None:
+            # Scope to parent
+            name_parts.append(parent_name)
+        if tool_id is not None:
+            # Start with the short name of the tool
+            name_parts.append(shortname(tool_id))
+        if subjob_name is not None:
+            # We aren't this whole thing, we're a sub-component
+            name_parts.append(subjob_name)
+        if tool_id is None and subjob_name is None:
+            # We need something. Put the class.
+            name_parts.append(class_name)
+
+        # Dotted hierarchical name used both as the unit name and as
+        # file hints for writes to the job store.
+        self.task_path = ".".join(name_parts)
+
+        # Display as that along with the class
+        display_name = f"{class_name} {self.task_path}"
+
+        # Set up the job with the right requirements and names.
+        super().__init__(
+            cores=cores,
+            memory=memory,
+            disk=disk,
+            accelerators=accelerators,
+            preemptible=preemptible,
+            walltime=walltime,
+            unitName=self.task_path,
+            displayName=display_name,
+            local=local,
+        )
+
+
+class ResolveIndirect(CWLNamedJob):
+    """
+    Helper Job.
+
+    Accepts an unresolved dict (containing promises) and produces a dictionary
+    of actual values.
+    """
+
+    def __init__(self, cwljob: Promised[CWLObjectType], parent_name: str | None = None):
+        """Store the dictionary of promises for later resolution."""
+        super().__init__(parent_name=parent_name, subjob_name="_resolve", local=True)
+        self.cwljob = cwljob
+
+    def run(self, file_store: AbstractFileStore) -> CWLObjectType:
+        """Evaluate the promises and return their values."""
+        return resolve_dict_w_promises(unwrap(self.cwljob))
 
 
 class CWLJobWrapper(CWLNamedJob):
@@ -3089,14 +3200,6 @@ class CWLJob(CWLNamedJob):
         return output
 
 
-def get_container_engine(runtime_context: cwltool.context.RuntimeContext) -> str:
-    if runtime_context.podman:
-        return "podman"
-    elif runtime_context.singularity:
-        return "singularity"
-    return "docker"
-
-
 def makeRootJob(
     tool: Process,
     jobobj: CWLObjectType,
@@ -3565,9 +3668,9 @@ class CWLLoop(Job):
         :param parent_name: human-readable name prefix used for child job naming
         :param iteration_limit: maximum number of iterations before raising an error
         :param iteration: zero-based index of the current iteration we would execute
-        :param previous_outputs: promise for the previous iteration's output dict; 
+        :param previous_outputs: promise for the previous iteration's output dict;
         should be None for iteration 0
-        :param previous_accumulation: accumulated outputs from all prior iterations; 
+        :param previous_accumulation: accumulated outputs from all prior iterations;
         used for outputMethod: all_iterations; should be None for iteration 0
         """
         super().__init__(cores=1, memory=INTERPRETER_JOB_MEMORY, disk=INTERPRETER_JOB_DISK, local=True)
@@ -3579,7 +3682,7 @@ class CWLLoop(Job):
         self.iteration = iteration
         self.previous_outputs = previous_outputs
         self.previous_accumulation = previous_accumulation
-    
+
     def build_next_inputs(self, cwljob: CWLObjectType, body_followon: Job, loop_inputs: list[CWLObjectType]) -> UnresolvedDict:
         """
         Build the input object for the next iteration by applying the
@@ -3650,7 +3753,7 @@ class CWLLoop(Job):
                 # Note: the step's requirements have already included the workflow's requirements
                 # https://github.com/common-workflow-language/cwltool/blob/1bf74499ca1c4a5f98e7cffb0ad4aa89aa98cb9e/cwltool/workflow.py#L207
                 if not bool(self.step.get_requirement("StepInputExpressionRequirement")[0]):
-                    # Raise the same error cwltool does: 
+                    # Raise the same error cwltool does:
                     # https://github.com/common-workflow-language/cwltool/blob/1bf74499ca1c4a5f98e7cffb0ad4aa89aa98cb9e/cwltool/workflow_job.py#L622
                     raise cwl_utils.errors.WorkflowException(
                         "Workflow step contains valueFrom but StepInputExpressionRequirement not in requirements"
@@ -3738,7 +3841,7 @@ class CWLLoop(Job):
         )
 
         self.addChild(body_job)
-        
+
         # Declare before the if/else so that mypy can see that they are always defined
         next_loop_pred: CWLLoopAccumulate | Job
         next_accumulation: Promised[CWLObjectType] | None
@@ -3765,7 +3868,7 @@ class CWLLoop(Job):
             # updated accumulator as its predecessor.
             next_loop_pred = accumulated_loops
             next_accumulation = accumulated_loops.rv()
-        
+
         # In last_iteration mode we don't need to accumulate anything -
         # the next CWLLoop runs directly after the body job, and
         # next_accumulation stays None since we only care about the final
@@ -3773,7 +3876,7 @@ class CWLLoop(Job):
         elif output_method == "last_iteration":
             next_loop_pred = body_followon
             next_accumulation = None
-        
+
         else:
             raise cwl_utils.errors.WorkflowException(
                 f"Unsupported cwltool:Loop outputMethod {output_method!r}"
@@ -3791,10 +3894,10 @@ class CWLLoop(Job):
             previous_outputs=body_followon.rv(),
             previous_accumulation=next_accumulation,
         )
-        
+
         # Attach next loop to its predecessor, which depends on the output method
         next_loop_pred.addFollowOn(next_loop)
-        
+
         return next_loop.rv()
 
 
@@ -3960,7 +4063,7 @@ class CWLWorkflow(CWLNamedJob):
                             requirements=self.cwlwf.requirements,
                             container_engine=get_container_engine(self.runtime_context),
                         )
-                        
+
                         # Declare types for mypy so it can see that they are always defined in the if/else below
                         wfjob: CWLLoop | CWLScatter | CWLWorkflow | CWLJob | CWLJobWrapper
                         followOn: CWLLoop | CWLGather | ResolveIndirect | CWLJob | CWLJobWrapper
@@ -4318,6 +4421,12 @@ class CWLStartJob(CWLNamedJob):
         self.addChild(cwljob)
         return cwljob.rv()
 
+#####
+#
+# In this section, we have helper functions for loading and setting uop a
+# workflow run, and the main CLI entry point function to run a CWL file.
+#
+#####
 
 def extract_workflow_inputs(
     options: Namespace, initialized_job_order: CWLObjectType, tool: Process
@@ -4671,6 +4780,17 @@ def determine_load_listing(
             f"Unknown loadListing specified: {load_listing!r}.  Valid choices: {listing_choices}"
         )
     return cast(Literal["no_listing", "shallow_listing", "deep_listing"], load_listing)
+
+
+def find_default_container(
+    args: Namespace, builder: cwltool.builder.Builder
+) -> str | None:
+    """Find the default constructor by consulting a Toil.options object."""
+    if args.default_container:
+        return str(args.default_container)
+    if args.beta_use_biocontainers:
+        return get_container_from_software_requirements(True, builder)
+    return None
 
 
 usage_message = "\n\n" + textwrap.dedent("""
@@ -5149,14 +5269,3 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
         return 1
 
     return 0
-
-
-def find_default_container(
-    args: Namespace, builder: cwltool.builder.Builder
-) -> str | None:
-    """Find the default constructor by consulting a Toil.options object."""
-    if args.default_container:
-        return str(args.default_container)
-    if args.beta_use_biocontainers:
-        return get_container_from_software_requirements(True, builder)
-    return None

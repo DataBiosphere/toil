@@ -15,7 +15,7 @@ steps:
       baseCommand: [bash]
       arguments: [ "-c", "echo >&2 '$(inputs.s)' ; exit 1" ]
       stdout: output_log.txt
-      stderr: error_log.txt
+      stderr: error_log_secret.txt
       outputs:
         out_file:
           type: File
