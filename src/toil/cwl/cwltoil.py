@@ -16,8 +16,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# For an overview of how this all works, see discussion in
-# docs/architecture.rst
+
+#####
+# For an overview of how this all works, see the section "Toil support for
+# Common Workflow Language" in docs/appendicies/architecture.rst
+#####
+
+import abc
 import base64
 import copy
 import datetime
@@ -48,7 +53,18 @@ from collections.abc import (
 )
 from tempfile import NamedTemporaryFile, TemporaryFile, gettempdir
 from threading import Thread
-from typing import IO, Any, Literal, Optional, Protocol, TextIO, TypeVar, Union, cast
+from typing import (
+    IO,
+    Any,
+    Generic,
+    Literal,
+    Optional,
+    Protocol,
+    TextIO,
+    TypeVar,
+    Union,
+    cast
+)
 from urllib.parse import quote, unquote, urlparse, urlsplit
 
 import cwl_utils.errors
@@ -830,8 +846,45 @@ def toil_make_tool(
 # This goes on to install our PathMapper hooks.
 #####
 
-class ToilTool(Process):
-    """Mixin to hook Toil into a cwltool tool type."""
+# Processes in general can generate a lot of types of jobs, but CommandLineTools and ExpressionTools are typed as generating a more restricted set of possible types of jobs.
+# We want to be able to wrap them with the same wrapper.
+#
+# ExperssionTool's job() is also able to take a None for output_callbacks, while CommandLineTool's can't.
+#
+# We can't just say the wrapper mixin generates the more permissive type range because then it won't be substitutable for a CommandLineTool, etc.
+#
+# So to type this we have to do a bunch of ugly type stuff, and event hen we need to cast (see https://github.com/python/mypy/issues/17192#issuecomment-4995017670)
+
+JobTypesT = TypeVar("JobTypesT", covariant=True)
+CallbackTypesT = TypeVar(
+    "CallbackTypesT",
+    bound=OutputCallbackType | None,
+    contravariant=True
+)
+class ProcessProtocol(Protocol, Generic[JobTypesT, CallbackTypesT]):
+    """
+    Protocol for the type of a cwltool Process that yields jobs of the given
+    union type and accepts output_callbacks of the givne union type on its
+    run() method.
+    """
+    def job(
+        self,
+        job_order: CWLObjectType,
+        output_callbacks: CallbackTypesT,
+        runtimeContext: cwltool.context.RuntimeContext,
+    ) -> Generator[JobTypesT, None, None]:
+        ...
+
+class ToilTool(Generic[JobTypesT, CallbackTypesT]):
+    """
+    Mixin to hook Toil into a cwltool tool type.
+    
+    This MUST be mixed in earlier in the method resolution order than an actual
+    concrete implementation of cwltool.process.Process.
+
+    Ypu also need to tell it the types that the mixed-with Process uses on its
+    run() method, so it can be wrapped with the right types.
+    """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """
@@ -840,6 +893,8 @@ class ToilTool(Process):
         super().__init__(*args, **kwargs)
         # Reserve a spot for the Toil job that ends up executing this tool.
         self._toil_job: Job | None = None
+        # Reserve a spot for the file store we are executing against.
+        self._toil_file_store: AbstractFileStore | None = None
         # Remember path mappers we have used so we can interrogate them later to find out what the job mapped.
         self._path_mappers: list[cwltool.pathmapper.PathMapper] = []
 
@@ -848,9 +903,95 @@ class ToilTool(Process):
         Attach the Toil tool to the Toil job that is executing it. This allows
         it to use the Toil job to stop at certain points if debugging flags are
         set.
+
+        Must be called before the tool is executed.
         """
         self._toil_job = job
 
+    def connect_toil_file_store(self, file_store: AbstractFileStore) -> None:
+        """
+        Attach the Toil tool to the Toil file store it is running against.
+
+        This is needed in order to allow hooks we add into the cwltool
+        tool-running code to talk to the file stroe for things like logging.
+
+        Must be called before the tool is executed.
+        """
+        self._toil_file_store = file_store
+
+    def job(
+        self,
+        job_order: CWLObjectType,
+        output_callbacks: CallbackTypesT,
+        runtimeContext: cwltool.context.RuntimeContext,
+    ) -> Generator[JobTypesT, None, None]:
+        """
+        Attach Toil postprocessing hooks that should apply to all CWL jobs.
+
+        To get a chance to run code after all the important stuff about the job
+        (temp directory, stderr path, etc.) has been determined, but before it
+        all gets deleted by cwltool's cleanup logic, we add "output callbacks".
+        """
+
+        # We want to override job() and then call the job() of the Process we
+        # are mixed into. MyPy has no good way to tell it that there will be a
+        # job() method later in the method resolution order than we are, when
+        # the mixin is used correctly. See
+        # <https://github.com/python/mypy/issues/17192>. So we just tell it
+        # very firmly that things will be OK and our super() actually does have
+        # the method we need.
+        #
+        # TODO: Can we avoid this somehow?
+        
+        s = cast(ProcessProtocol[JobTypesT, CallbackTypesT], super())
+        for job in s.job(job_order, output_callbacks, runtimeContext):
+            
+            # If we didn't redirect standard error in the .cwl tool definition,
+            # we can collect it from the default location we pass into the
+            # executor. If we did redirect it, and the job fails, the user will
+            # want it, but they won't be able to get it easily by just looking
+            # in the right directory; we have to ship it to the leader before
+            # it gets cleaned up.
+
+            if isinstance(job, cwltool.job.JobBase):
+
+                def log_stderr_output_callback(
+                    output_callbacks: OutputCallbackType | None,
+                    outputs: CWLObjectType | None,
+                    processStatus: str,
+                ) -> None:
+                    """
+                    Output callback that logs failed job standard error.
+
+                    Needs to be partial'd into a callback chain.
+                    """
+                   
+                    # In the callback, we have the various job fields about
+                    # error logging filled in.
+
+                    # This comes from JobBase._setup()
+                    assert isinstance(job.base_path_logs, str)
+
+                    # Make sure the Toil job running us did the right connect
+                    # calls, so the type checker knows.
+                    assert self._toil_job is not None
+                    assert self._toil_file_store is not None
+                    
+                    if processStatus != "success" and job.stderr is not None:
+                        # We know this is where cwltool puts standard error
+                        # when you send it to a file.
+                        stderr_path = os.path.join(job.base_path_logs, job.stderr)
+                        self._toil_file_store.log_user_stream(
+                            self._toil_job.description.unitName + ".stderr",
+                            open(stderr_path, 'rb')
+                        )
+
+                    if output_callbacks:
+                        output_callbacks(outputs, processStatus)
+
+                job.output_callback = functools.partial(log_stderr_output_callback, job.output_callback)
+
+            yield job
 
     def make_path_mapper(
         self,
@@ -884,7 +1025,15 @@ class ToilTool(Process):
         """Return string representation of this tool type."""
         return f'{self.__class__.__name__}({repr(getattr(self, "tool", {}).get("id", "???"))})'
 
-class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
+# TODO: Is there a way we can make the type we're mixing with the generic
+# parameter and pull out the return type of its run method? 
+class ToilCommandLineTool(
+    ToilTool[
+        cwltool.job.JobBase | cwltool.command_line_tool.CallbackJob,
+        OutputCallbackType,
+    ],
+    cwltool.command_line_tool.CommandLineTool,
+):
     """
     CWL CommandLineTool that connects to ToilPathMapper and other hooks.
     """
@@ -948,9 +1097,16 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
             self._toil_job.files_downloaded_hook(host_and_job_paths)
 
 
-class ToilExpressionTool(ToilTool, cwltool.command_line_tool.ExpressionTool):
+class ToilExpressionTool(
+    ToilTool[
+        cwltool.command_line_tool.ExpressionJob,
+        OutputCallbackType | None,
+    ],
+    cwltool.command_line_tool.ExpressionTool,
+):
     """Subclass the cwltool expression tool to provide the custom ToilPathMapper."""
     # TODO: Don't expression tools also want the resource monitoring hooks?
+    pass
 
 #####
 # Our other entry point into cwltool for customizing running things is by
@@ -3115,6 +3271,8 @@ class CWLJob(CWLNamedJob):
             # Connect the CWL tool to us so it can call into the Toil job when
             # it reaches points where we might need to debug it.
             self.cwltool.connect_toil_job(self)
+            # And to the file store so it can do logging to the leader
+            self.cwltool.connect_toil_file_store(file_store)
 
         status = "did_not_run"
         try:
