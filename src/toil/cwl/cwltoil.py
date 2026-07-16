@@ -981,10 +981,13 @@ class ToilTool(Generic[JobTypesT, CallbackTypesT]):
                         # We know this is where cwltool puts standard error
                         # when you send it to a file.
                         stderr_path = os.path.join(job.base_path_logs, job.stderr)
-                        self._toil_file_store.log_user_stream(
-                            self._toil_job.description.unitName + ".stderr",
-                            open(stderr_path, 'rb')
-                        )
+                        if os.path.isfile(stderr_path):
+                            self._toil_file_store.log_user_stream(
+                                self._toil_job.description.unitName + ".stderr",
+                                open(stderr_path, 'rb')
+                            )
+                        else:
+                            logger.error("CWL job standard error at %s is missing!", stderr_path)
 
                     if output_callbacks:
                         output_callbacks(outputs, processStatus)
