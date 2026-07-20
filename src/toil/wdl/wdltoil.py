@@ -257,6 +257,10 @@ class WDLContext(TypedDict):
     """Namespace of the WDL that the current job is in"""
     all_call_outputs: bool
     """Whether a job should include all calls outputs"""
+    run_dir: NotRequired[str]
+    """Value of Toil's --runDir option, if set. Used to default container
+    image cache locations when the corresponding environment variables
+    aren't already set."""
 
 
 class InsufficientMountDiskSpace(Exception):
@@ -4049,14 +4053,22 @@ class WDLTaskJob(WDLBaseJob):
             # Prepare to use Singularity. We will need plenty of space to
             # download images.
             # Default the Singularity and MiniWDL cache directories. This sets the cache to the same place as
-            # Singularity/MiniWDL's default cache directory
+            # Singularity/MiniWDL's default cache directory, unless --runDir was used, in which case we put
+            # them under <runDir>/image-cache to match Toil's other --runDir-derived paths.
             # With launch-cluster, the singularity and miniwdl cache is set to /var/lib/toil in abstractProvisioner.py
             # A current limitation with the singularity/miniwdl cache is it cannot check for image updates if the
             # filename is the same
-            singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity")
-            miniwdl_singularity_cache = os.path.join(
-                os.path.expanduser("~"), ".cache/miniwdl"
-            )
+            run_dir = self._wdl_options.get("run_dir")
+            if run_dir is not None:
+                singularity_cache = os.path.join(run_dir, "image-cache", "singularity")
+                miniwdl_singularity_cache = os.path.join(
+                    run_dir, "image-cache", "miniwdl"
+                )
+            else:
+                singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity")
+                miniwdl_singularity_cache = os.path.join(
+                    os.path.expanduser("~"), ".cache/miniwdl"
+                )
 
             # Cache Singularity's layers somewhere known to have space
             os.environ["SINGULARITY_CACHEDIR"] = os.environ.get(
@@ -5973,6 +5985,20 @@ def main() -> None:
     # TODO: the Toil context manager will do this again.
     set_logging_from_options(options)
 
+
+    if options.runDir is not None:
+        # A single --runDir was given. Derive defaults for the job store and
+        # work dir from it, for anything not set explicitly. This has to
+        # happen here, before the fallback below runs, because by the time
+        # Toil's own Config.setOptions sees these options, options.jobStore
+        # is never None (the fallback below always fills it in first).
+        options.runDir = os.path.abspath(options.runDir)
+        if options.jobStore is None:
+            options.jobStore = "file:" + os.path.join(options.runDir, "jobstore")
+        if options.workDir is None:
+            options.workDir = os.path.join(options.runDir, "work")
+            os.makedirs(options.workDir, exist_ok=True)
+
     # Make sure we have a jobStore
     if options.jobStore is None:
         jobstore = mkdtemp(prefix="toil-wdl-", dir=os.getcwd())
@@ -6110,6 +6136,10 @@ def main() -> None:
                 "namespace": target.name,
                 "all_call_outputs": options.all_call_outputs,
             }
+
+            if toil.config.runDir is not None:
+                wdl_options["run_dir"] = toil.config.runDir
+
             assert wdl_options.get("container") is not None
 
             if options.restart:

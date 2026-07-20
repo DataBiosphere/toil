@@ -286,7 +286,6 @@ def ensure_no_collisions(
                 )
             seen_names.add(wanted_name)
 
-
 def try_prepull(
     cwl_tool_uri: str, runtime_context: cwltool.context.RuntimeContext, batchsystem: str
 ) -> None:
@@ -4748,6 +4747,23 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
     tmp_outdir_prefix = options.tmp_outdir_prefix or tmpdir_prefix
     # tmpdir_prefix and tmp_outdir_prefix must not be checked for existence as they may exist on a worker only path
     # See https://github.com/DataBiosphere/toil/issues/5310
+
+    if options.runDir is not None:
+        # A single --runDir was given. Derive defaults for the job store,
+        # work dir, and cachedir from it, for anything not set explicitly.
+        # This has to happen here, before the fallbacks below run, because
+        # by the time Toil's own Config.setOptions sees these options,
+        # options.jobStore is never None (the fallback below always fills
+        # it in first).
+        options.runDir = os.path.abspath(options.runDir)
+        if options.jobStore is None:
+            options.jobStore = "file:" + os.path.join(options.runDir, "jobstore")
+        if options.workDir is None:
+            options.workDir = os.path.join(options.runDir, "work")
+            os.makedirs(options.workDir, exist_ok=True)
+        if options.cachedir is None:
+            options.cachedir = os.path.join(options.runDir, "image-cache")
+        
     workdir = options.workDir or tmp_outdir_prefix
 
     if options.jobStore is None:
@@ -4855,6 +4871,15 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
             # setting up CWL option stuff
             expected_config = Config()
             expected_config.setOptions(options)
+
+            if expected_config.runDir is not None and "CWL_SINGULARITY_CACHE" not in os.environ:
+                # try_prepull() and cwltool's own Singularity execution code
+                # read this straight from the environment, so default it
+                # here rather than on an options/config attribute.
+                os.environ["CWL_SINGULARITY_CACHE"] = os.path.join(
+                    expected_config.runDir, "image-cache", "singularity"
+                )
+                os.makedirs(os.environ["CWL_SINGULARITY_CACHE"], exist_ok=True)
 
             # Before showing the options to any cwltool stuff that wants to
             # load the workflow, transform options.cwltool, where our
