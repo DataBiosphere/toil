@@ -195,6 +195,11 @@ class AWSJobStore(AbstractJobStore, HintedJobStore, URLAccess):
 
         Create bucket, raise if it already exists.
         Set options from config.
+
+        Note that polling for bucket existence only happens once; there's not a
+        good way to guard against races to create the bucket that also handles
+        the possibility that a request to AWS could return an error but still
+        create the bucket.
         """
         logger.debug(
             f"Instantiating {self.__class__} for region {self.region} with bucket: '{self.bucket_name}'"

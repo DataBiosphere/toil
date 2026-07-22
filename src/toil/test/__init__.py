@@ -84,6 +84,12 @@ def get_data(filename: str) -> AbstractContextManager[Path]:
     return _fallback_get_data(filename)
 
 
+def get_cwltool_data(filename: str) -> AbstractContextManager[Path]:
+    """Returns an absolute path for a test file from the cwltool package."""
+    filename = os.path.normpath(filename)
+    return as_file(files("cwltool.tests") / filename)
+
+
 @pytest.mark.usefixtures("rootpath")
 class ToilTest(unittest.TestCase):
     """
