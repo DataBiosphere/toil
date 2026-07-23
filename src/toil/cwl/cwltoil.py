@@ -290,7 +290,7 @@ def try_prepull(
 # This section deals with the CWL promise system.
 #
 # This is not to be confused with the Toil promise system, except under
-# fconfusing circumstances.
+# confusing circumstances.
 #
 # The CWL language has a lot of machinery around specifying where input values
 # come from: there's valueFrom, something called linkMerge, a system for
@@ -849,11 +849,11 @@ def toil_make_tool(
 # Processes in general can generate a lot of types of jobs, but CommandLineTools and ExpressionTools are typed as generating a more restricted set of possible types of jobs.
 # We want to be able to wrap them with the same wrapper.
 #
-# ExperssionTool's job() is also able to take a None for output_callbacks, while CommandLineTool's can't.
+# ExpressionTool's job() is also able to take a None for output_callbacks, while CommandLineTool's can't.
 #
 # We can't just say the wrapper mixin generates the more permissive type range because then it won't be substitutable for a CommandLineTool, etc.
 #
-# So to type this we have to do a bunch of ugly type stuff, and event hen we need to cast (see https://github.com/python/mypy/issues/17192#issuecomment-4995017670)
+# So to type this we have to do a bunch of ugly type stuff, and even then we need to cast (see https://github.com/python/mypy/issues/17192#issuecomment-4995017670)
 
 JobTypesT = TypeVar("JobTypesT", covariant=True)
 CallbackTypesT = TypeVar(
@@ -882,7 +882,7 @@ class ToilTool(Generic[JobTypesT, CallbackTypesT]):
     This MUST be mixed in earlier in the method resolution order than an actual
     concrete implementation of cwltool.process.Process.
 
-    Ypu also need to tell it the types that the mixed-with Process uses on its
+    You also need to tell it the types that the mixed-with Process uses on its
     run() method, so it can be wrapped with the right types.
     """
 
@@ -913,7 +913,7 @@ class ToilTool(Generic[JobTypesT, CallbackTypesT]):
         Attach the Toil tool to the Toil file store it is running against.
 
         This is needed in order to allow hooks we add into the cwltool
-        tool-running code to talk to the file stroe for things like logging.
+        tool-running code to talk to the file store for things like logging.
 
         Must be called before the tool is executed.
         """
@@ -4584,7 +4584,7 @@ class CWLStartJob(CWLNamedJob):
 
 #####
 #
-# In this section, we have helper functions for loading and setting uop a
+# In this section, we have helper functions for loading and setting up a
 # workflow run, and the main CLI entry point function to run a CWL file.
 #
 #####
