@@ -1884,6 +1884,8 @@ class TestCWLv12Conformance:
         )
 
 
+# TODO: Why aren't these in TestCWLWorkflow? They run workflows.
+
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small_log_dir
@@ -2127,6 +2129,24 @@ def test_workflow_echo_string_scatter_capture_stdout(tmp_path: Path) -> None:
 
         assert "Finished toil run successfully" in p.stderr
         assert p.returncode == 0
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_captured_stderr_for_failed_job_is_reported(tmp_path: Path) -> None:
+    """
+    Make sure that standard error for failed jobs is logged, even when the job
+    is capturing standard error.
+    """
+    with get_data("test/cwl/fail_with_log.cwl") as cwl_file:
+        cmd = [
+            "toil-cwl-runner",
+            f"--jobStore=file:{tmp_path / 'jobStore'}",
+            str(cwl_file),
+        ]
+        p = subprocess.run(cmd, capture_output=True, text=True)
+        assert p.returncode != 0
+        assert "Message: This is a test" in p.stderr
 
 
 @needs_cwl
