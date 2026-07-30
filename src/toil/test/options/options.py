@@ -1,3 +1,5 @@
+import os
+
 from configargparse import ArgParser
 
 from toil.common import Toil, addOptions
@@ -48,3 +50,88 @@ class OptionsTest(ToilTest):
         with Toil(options) as toil:
             caching_value = toil.config.caching
         self.assertEqual(caching_value, True)
+
+    def test_workdir_created_if_missing(self):
+        """
+        --workDir should be created automatically if it doesn't exist (issue #5516).
+        """
+        parser = ArgParser()
+        addOptions(parser, jobstore_as_flag=True, wdl=False, cwl=False)
+        work_dir = os.path.join(self._createTempDir(), "missing-workdir")
+        test_args = [
+            f"--jobstore=file:{self._getTestJobStorePath()}",
+            f"--workDir={work_dir}",
+        ]
+        options = parser.parse_args(test_args)
+        self.assertFalse(os.path.exists(work_dir))
+        with Toil(options):
+            pass
+        self.assertTrue(os.path.isdir(work_dir))
+
+    def test_coordination_dir_created_if_missing(self):
+        """
+        --coordinationDir should be created automatically if it doesn't exist (issue #5516).
+        """
+        parser = ArgParser()
+        addOptions(parser, jobstore_as_flag=True, wdl=False, cwl=False)
+        coordination_dir = os.path.join(self._createTempDir(), "missing-coordination")
+        test_args = [
+            f"--jobstore=file:{self._getTestJobStorePath()}",
+            f"--coordinationDir={coordination_dir}",
+        ]
+        options = parser.parse_args(test_args)
+        self.assertFalse(os.path.exists(coordination_dir))
+        with Toil(options):
+            pass
+        self.assertTrue(os.path.isdir(coordination_dir))
+
+    def test_rundir_derives_workdir_and_coordination_dir(self):
+        """
+        --runDir should derive workDir/coordinationDir when they aren't explicitly set.
+        """
+        parser = ArgParser()
+        addOptions(parser, jobstore_as_flag=True, wdl=False, cwl=False)
+        run_dir = self._createTempDir()
+        test_args = [
+            f"--jobstore=file:{self._getTestJobStorePath()}",
+            f"--runDir={run_dir}",
+        ]
+        options = parser.parse_args(test_args)
+        with Toil(options) as toil:
+            config = toil.config
+        self.assertEqual(config.workDir, os.path.join(run_dir, "work"))
+        self.assertEqual(
+            config.coordination_dir, os.path.join(run_dir, "coordination")
+        )
+
+    def test_rundir_derives_jobstore_when_omitted(self):
+        """
+        --runDir should derive the job store location when --jobstore is not given.
+        Only reachable when --jobstore is an optional flag, as with the CWL/WDL runners.
+        """
+        parser = ArgParser()
+        addOptions(parser, jobstore_as_flag=True, wdl=False, cwl=False)
+        run_dir = self._createTempDir()
+        options = parser.parse_args([f"--runDir={run_dir}"])
+        with Toil(options) as toil:
+            config = toil.config
+        self.assertEqual(config.jobStore, f"file:{os.path.join(run_dir, 'jobstore')}")
+
+    def test_explicit_workdir_overrides_rundir(self):
+        """
+        An explicit --workDir should win over the --runDir-derived default.
+        """
+        parser = ArgParser()
+        addOptions(parser, jobstore_as_flag=True, wdl=False, cwl=False)
+        run_dir = self._createTempDir()
+        explicit_work_dir = self._createTempDir()
+        test_args = [
+            f"--jobstore=file:{self._getTestJobStorePath()}",
+            f"--runDir={run_dir}",
+            f"--workDir={explicit_work_dir}",
+        ]
+        options = parser.parse_args(test_args)
+        with Toil(options) as toil:
+            config = toil.config
+        self.assertEqual(config.workDir, explicit_work_dir)
+        self.assertFalse(os.path.exists(os.path.join(run_dir, "work")))

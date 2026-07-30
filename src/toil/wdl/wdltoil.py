@@ -5985,7 +5985,6 @@ def main() -> None:
     # TODO: the Toil context manager will do this again.
     set_logging_from_options(options)
 
-
     if options.runDir is not None:
         # A single --runDir was given. Derive defaults for the job store and
         # work dir from it, for anything not set explicitly. This has to

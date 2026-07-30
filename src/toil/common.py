@@ -354,7 +354,6 @@ class Config:
 
         # Core options
         set_option("jobStore")
-        # TODO: LOG LEVEL STRING
         set_option("workDir")
         set_option("coordination_dir")
         set_option("runDir")
@@ -1760,8 +1759,9 @@ class Toil(ContextManager["Toil"]):
         Return a path to a writable directory under which per-workflow directories exist.
 
         This directory is always required to exist on a machine, even if the Toil
-        worker has not run yet.  If your workers and leader have different temp
-        directories, you may need to set TOIL_WORKDIR.
+        worker has not run yet, and is created if it does not already exist. If
+        your workers and leader have different temp directories, you may need to
+        set TOIL_WORKDIR.
 
         :param configWorkDir: Value passed to the program using the --workDir flag
         :return: Path to the Toil work directory, constant across all machines
@@ -1773,9 +1773,13 @@ class Toil(ContextManager["Toil"]):
             or tempfile.gettempdir()
         )
         if not os.path.exists(workDir):
-            raise RuntimeError(
-                f"The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist."
-            )
+            try:
+                os.makedirs(workDir, exist_ok=True)
+            except OSError as e:
+                raise RuntimeError(
+                    f"The directory specified by --workDir or TOIL_WORKDIR "
+                    f"({workDir}) does not exist and could not be created: {e}"
+                )
         return workDir
 
     @classmethod

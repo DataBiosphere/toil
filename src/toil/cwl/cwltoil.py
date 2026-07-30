@@ -286,6 +286,7 @@ def ensure_no_collisions(
                 )
             seen_names.add(wanted_name)
 
+
 def try_prepull(
     cwl_tool_uri: str, runtime_context: cwltool.context.RuntimeContext, batchsystem: str
 ) -> None:
@@ -4763,7 +4764,7 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
             os.makedirs(options.workDir, exist_ok=True)
         if options.cachedir is None:
             options.cachedir = os.path.join(options.runDir, "image-cache")
-        
+
     workdir = options.workDir or tmp_outdir_prefix
 
     if options.jobStore is None:

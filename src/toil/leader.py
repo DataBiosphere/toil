@@ -34,6 +34,9 @@ from toil.batchSystems.abstractBatchSystem import (
     BatchJobExitReason,
     UpdatedBatchJobInfo,
 )
+from toil.batchSystems.abstractGridEngineBatchSystem import (
+    AbstractGridEngineBatchSystem,
+)
 from toil.bus import (
     JobCompletedMessage,
     JobFailedMessage,
@@ -53,6 +56,7 @@ from toil.job import (
     TemporaryID,
 )
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
+from toil.lib.io import ensure_dir_exists
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.clusterScaler import ScalerThread, NonScalableBatchSystemError
@@ -262,6 +266,22 @@ class Leader:
 
         :return: The return value of the root job's run function.
         """
+
+        # Toil.getToilWorkDir and get_local_workflow_coordination_dir already
+        # create these directories during Toil.__enter__, before the Leader
+        # exists. These calls are a defensive backstop for any code path that
+        # reaches Leader.run() without having gone through Toil.__enter__ first.
+        ensure_dir_exists(self.config.workDir, "--workDir")
+        ensure_dir_exists(self.config.coordination_dir, "--coordinationDir")
+        if isinstance(self.batchSystem, AbstractGridEngineBatchSystem):
+            # The batch system isn't available yet when Toil logs the other
+            # resolved run paths (see Toil._log_resolved_paths), so log this
+            # one here instead, now that it exists. Only grid batch systems
+            # actually write their own logs to this directory.
+            logger.info(
+                "Resolved batch logs dir: %s", self.batchSystem.get_batch_logs_dir()
+            )
+
         self.jobStore.write_kill_flag(kill=False)
 
         with enlighten.get_manager(
@@ -1593,17 +1613,11 @@ class Leader:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we
                 # reduce the try count here.
-                if replacement_job.logJobStoreFileID is None:
-                    logger.warning(
-                        "No log file is present, despite job failing: %s. "
-                        "Toil does not retain worker logs by default; rerun with "
-                        "--writeLogs=PATH or --writeLogsGzip=PATH to save failed "
-                        "jobs' logs to disk, or check the batch system's own "
-                        "logs (see --batchLogsDir) if you are running on a grid "
-                        "engine.",
-                         replacement_job,
-                    )
 
+                # Search for the batch system's own logs first, so the
+                # "no log file" warning below is only shown when Toil
+                # genuinely found nothing, and can say so specifically.
+                found_batch_system_log = False
                 if batch_system_id is not None:
                     # Look for any standard output/error files created by the batch system.
                     # They will only appear if the batch system actually supports
@@ -1625,6 +1639,7 @@ class Leader:
                         else:
                             with log_stream:
                                 if os.path.getsize(log_file) > 0:
+                                    found_batch_system_log = True
                                     StatsAndLogging.logWithFormatting(
                                         f'Log from job "{job_store_id}"',
                                         log_stream,
@@ -1659,6 +1674,32 @@ class Leader:
                                         "The batch system left an empty file %s"
                                         % log_file
                                     )
+
+                if (
+                    replacement_job.logJobStoreFileID is None
+                    and not found_batch_system_log
+                ):
+                    if batch_system_id is None:
+                        logger.warning(
+                            "No log file is present, despite job failing: %s. "
+                            "Toil does not retain worker logs by default; rerun with "
+                            "--writeLogs=PATH or --writeLogsGzip=PATH to save failed "
+                            "jobs' logs to disk. Toil was not able to look for logs "
+                            "from the batch system for this job; check the batch "
+                            "system's own tools or logs directly.",
+                            replacement_job,
+                        )
+                    else:
+                        logger.warning(
+                            "No log file is present, despite job failing: %s. "
+                            "Toil does not retain worker logs by default; rerun with "
+                            "--writeLogs=PATH or --writeLogsGzip=PATH to save failed "
+                            "jobs' logs to disk. Toil looked for the batch system's "
+                            "own logs (see --batchLogsDir) but found none; check the "
+                            "batch system's own tools or logs directly if you are "
+                            "running on a grid engine.",
+                            replacement_job,
+                        )
 
                 # Tell the job to reset itself after a failure.
                 # It needs to know the failure reason if available; some are handled specially.
