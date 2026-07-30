@@ -107,7 +107,10 @@ class OptionsTest(ToilTest):
     def test_rundir_derives_jobstore_when_omitted(self):
         """
         --runDir should derive the job store location when --jobstore is not given.
-        Only reachable when --jobstore is an optional flag, as with the CWL/WDL runners.
+        Only reachable for direct callers of the flag-based parser
+        (jobstore_as_flag=True); the CWL/WDL runners fill in their own jobStore
+        default before Config.setOptions ever runs, so they never hit this
+        branch in practice.
         """
         parser = ArgParser()
         addOptions(parser, jobstore_as_flag=True, wdl=False, cwl=False)

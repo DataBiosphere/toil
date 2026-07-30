@@ -369,9 +369,12 @@ class Config:
                 self.coordination_dir = os.path.join(self.runDir, "coordination")
                 os.makedirs(self.coordination_dir, exist_ok=True)
             if self.jobStore is None:
-                # Only reachable when --jobStore is optional (the CWL/WDL
-                # runners); the plain `toil` entry point requires jobStore
-                # as a positional argument, so it can never be None here.
+                # Only reachable for direct callers of the flag-based parser
+                # (jobstore_as_flag=True) that leave --jobStore unset. The
+                # CWL/WDL runners fill in their own jobStore default before
+                # calling setOptions, and the plain `toil` entry point
+                # requires jobStore as a positional argument, so neither
+                # ever reaches this branch in practice.
                 from toil.options.common import parse_jobstore
 
                 self.jobStore = parse_jobstore(
