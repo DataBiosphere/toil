@@ -14,9 +14,13 @@ name: "CodeQL"
 on:
   push:
     branches: [ master]
+              [ main ]
+              [ maintened ]
   pull_request:
     # The branches below must be a subset of the branches above
     branches: [ master ]
+              [ main ]
+              [ maintened ]
   schedule:
     - cron: '27 21 * * 4'
 
@@ -26,11 +30,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: read
+               write
       contents: read
-      security-events: write
-
-    strategy:
-      fail-fast: false
+                write
+      security-events: read
+                       write
+      
+      strategy:
+      fail-fast: true
       matrix:
         language: [ 'python' ]
         # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python' ]
