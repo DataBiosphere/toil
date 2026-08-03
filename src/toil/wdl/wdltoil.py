@@ -5993,6 +5993,11 @@ def main() -> None:
         # is never None (the fallback below always fills it in first).
         options.runDir = os.path.abspath(options.runDir)
         if options.jobStore is None:
+            # TODO: This path is fixed (<runDir>/jobstore), so multiple
+            # concurrent workflows sharing one --runDir will collide
+            # trying to create the same job store. Needs a unique suffix
+            # per invocation, like the mkdtemp fallback below used when
+            # --runDir isn't set.
             options.jobStore = "file:" + os.path.join(options.runDir, "jobstore")
         if options.workDir is None:
             options.workDir = os.path.join(options.runDir, "work")

@@ -375,6 +375,11 @@ class Config:
                 # calling setOptions, and the plain `toil` entry point
                 # requires jobStore as a positional argument, so neither
                 # ever reaches this branch in practice.
+                # TODO: This path is fixed (<runDir>/jobstore), so multiple
+                # concurrent workflows sharing one --runDir will collide
+                # trying to create the same job store. Needs a unique
+                # suffix per invocation, like the create_tmp_dir/mkdtemp
+                # fallback used when --runDir isn't set.
                 from toil.options.common import parse_jobstore
 
                 self.jobStore = parse_jobstore(
