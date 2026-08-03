@@ -250,6 +250,32 @@ class TestCWLWorkflow:
             # If the workflow runs, it must have had options
             cwltoil.main(args, stdout=st)
 
+    def test_cwl_run_dir(self, tmp_path: Path) -> None:
+        """
+        Test that --runDir derives the job store, work dir, and image cache
+        locations.
+        """
+        from toil.cwl import cwltoil
+
+        run_dir = tmp_path / "rundir"
+        with get_data("test/cwl/conditional_wf.cwl") as cwlfile:
+            args = [
+                f"--runDir={run_dir}",
+                "--clean=never",
+                "--outdir",
+                str(tmp_path / "out"),
+                str(cwlfile),
+                "--message",
+                "str",
+                "--sleep",
+                "2",
+            ]
+            st = StringIO()
+            cwltoil.main(args, stdout=st)
+        assert (run_dir / "jobstore").is_dir()
+        assert (run_dir / "work").is_dir()
+        assert (run_dir / "image-cache").is_dir()
+
     def _tester(
         self,
         cwlfile: Path,

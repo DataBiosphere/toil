@@ -53,7 +53,7 @@ class OptionsTest(ToilTest):
 
     def test_workdir_created_if_missing(self):
         """
-        --workDir should be created automatically if it doesn't exist (issue #5516).
+        --workDir should be created automatically if it doesn't exist.
         """
         parser = ArgParser()
         addOptions(parser, jobstore_as_flag=True, wdl=False, cwl=False)
@@ -70,7 +70,7 @@ class OptionsTest(ToilTest):
 
     def test_coordination_dir_created_if_missing(self):
         """
-        --coordinationDir should be created automatically if it doesn't exist (issue #5516).
+        --coordinationDir should be created automatically if it doesn't exist.
         """
         parser = ArgParser()
         addOptions(parser, jobstore_as_flag=True, wdl=False, cwl=False)
@@ -138,3 +138,19 @@ class OptionsTest(ToilTest):
             config = toil.config
         self.assertEqual(config.workDir, explicit_work_dir)
         self.assertFalse(os.path.exists(os.path.join(run_dir, "work")))
+
+    def test_resolved_paths_are_logged(self):
+        """
+        Entering Toil(options) should log the resolved job store, work dir,
+        and coordination dir at INFO.
+        """
+        parser = ArgParser()
+        addOptions(parser, jobstore_as_flag=True, wdl=False, cwl=False)
+        job_store = self._getTestJobStorePath()
+        options = parser.parse_args([f"--jobstore=file:{job_store}"])
+        with self.assertLogs("toil.common", level="INFO") as cm:
+            with Toil(options):
+                pass
+        self.assertTrue(
+            any("Resolved Toil run paths" in message for message in cm.output)
+        )
