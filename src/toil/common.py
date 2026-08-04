@@ -83,7 +83,7 @@ from toil.lib.misc import StrPath
 from toil.lib.retry import retry
 from toil.lib.threading import ensure_filesystem_lockable
 from toil.lib.url import URLAccess
-from toil.options.common import JOBSTORE_HELP, add_base_toil_options
+from toil.options.common import JOBSTORE_HELP, add_base_toil_options, parse_jobstore
 from toil.options.cwl import add_cwl_options
 from toil.options.runner import add_runner_options
 from toil.options.wdl import add_wdl_options
@@ -121,6 +121,41 @@ def get_default_config_path() -> str:
     The file at the path will not necessarily exist.
     """
     return os.path.join(get_toil_home(), "default.yaml")
+
+
+def derive_run_dir_defaults(
+    run_dir: str,
+    job_store: str | None,
+    work_dir: str | None,
+    coordination_dir: str | None,
+) -> tuple[str, str, str, str]:
+    """
+    Given --runDir and the current values of --jobStore, --workDir, and
+    --coordinationDir, fill in defaults for any of them left unset,
+    derived from --runDir. Explicit values always win.
+
+    Creates the derived work dir and coordination dir; the job store
+    creates itself.
+
+    :return: (run_dir, job_store, work_dir, coordination_dir), with
+             run_dir made absolute and the other three either the
+             original explicit value or the runDir-derived default.
+    """
+    run_dir = os.path.abspath(run_dir)
+    if job_store is None:
+        # TODO: This path is fixed (<runDir>/jobstore), so multiple
+        # concurrent workflows sharing one --runDir will collide trying
+        # to create the same job store. Needs a unique suffix per
+        # invocation, like the create_tmp_dir/mkdtemp fallback used when
+        # --runDir isn't set.
+        job_store = parse_jobstore(os.path.join(run_dir, "jobstore"))
+    if work_dir is None:
+        work_dir = os.path.join(run_dir, "work")
+        os.makedirs(work_dir, exist_ok=True)
+    if coordination_dir is None:
+        coordination_dir = os.path.join(run_dir, "coordination")
+        os.makedirs(coordination_dir, exist_ok=True)
+    return run_dir, job_store, work_dir, coordination_dir
 
 
 class Config:
@@ -360,31 +395,18 @@ class Config:
 
         if self.runDir is not None:
             # A single --runDir was given. Derive defaults for anything the
-            # user didn't set explicitly; explicit flags always win.
-            self.runDir = os.path.abspath(self.runDir)
-            if self.workDir is None:
-                self.workDir = os.path.join(self.runDir, "work")
-                os.makedirs(self.workDir, exist_ok=True)
-            if self.coordination_dir is None:
-                self.coordination_dir = os.path.join(self.runDir, "coordination")
-                os.makedirs(self.coordination_dir, exist_ok=True)
-            if self.jobStore is None:
-                # Only reachable for direct callers of the flag-based parser
-                # (jobstore_as_flag=True) that leave --jobStore unset. The
-                # CWL/WDL runners fill in their own jobStore default before
-                # calling setOptions, and the plain `toil` entry point
-                # requires jobStore as a positional argument, so neither
-                # ever reaches this branch in practice.
-                # TODO: This path is fixed (<runDir>/jobstore), so multiple
-                # concurrent workflows sharing one --runDir will collide
-                # trying to create the same job store. Needs a unique
-                # suffix per invocation, like the create_tmp_dir/mkdtemp
-                # fallback used when --runDir isn't set.
-                from toil.options.common import parse_jobstore
-
-                self.jobStore = parse_jobstore(
-                    os.path.join(self.runDir, "jobstore")
+            # user didn't set explicitly; explicit flags always win. The
+            # jobStore-derivation branch inside this is only reachable for
+            # direct callers of the flag-based parser (jobstore_as_flag=True)
+            # that leave --jobStore unset. The CWL/WDL runners fill in their
+            # own jobStore default before calling setOptions, and the plain
+            # `toil` entry point requires jobStore as a positional argument,
+            # so neither ever reaches it in practice.
+            self.runDir, self.jobStore, self.workDir, self.coordination_dir = (
+                derive_run_dir_defaults(
+                    self.runDir, self.jobStore, self.workDir, self.coordination_dir
                 )
+            )
 
         set_option("noStdOutErr")
         set_option("stats")

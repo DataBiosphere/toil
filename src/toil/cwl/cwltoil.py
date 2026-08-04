@@ -111,7 +111,13 @@ from schema_salad.sourceline import SourceLine
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
-from toil.common import Config, Toil, addOptions, InconsistentConfigurationError
+from toil.common import (
+    Config,
+    Toil,
+    addOptions,
+    derive_run_dir_defaults,
+    InconsistentConfigurationError,
+)
 from toil.cwl import check_cwltool_version
 from toil.lib.directory import DirectoryContents, decode_directory, encode_directory
 from toil.lib.interpreter import (
@@ -4751,22 +4757,19 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
 
     if options.runDir is not None:
         # A single --runDir was given. Derive defaults for the job store,
-        # work dir, and cachedir from it, for anything not set explicitly.
-        # This has to happen here, before the fallbacks below run, because
-        # by the time Toil's own Config.setOptions sees these options,
-        # options.jobStore is never None (the fallback below always fills
-        # it in first).
-        options.runDir = os.path.abspath(options.runDir)
-        if options.jobStore is None:
-            # TODO: This path is fixed (<runDir>/jobstore), so multiple
-            # concurrent workflows sharing one --runDir will collide
-            # trying to create the same job store. Needs a unique suffix
-            # per invocation, like the create_tmp_dir fallback below used
-            # when --runDir isn't set.
-            options.jobStore = "file:" + os.path.join(options.runDir, "jobstore")
-        if options.workDir is None:
-            options.workDir = os.path.join(options.runDir, "work")
-            os.makedirs(options.workDir, exist_ok=True)
+        # work dir, coordination dir, and cachedir from it, for anything
+        # not set explicitly. This has to happen here, before the
+        # fallbacks below run, because by the time Toil's own
+        # Config.setOptions sees these options, options.jobStore is
+        # never None (the fallback below always fills it in first).
+        options.runDir, options.jobStore, options.workDir, options.coordination_dir = (
+            derive_run_dir_defaults(
+                options.runDir,
+                options.jobStore,
+                options.workDir,
+                options.coordination_dir,
+            )
+        )
         if options.cachedir is None:
             options.cachedir = os.path.join(options.runDir, "image-cache")
 

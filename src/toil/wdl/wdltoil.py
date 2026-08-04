@@ -76,7 +76,12 @@ from WDL.runtime.task_container import TaskContainer
 from WDL.Tree import ReadSourceResult
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
-from toil.common import Toil, addOptions, InconsistentConfigurationError
+from toil.common import (
+    Toil,
+    addOptions,
+    derive_run_dir_defaults,
+    InconsistentConfigurationError,
+)
 from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -5986,22 +5991,20 @@ def main() -> None:
     set_logging_from_options(options)
 
     if options.runDir is not None:
-        # A single --runDir was given. Derive defaults for the job store and
-        # work dir from it, for anything not set explicitly. This has to
-        # happen here, before the fallback below runs, because by the time
-        # Toil's own Config.setOptions sees these options, options.jobStore
-        # is never None (the fallback below always fills it in first).
-        options.runDir = os.path.abspath(options.runDir)
-        if options.jobStore is None:
-            # TODO: This path is fixed (<runDir>/jobstore), so multiple
-            # concurrent workflows sharing one --runDir will collide
-            # trying to create the same job store. Needs a unique suffix
-            # per invocation, like the mkdtemp fallback below used when
-            # --runDir isn't set.
-            options.jobStore = "file:" + os.path.join(options.runDir, "jobstore")
-        if options.workDir is None:
-            options.workDir = os.path.join(options.runDir, "work")
-            os.makedirs(options.workDir, exist_ok=True)
+        # A single --runDir was given. Derive defaults for the job store,
+        # work dir, and coordination dir from it, for anything not set
+        # explicitly. This has to happen here, before the fallback below
+        # runs, because by the time Toil's own Config.setOptions sees
+        # these options, options.jobStore is never None (the fallback
+        # below always fills it in first).
+        options.runDir, options.jobStore, options.workDir, options.coordination_dir = (
+            derive_run_dir_defaults(
+                options.runDir,
+                options.jobStore,
+                options.workDir,
+                options.coordination_dir,
+            )
+        )
 
     # Make sure we have a jobStore
     if options.jobStore is None:
