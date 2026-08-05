@@ -143,12 +143,13 @@ def derive_run_dir_defaults(
     """
     run_dir = os.path.abspath(run_dir)
     if job_store is None:
-        # TODO: This path is fixed (<runDir>/jobstore), so multiple
-        # concurrent workflows sharing one --runDir will collide trying
-        # to create the same job store. Needs a unique suffix per
-        # invocation, like the create_tmp_dir/mkdtemp fallback used when
-        # --runDir isn't set.
-        job_store = parse_jobstore(os.path.join(run_dir, "jobstore"))
+        # Give each invocation its own job store directory under runDir,
+        # so concurrent workflows sharing one --runDir don't collide
+        # trying to create the same job store. The exact path is logged
+        # at startup (see Toil._log_resolved_paths) for --restart.
+        job_store = parse_jobstore(
+            os.path.join(run_dir, f"jobstore-{uuid.uuid4().hex}")
+        )
     if work_dir is None:
         work_dir = os.path.join(run_dir, "work")
         os.makedirs(work_dir, exist_ok=True)
