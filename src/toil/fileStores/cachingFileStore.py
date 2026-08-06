@@ -1800,6 +1800,12 @@ class CachingFileStore(AbstractFileStore):
                 "Cannot create link to missing cache file %s", cachedPath
             )
 
+            try:
+                stats = os.lstat(cachedPath)
+                logger.critical("Is a broken symlink with stats: %s", stats)
+            except OSError:
+                pass
+
             # Dump relevant bits of the database
             self._read(
                 "SELECT * FROM files WHERE path = ?",
