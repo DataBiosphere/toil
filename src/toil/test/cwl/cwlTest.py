@@ -252,8 +252,10 @@ class TestCWLWorkflow:
 
     def test_cwl_run_dir(self, tmp_path: Path) -> None:
         """
-        Test that --runDir derives the job store, work dir, and image cache
-        locations.
+        Test that --runDir derives the CWL image cache location. The job
+        store/work dir derivation is covered by
+        commonTests.TestDeriveRunDirDefaults; cachedir is CWL-specific and
+        isn't.
         """
         from toil.cwl import cwltoil
 
@@ -261,7 +263,6 @@ class TestCWLWorkflow:
         with get_data("test/cwl/conditional_wf.cwl") as cwlfile:
             args = [
                 f"--runDir={run_dir}",
-                "--clean=never",
                 "--outdir",
                 str(tmp_path / "out"),
                 str(cwlfile),
@@ -272,8 +273,6 @@ class TestCWLWorkflow:
             ]
             st = StringIO()
             cwltoil.main(args, stdout=st)
-        assert (run_dir / "jobstore").is_dir()
-        assert (run_dir / "work").is_dir()
         assert (run_dir / "image-cache").is_dir()
 
     def _tester(

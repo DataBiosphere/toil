@@ -85,60 +85,6 @@ class OptionsTest(ToilTest):
             pass
         self.assertTrue(os.path.isdir(coordination_dir))
 
-    def test_rundir_derives_workdir_and_coordination_dir(self):
-        """
-        --runDir should derive workDir/coordinationDir when they aren't explicitly set.
-        """
-        parser = ArgParser()
-        addOptions(parser, jobstore_as_flag=True, wdl=False, cwl=False)
-        run_dir = self._createTempDir()
-        test_args = [
-            f"--jobstore=file:{self._getTestJobStorePath()}",
-            f"--runDir={run_dir}",
-        ]
-        options = parser.parse_args(test_args)
-        with Toil(options) as toil:
-            config = toil.config
-        self.assertEqual(config.workDir, os.path.join(run_dir, "work"))
-        self.assertEqual(
-            config.coordination_dir, os.path.join(run_dir, "coordination")
-        )
-
-    def test_rundir_derives_jobstore_when_omitted(self):
-        """
-        --runDir should derive the job store location when --jobstore is not given.
-        Only reachable for direct callers of the flag-based parser
-        (jobstore_as_flag=True); the CWL/WDL runners fill in their own jobStore
-        default before Config.setOptions ever runs, so they never hit this
-        branch in practice.
-        """
-        parser = ArgParser()
-        addOptions(parser, jobstore_as_flag=True, wdl=False, cwl=False)
-        run_dir = self._createTempDir()
-        options = parser.parse_args([f"--runDir={run_dir}"])
-        with Toil(options) as toil:
-            config = toil.config
-        self.assertEqual(config.jobStore, f"file:{os.path.join(run_dir, 'jobstore')}")
-
-    def test_explicit_workdir_overrides_rundir(self):
-        """
-        An explicit --workDir should win over the --runDir-derived default.
-        """
-        parser = ArgParser()
-        addOptions(parser, jobstore_as_flag=True, wdl=False, cwl=False)
-        run_dir = self._createTempDir()
-        explicit_work_dir = self._createTempDir()
-        test_args = [
-            f"--jobstore=file:{self._getTestJobStorePath()}",
-            f"--runDir={run_dir}",
-            f"--workDir={explicit_work_dir}",
-        ]
-        options = parser.parse_args(test_args)
-        with Toil(options) as toil:
-            config = toil.config
-        self.assertEqual(config.workDir, explicit_work_dir)
-        self.assertFalse(os.path.exists(os.path.join(run_dir, "work")))
-
     def test_resolved_paths_are_logged(self):
         """
         Entering Toil(options) should log the resolved job store, work dir,

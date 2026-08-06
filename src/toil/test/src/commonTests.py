@@ -14,10 +14,11 @@
 import logging
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
-from toil.common import Config, InconsistentConfigurationError
+from toil.common import Config, InconsistentConfigurationError, derive_run_dir_defaults
 
 logger = logging.getLogger(__name__)
 logging.basicConfig()
@@ -43,5 +44,75 @@ class TestConfig:
         assert "single_machine" in str(info.value)
         assert "aws" in str(info.value)
 
+
+class TestDeriveRunDirDefaults:
+    """
+    Tests for derive_run_dir_defaults, which backs --runDir.
+    """
+
+    def test_all_explicit_values_are_unchanged(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "rundir"
+        job_store = "file:/some/explicit/jobstore"
+        work_dir = str(tmp_path / "explicit-work")
+        coordination_dir = str(tmp_path / "explicit-coordination")
+
+        result = derive_run_dir_defaults(
+            str(run_dir), job_store, work_dir, coordination_dir
+        )
+
+        assert result == (str(run_dir), job_store, work_dir, coordination_dir)
+        # Explicit paths are the caller's responsibility; this function
+        # should not have touched the filesystem for them.
+        assert not os.path.exists(work_dir)
+        assert not os.path.exists(coordination_dir)
+
+    def test_derives_all_three_under_run_dir(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "rundir"
+
+        result_run_dir, job_store, work_dir, coordination_dir = (
+            derive_run_dir_defaults(str(run_dir), None, None, None)
+        )
+
+        assert result_run_dir == str(run_dir)
+        assert job_store.startswith(f"file:{run_dir / 'jobstore-'}")
+        assert work_dir == str(run_dir / "work")
+        assert coordination_dir == str(run_dir / "coordination")
+
+        # work_dir and coordination_dir are created directly; the job
+        # store is only a path here and creates itself later.
+        assert os.path.isdir(work_dir)
+        assert os.path.isdir(coordination_dir)
+        assert not os.path.exists(job_store.removeprefix("file:"))
+
+    def test_job_store_paths_are_unique_across_calls(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "rundir"
+
+        _, job_store_1, _, _ = derive_run_dir_defaults(str(run_dir), None, None, None)
+        _, job_store_2, _, _ = derive_run_dir_defaults(str(run_dir), None, None, None)
+
+        assert job_store_1 != job_store_2
+
+    def test_mixed_explicit_and_derived(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "rundir"
+        explicit_work_dir = str(tmp_path / "explicit-work")
+
+        _, job_store, work_dir, coordination_dir = derive_run_dir_defaults(
+            str(run_dir), None, explicit_work_dir, None
+        )
+
+        assert work_dir == explicit_work_dir
+        assert not os.path.exists(explicit_work_dir)
+        assert job_store.startswith(f"file:{run_dir / 'jobstore-'}")
+        assert coordination_dir == str(run_dir / "coordination")
+        assert os.path.isdir(coordination_dir)
+
+    def test_relative_run_dir_is_absolutized(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        result_run_dir, _, _, _ = derive_run_dir_defaults(
+            "relative-rundir", None, None, None
+        )
+        assert result_run_dir == str(tmp_path / "relative-rundir")
 
 
