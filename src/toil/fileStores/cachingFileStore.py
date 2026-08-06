@@ -1808,28 +1808,28 @@ class CachingFileStore(AbstractFileStore):
                 (cachedPath,)
             )
             file_id = None
-            row = cur.fetchone()
+            row = self.cur.fetchone()
             while row is not None:
                 logger.critical("File row: %s", row)
                 file_id = row[0]
-                row = cur.fetchone()
+                row = self.cur.fetchone()
             self._read(
                 "SELECT * FROM refs WHERE path = ?",
                 (localFilePath,)
             )
-            row = cur.fetchone()
+            row = self.cur.fetchone()
             while row is not None:
                 logger.critical("Our ref row: %s", row)
-                row = cur.fetchone()
+                row = self.cur.fetchone()
             if file_id is not None:
                 self._read(
                     "SELECT * FROM refs WHERE file_id = ?",
                     (file_id,)
                 )
-                row = cur.fetchone()
+                row = self.cur.fetchone()
                 while row is not None:
                     logger.critical("Cache ref row: %s", row)
-                    row = cur.fetchone()
+                    row = self.cur.fetchone()
             else:
                 logger.critical("Cached file not found in database either")
 
