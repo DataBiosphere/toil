@@ -48,6 +48,12 @@ from toil.version import python
 logger = logging.getLogger(__name__)
 
 
+def wait_for_file(file_path: str) -> None:
+    """Wait until a file exists."""
+    while not os.path.exists(file_path):
+        time.sleep(0.1)
+
+
 @pytest.fixture(scope="function")
 def unsortedFile(tmp_path: Path) -> Generator[Path]:
     try:
@@ -390,19 +396,26 @@ class TestUtils:
                     current_status == status
                 ), "Waited {seconds} seconds without status reaching {status}; stuck at {current_status}"
 
-    def testGetPIDStatus(self, tmp_path: Path, unsortedFile: Path) -> None:
+    def testGetPIDStatus(self, tmp_path: Path) -> None:
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
         jobstore = tmp_path / "jobstore"
-        outputFile = tmp_path / "someSortedStuff.txt"
+        release_file = tmp_path / "release-workflow"
+        workflow = """
+from toil.job import Job
+from toil.test.utils.utilsTest import wait_for_file
+import sys
+
+options = Job.Runner.getDefaultOptions(sys.argv[1])
+options.clean = "never"
+Job.Runner.startToil(Job.wrapFn(wait_for_file, sys.argv[2]), options)
+"""
         wf = subprocess.Popen(
             [
                 python,
-                "-m",
-                "toil.test.sort.sort",
-                jobstore.as_uri(),
-                f"--fileToSort={unsortedFile}",
-                f"--outputFile={outputFile}",
-                "--clean=never",
+                "-c",
+                workflow,
+                str(jobstore),
+                str(release_file),
             ]
         )
         self.check_status(
@@ -412,6 +425,7 @@ class TestUtils:
             process=wf,
             seconds=60,
         )
+        release_file.touch()
         wf.wait()
         self.check_status(
             jobstore,
