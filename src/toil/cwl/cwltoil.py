@@ -2890,10 +2890,13 @@ class ResolveIndirect(CWLNamedJob):
 
 class CWLJobWrapper(CWLNamedJob):
     """
-    Wrap a CWL job that uses dynamic resources requirement.
+    Wrap a CWL job that uses a dynamic resources requirement, or that may be
+    skipped by a `when` conditional that can't be safely evaluated until the
+    step's inputs are resolved.
 
-    When executed, this creates a new child job which has the correct resource
-    requirement set.
+    When executed, this runs on the leader with minimal resources, resolves
+    the job's inputs, and then either reports the step as skipped or creates
+    a new child job which has the correct resource requirement set.
     """
 
     def __init__(
@@ -2921,7 +2924,7 @@ class CWLJobWrapper(CWLNamedJob):
         """Create a child job with the correct resource requirements set."""
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
-        # Check confitional to license full evaluation of job inputs.
+        # Check conditional to license full evaluation of job inputs.
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
 
@@ -3507,11 +3510,12 @@ def makeJob(
         wfjob.addFollowOn(followOn)
         return wfjob, followOn
     else:
-        # Decied if we have any requirements we care about that are dynamic
+        # Decide if we have any requirements we care about that are dynamic
         REQUIREMENT_TYPES = [
             "ResourceRequirement",
             "http://commonwl.org/cwltool#CUDARequirement",
         ]
+        has_dynamic_resource_requirement = False
         for requirement_type in REQUIREMENT_TYPES:
             req, _ = tool.get_requirement(requirement_type)
             if req:
@@ -3519,17 +3523,24 @@ def makeJob(
                     if isinstance(r, str) and ("$(" in r or "${" in r):
                         # One of the keys in this requirement has a text substitution in it.
                         # TODO: This is not a real lex!
+                        has_dynamic_resource_requirement = True
 
-                        # Found a dynamic resource requirement so use a job wrapper
-                        job_wrapper = CWLJobWrapper(
-                            cast(ToilCommandLineTool, tool),
-                            jobobj,
-                            runtime_context,
-                            parent_name=parent_name,
-                            conditional=conditional,
-                        )
-                        return job_wrapper, job_wrapper
-        # Otherwise, all requirements are known now.
+        if has_dynamic_resource_requirement or (
+            conditional is not None and conditional.expression is not None
+        ):
+            # Resource requirements and the `when` conditional can depend on
+            # promises from upstream steps that only resolve once the job
+            # runs, so check them in a cheap local wrapper first.
+            job_wrapper = CWLJobWrapper(
+                cast(ToilCommandLineTool, tool),
+                jobobj,
+                runtime_context,
+                parent_name=parent_name,
+                conditional=conditional,
+            )
+            return job_wrapper, job_wrapper
+        # Otherwise, all requirements are known now, and the step is
+        # unconditional, so it can be scheduled directly.
         job = CWLJob(
             tool,
             jobobj,

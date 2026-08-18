@@ -2083,6 +2083,83 @@ def test_pick_value_with_one_null_value(
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
+def test_skipped_step_runs_locally(
+    caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    """
+    A step skipped by its `when` condition must only run the CWLJobWrapper not the CWLJob. See: #3990.
+    """
+    from toil.cwl import cwltoil
+
+    with get_data("test/cwl/conditional_wf.cwl") as cwl_file:
+        with get_data("test/cwl/conditional_wf.yaml") as job_file:
+            with caplog.at_level(logging.DEBUG, logger="toil.leader"):
+                cwltoil.main(
+                    ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), str(job_file), "--disableChaining=True"]
+                )
+                assert any(
+                    "Finished toil run successfully" in record.getMessage()
+                    for record in caplog.records
+                ), "Toil run didn't finish"
+                assert any(
+                        "Issued job 'CWLJobWrapper'" in record.getMessage()
+                        for record in caplog.records
+                ), "'CWLJobWrapper' not issued"
+                assert not any(
+                        "Issued job 'CWLJob'" in record.getMessage()
+                        for record in caplog.records
+                ), "'CWLJob' issued"
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_when_depends_on_step_output(
+    caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    """
+    A step's `when` can reference an upstream step's output, still an
+    unresolved promise at job-construction time. See: #3990.
+    """
+    from toil.cwl import cwltoil
+
+    with get_data("test/cwl/conditional_step_depends_on_step.cwl") as cwl_file:
+        with caplog.at_level(logging.DEBUG, logger="toil.leader"):
+            cwltoil.main(
+                ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), "--sleep", "10"]
+            )
+            assert any(
+                # Look for return values instead of a message
+                "Finished toil run successfully" in record.getMessage()
+                for record in caplog.records
+            )
+            """
+            for record in caplog.records:
+                if (
+                    record.name == "toil.leader"
+                    and "Issued job" in record.getMessage()
+                    and "consume" in record.getMessage()
+                ):
+                    assert record.levelno == logging.DEBUG
+
+        caplog.clear()
+        with caplog.at_level(logging.DEBUG, logger="toil.leader"):
+            cwltoil.main(
+                ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), "--sleep", "2"]
+            )
+            issuances = [
+                record
+                for record in caplog.records
+                if record.name == "toil.leader"
+                and "Issued job" in record.getMessage()
+                and "consume" in record.getMessage()
+            ]
+            assert any(record.levelno == logging.INFO for record in issuances)"""
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
 def test_workflow_echo_string(tmp_path: Path) -> None:
     with get_data("test/cwl/echo_string.cwl") as cwl_file:
         cmd = [
