@@ -56,7 +56,6 @@ from toil.job import (
     TemporaryID,
 )
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
-from toil.lib.io import ensure_dir_exists
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.clusterScaler import ScalerThread, NonScalableBatchSystemError
@@ -267,12 +266,6 @@ class Leader:
         :return: The return value of the root job's run function.
         """
 
-        # Toil.getToilWorkDir and get_local_workflow_coordination_dir already
-        # create these directories during Toil.__enter__, before the Leader
-        # exists. These calls are a defensive backstop for any code path that
-        # reaches Leader.run() without having gone through Toil.__enter__ first.
-        ensure_dir_exists(self.config.workDir, "--workDir")
-        ensure_dir_exists(self.config.coordination_dir, "--coordinationDir")
         if isinstance(self.batchSystem, AbstractGridEngineBatchSystem):
             # The batch system isn't available yet when Toil logs the other
             # resolved run paths (see Toil._log_resolved_paths), so log this
@@ -1679,27 +1672,32 @@ class Leader:
                     replacement_job.logJobStoreFileID is None
                     and not found_batch_system_log
                 ):
+                    # Alert the user that the worker failed to report in
+                    # like it was supposed to, and say specifically whether
+                    # Toil looked for batch system logs and found nothing,
+                    # or wasn't able to look in the first place.
+                    shared_message = (
+                        "No log file is present, despite job failing: %s. "
+                        "Toil does not retain worker logs by default; rerun "
+                        "with --writeLogs=PATH or --writeLogsGzip=PATH to "
+                        "save failed jobs' logs to disk. "
+                    )
                     if batch_system_id is None:
-                        logger.warning(
-                            "No log file is present, despite job failing: %s. "
-                            "Toil does not retain worker logs by default; rerun with "
-                            "--writeLogs=PATH or --writeLogsGzip=PATH to save failed "
-                            "jobs' logs to disk. Toil was not able to look for logs "
-                            "from the batch system for this job; check the batch "
-                            "system's own tools or logs directly.",
-                            replacement_job,
+                        variable_message = (
+                            "Toil was not able to look for logs from the "
+                            "batch system for this job; check the batch "
+                            "system's own tools or logs directly."
                         )
                     else:
-                        logger.warning(
-                            "No log file is present, despite job failing: %s. "
-                            "Toil does not retain worker logs by default; rerun with "
-                            "--writeLogs=PATH or --writeLogsGzip=PATH to save failed "
-                            "jobs' logs to disk. Toil looked for the batch system's "
-                            "own logs (see --batchLogsDir) but found none; check the "
-                            "batch system's own tools or logs directly if you are "
-                            "running on a grid engine.",
-                            replacement_job,
+                        variable_message = (
+                            "Toil looked for the batch system's own logs "
+                            "(see --batchLogsDir) but found none; check the "
+                            "batch system's own tools or logs directly if "
+                            "you are running on a grid engine."
                         )
+                    logger.warning(
+                        shared_message + variable_message, replacement_job
+                    )
 
                 # Tell the job to reset itself after a failure.
                 # It needs to know the failure reason if available; some are handled specially.
