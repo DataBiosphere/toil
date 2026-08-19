@@ -653,20 +653,23 @@ class ValueFrom:
         for v in step_inputs.values():
             val = cast(CWLObjectType, v)
             source_input = getattr(self.source, "input", {})
-            if isinstance(val, dict) and isinstance(source_input, dict):
-                if (
-                    val.get("contents") is None
-                    and source_input.get("loadContents") is True
-                ):
-                    # This is safe to use even if we're bypassing the file
-                    # store for the workflow. In that case, no toilfile:// or
-                    # other special URIs will exist in the workflow to be read
-                    # from, and ToilFsAccess still supports file:// URIs.
-                    fs_access = functools.partial(ToilFsAccess, file_store=file_store)
-                    with fs_access("").open(cast(str, val["location"]), "rb") as f:
-                        val["contents"] = cwltool.builder.content_limit_respected_read(
-                            f
-                        )
+            if (
+                isinstance(val, dict)
+                and isinstance(source_input, dict)
+                and val.get("class") == "File"
+                and val.get("contents") is None
+                and val.get("location") is not None
+                and source_input.get("loadContents") is True
+            ):
+                # This is safe to use even if we're bypassing the file
+                # store for the workflow. In that case, no toilfile:// or
+                # other special URIs will exist in the workflow to be read
+                # from, and ToilFsAccess still supports file:// URIs.
+                fs_access = functools.partial(ToilFsAccess, file_store=file_store)
+                with fs_access("").open(cast(str, val["location"]), "rb") as f:
+                    val["contents"] = cwltool.builder.content_limit_respected_read(
+                        f
+                    )
 
     def resolve(self) -> Any:
         """
