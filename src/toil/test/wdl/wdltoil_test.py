@@ -389,6 +389,30 @@ class TestWDL:
                 assert os.path.exists(result["ga4ghMd5.value"])
                 assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
 
+    @needs_singularity_or_docker
+    def test_documentation_quickstart(self, tmp_path: Path) -> None:
+        """Test the WDL quickstart example from the documentation."""
+        with get_data("test/docs/scripts/wdl-helloworld.wdl") as wdl:
+            with get_data("test/docs/scripts/wdl-helloworld.json") as json_file:
+                result_json = subprocess.check_output(
+                    self.base_command
+                    + [
+                        str(wdl),
+                        str(json_file),
+                        "-o",
+                        str(tmp_path),
+                        "--logDebug",
+                        "--retryCount=0",
+                    ]
+                )
+                result = json.loads(result_json)
+
+                assert "write_simple_file.write_file.test" in result
+                output_path = result["write_simple_file.write_file.test"]
+                assert os.path.exists(output_path)
+                with open(output_path) as f:
+                    assert f.read().strip() == "Hello world!"
+
     @needs_singularity
     def test_sif_image(self, tmp_path: Path) -> None:
         """Test if Toil can run a SIF image as a container"""
