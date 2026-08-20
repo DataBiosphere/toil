@@ -76,7 +76,7 @@ def decrypt(ciphertext: bytes, keyPath: str) -> bytes:
     >>> with open(k, 'wb') as f:
     ...     _ = f.write(nacl.utils.random(SecretBox.KEY_SIZE))
     >>> ciphertext = encrypt("testMessage".encode('utf-8'), k)
-    >>> ciphertext = b'5' + ciphertext[1:]
+    >>> ciphertext = ((ciphertext[1] + 1) % 256).to_bytes(length=1, byteorder="big") + ciphertext[1:]
     >>> decrypt(ciphertext, k) # doctest: +IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
     ...
