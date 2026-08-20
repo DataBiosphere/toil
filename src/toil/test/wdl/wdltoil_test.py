@@ -62,8 +62,8 @@ WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
 WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + [
     "relative_paths_context",  # Workflow succeeds but output content does not match expected ("Expected and result do not match!")
     "file_directory_equality",  # String to Directory coercion not yet implemented.
-    "single_return_code_task",  # Workflow did not return the correct return code! Got: 1. Expected: 0.
-    "all_return_codes_task",  # Workflow did not return the correct return code! Got: 42. Expected: 0.
+    "single_return_code_task",  # Task correctly exits 1 as declared via requirements.return_codes, but Toil/miniwdl still requires exit code 0 - return_codes override is not honored
+    "all_return_codes_task",  # Task correctly exits 42 as declared via requirements.return_codes: "*", but Toil/miniwdl still requires exit code 0 - return_codes override is not honored
     "test_runtime_info_task",  # WDL.Error.EvalError from a KeyError; task runtime global still not fully exposed
     "placeholder_none",  # WDL.Error.EvalError: select_first() given empty or all-null array; prevent this or append a default value
     "environment_variable_should_echo",  # Now parses; Expected and result do not match!

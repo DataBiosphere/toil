@@ -858,6 +858,7 @@ def fill_execution_cache(
     output_bindings: WDLBindings,
     file_store: AbstractFileStore,
     wdl_options: WDLContext,
+    input_bindings: WDLBindings,
     miniwdl_logger: logging.Logger | None = None,
     miniwdl_config: WDL.runtime.config.Loader | None = None,
 ) -> WDLBindings:
@@ -946,7 +947,12 @@ def fill_execution_cache(
     )
 
     # Save the bindings to the cache, representing all files with their shared filesystem paths.
-    miniwdl_cache.put(cache_key, view_shared_fs_paths(output_bindings))
+    miniwdl_cache.put(
+        cache_key,
+        view_shared_fs_paths(output_bindings),
+        inputs=view_shared_fs_paths(input_bindings),
+        add_paths=WDL.runtime.cache.CallCacheAddPaths(),
+    )
     logger.debug("Saved result to cache under %s", cache_key)
 
     # Keep using the transformed bindings so that later tasks use
@@ -2415,6 +2421,8 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
                     WDL.Env.Bindings(
                         WDL.Env.Binding("file", WDL.Value.File(exported_path))
                     ),
+                    inputs=file_input_bindings,
+                    add_paths=WDL.runtime.cache.CallCacheAddPaths(),
                 )
 
                 # Apply the shared filesystem path to the virtualized file
@@ -4531,6 +4539,7 @@ class WDLTaskJob(WDLBaseJob):
                 output_bindings,
                 file_store,
                 self._wdl_options,
+                unwrap(self._task_internal_bindings),
                 miniwdl_logger=miniwdl_logger,
                 miniwdl_config=miniwdl_config,
             )
@@ -5632,6 +5641,7 @@ class WDLWorkflowJob(WDLSectionJob):
             self._enclosing_bindings,
             wdl_options=self._wdl_options,
             cache_key=cache_key,
+            input_bindings=bindings,
             local=True,
         )
         sink.addFollowOn(outputs_job)
@@ -5654,6 +5664,7 @@ class WDLOutputsJob(WDLBaseJob):
         enclosing_bindings: WDLBindings,
         wdl_options: WDLContext,
         cache_key: str | None = None,
+        input_bindings: Promised[WDLBindings] | None = None,
         **kwargs: Any,
     ):
         """
@@ -5667,6 +5678,9 @@ class WDLOutputsJob(WDLBaseJob):
         :param cache_key: If set and storing into the call cache is on, will
                cache the workflow execution result under the given key in a
                MiniWDL-compatible way.
+
+        :param input_bindings: The workflow call's input bindings, matching
+               what cache_key was derived from. Required if cache_key is set.
         """
         super().__init__(wdl_options=wdl_options, **kwargs)
 
@@ -5674,6 +5688,7 @@ class WDLOutputsJob(WDLBaseJob):
         self._enclosing_bindings = enclosing_bindings
         self._workflow = workflow
         self._cache_key = cache_key
+        self._input_bindings = input_bindings
 
     @report_wdl_errors("evaluate outputs")
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
@@ -5757,8 +5772,13 @@ class WDLOutputsJob(WDLBaseJob):
         output_bindings = virtualize_inodes(output_bindings, standard_library)
 
         if self._cache_key is not None:
+            assert self._input_bindings is not None
             output_bindings = fill_execution_cache(
-                self._cache_key, output_bindings, file_store, self._wdl_options
+                self._cache_key,
+                output_bindings,
+                file_store,
+                self._wdl_options,
+                unwrap(self._input_bindings),
             )
 
         # Let Files that are not output or available outside the call go out of
