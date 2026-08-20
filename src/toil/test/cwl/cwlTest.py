@@ -2083,7 +2083,7 @@ def test_pick_value_with_one_null_value(
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
-def test_skipped_step_runs_locally(
+def test_when_false_not_scheduled(
     caplog: pytest.LogCaptureFixture, tmp_path: Path
 ) -> None:
     """
@@ -2114,47 +2114,53 @@ def test_skipped_step_runs_locally(
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
-def test_when_depends_on_step_output(
+def test_when_on_step_output_scheduled(
     caplog: pytest.LogCaptureFixture, tmp_path: Path
 ) -> None:
     """
-    A step's `when` can reference an upstream step's output, still an
-    unresolved promise at job-construction time. See: #3990.
+    A step whose `when` references an upstream step's output must still only
+    run the CWLJobWrapper when skipped, and the CWLJob when not. See: #3990.
     """
     from toil.cwl import cwltoil
 
     with get_data("test/cwl/conditional_step_depends_on_step.cwl") as cwl_file:
+        # produce/result (1) is not > 1: consume is skipped and only its
+        # CWLJobWrapper should run.
         with caplog.at_level(logging.DEBUG, logger="toil.leader"):
             cwltoil.main(
-                ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), "--sleep", "10"]
+                ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), "--sleep", "1", "--disableChaining=True"]
             )
             assert any(
-                # Look for return values instead of a message
                 "Finished toil run successfully" in record.getMessage()
                 for record in caplog.records
-            )
-            """
-            for record in caplog.records:
-                if (
-                    record.name == "toil.leader"
-                    and "Issued job" in record.getMessage()
-                    and "consume" in record.getMessage()
-                ):
-                    assert record.levelno == logging.DEBUG
+            ), "Toil run didn't finish"
+            assert any(
+                "Issued job 'CWLJobWrapper'" in record.getMessage()
+                and "consume" in record.getMessage()
+                for record in caplog.records
+            ), "consume's 'CWLJobWrapper' not issued"
+            assert not any(
+                "Issued job 'CWLJob'" in record.getMessage()
+                and "consume" in record.getMessage()
+                for record in caplog.records
+            ), "consume's real 'CWLJob' issued despite being skipped"
 
         caplog.clear()
+
+        # produce/result (2) is > 1: consume should actually run.
         with caplog.at_level(logging.DEBUG, logger="toil.leader"):
             cwltoil.main(
-                ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), "--sleep", "2"]
+                ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), "--sleep", "2", "--disableChaining=True"]
             )
-            issuances = [
-                record
+            assert any(
+                "Finished toil run successfully" in record.getMessage()
                 for record in caplog.records
-                if record.name == "toil.leader"
-                and "Issued job" in record.getMessage()
+            ), "Toil run didn't finish"
+            assert any(
+                "Issued job 'CWLJob'" in record.getMessage()
                 and "consume" in record.getMessage()
-            ]
-            assert any(record.levelno == logging.INFO for record in issuances)"""
+                for record in caplog.records
+            ), "consume's real 'CWLJob' not issued"
 
 
 @needs_cwl
