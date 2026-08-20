@@ -406,12 +406,16 @@ class TestUtils:
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
         jobstore = tmp_path / "jobstore"
         release_file = tmp_path / "release-workflow"
+        # Get the name of the module.
+        # The loader exists despite MyPy's protests; see
+        # <https://github.com/python/mypy/issues/4182>
+        module_name = __loader__.fullname # type: ignore
         # Run wait_for_file_workflow() as a child process.
         wf = subprocess.Popen(
             [
                 python,
                 "-c",
-                f"from {__loader__.fullname} import "
+                f"from {module_name} import "
                 f"wait_for_file_workflow as w; w()",
                 str(jobstore),
                 str(release_file),
