@@ -53,6 +53,12 @@ def wait_for_file(file_path: str) -> None:
     while not os.path.exists(file_path):
         time.sleep(0.1)
 
+def wait_for_file_workflow() -> None:
+    """Toil workflow that waits for the file in argument 2 to exist."""
+    options = Job.Runner.getDefaultOptions(sys.argv[1])
+    options.clean = "never"
+    Job.Runner.startToil(Job.wrapFn(wait_for_file, sys.argv[2]), options)
+
 
 @pytest.fixture(scope="function")
 def unsortedFile(tmp_path: Path) -> Generator[Path]:
@@ -400,24 +406,18 @@ class TestUtils:
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
         jobstore = tmp_path / "jobstore"
         release_file = tmp_path / "release-workflow"
-        workflow = """
-from toil.job import Job
-from toil.test.utils.utilsTest import wait_for_file
-import sys
-
-options = Job.Runner.getDefaultOptions(sys.argv[1])
-options.clean = "never"
-Job.Runner.startToil(Job.wrapFn(wait_for_file, sys.argv[2]), options)
-"""
+        # Run wait_for_file_workflow() as a child process.
         wf = subprocess.Popen(
             [
                 python,
                 "-c",
-                workflow,
+                f"from {__loader__.fullname} import "
+                f"wait_for_file_workflow as w; w()",
                 str(jobstore),
                 str(release_file),
             ]
         )
+        # Check the status by PID
         self.check_status(
             jobstore,
             "RUNNING",
