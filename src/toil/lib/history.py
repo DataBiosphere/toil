@@ -269,6 +269,10 @@ class HistoryManager:
                     CREATE TABLE workflows (
                         id TEXT NOT NULL PRIMARY KEY,
                         job_store TEXT NOT NULL,
+                        /*
+                        creation_time is when the database record was created,
+                        not when the workflow was first run
+                        */
                         creation_time REAL NOT NULL,
                         name TEXT,
                         trs_spec TEXT
