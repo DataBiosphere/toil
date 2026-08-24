@@ -6,12 +6,12 @@ class: Workflow
 requirements:
   InlineJavascriptRequirement: {}
 inputs:
-  sleep: int
+  number: int
 outputs: []
 steps:
   produce:
     in:
-      sleep: sleep
+      number: number
     out: [result]
     run:
       cwlVersion: v1.2
@@ -19,10 +19,10 @@ steps:
       requirements:
         InlineJavascriptRequirement: {}
       inputs:
-        sleep: int
+        number: int
       outputs:
         result: int
-      expression: "$({'result': inputs.sleep})"
+      expression: "$({'result': inputs.number})"
   consume:
     in:
       result: produce/result

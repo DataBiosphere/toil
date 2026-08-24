@@ -2890,13 +2890,11 @@ class ResolveIndirect(CWLNamedJob):
 
 class CWLJobWrapper(CWLNamedJob):
     """
-    Wrap a CWL job that uses a dynamic resources requirement, or that may be
-    skipped by a `when` conditional that can't be safely evaluated until the
-    step's inputs are resolved.
+    Determines how and whether to run the wrapped CWL job.
 
-    When executed, this runs on the leader with minimal resources, resolves
-    the job's inputs, and then either reports the step as skipped or creates
-    a new child job which has the correct resource requirement set.
+    Wraps a CWL job that uses a dynamic resource requirement or has a
+    conditional. This job is responsible for creating a CWLJob child with
+    the right resource requirements, when the job should not be skipped.
     """
 
     def __init__(

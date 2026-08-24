@@ -2128,7 +2128,7 @@ def test_when_on_step_output_scheduled(
         # CWLJobWrapper should run.
         with caplog.at_level(logging.DEBUG, logger="toil.leader"):
             cwltoil.main(
-                ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), "--sleep", "1", "--disableChaining=True"]
+                ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), "--number", "1", "--disableChaining=True"]
             )
             assert any(
                 "Finished toil run successfully" in record.getMessage()
@@ -2150,7 +2150,7 @@ def test_when_on_step_output_scheduled(
         # produce/result (2) is > 1: consume should actually run.
         with caplog.at_level(logging.DEBUG, logger="toil.leader"):
             cwltoil.main(
-                ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), "--sleep", "2", "--disableChaining=True"]
+                ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), "--number", "2", "--disableChaining=True"]
             )
             assert any(
                 "Finished toil run successfully" in record.getMessage()
