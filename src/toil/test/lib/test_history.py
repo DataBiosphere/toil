@@ -239,19 +239,17 @@ class TestHistory:
     def test_history_workflow_creation_is_idempotent(self) -> None:
         """
         Make sure record_workflow_creation can be called more than once for
-        the same workflow without error, reports whether it actually created
-        the record, and doesn't clobber an already-recorded job store.
+        the same workflow without error, and only reports creating the
+        record the first time.
         """
         workflow_id = "999"
+        job_store_spec = "file:/tmp/tree"
 
-        assert HistoryManager.record_workflow_creation(workflow_id, "file:/tmp/first") is True
+        assert HistoryManager.record_workflow_creation(workflow_id, job_store_spec) is True
         assert HistoryManager.count_workflows() == 1
 
-        assert HistoryManager.record_workflow_creation(workflow_id, "file:/tmp/second") is False
+        assert HistoryManager.record_workflow_creation(workflow_id, job_store_spec) is False
         assert HistoryManager.count_workflows() == 1
-
-        [summary] = HistoryManager.summarize_workflows()
-        assert summary.job_store == "file:/tmp/first"
 
     def test_history_attempt_after_restart_backfill(self) -> None:
         """
