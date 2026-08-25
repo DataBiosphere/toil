@@ -33,7 +33,6 @@ from urllib.request import Request, urlopen
 
 import pytest
 from stubserver import FTPStubServer
-import edit_distance
 
 from toil.common import Config
 from toil.fileStores import FileID
@@ -618,6 +617,7 @@ class AbstractJobStoreTest:
             assert "tigers" in other_many_hint_id
             assert "bears" in other_many_hint_id
 
+            import edit_distance
             assert edit_distance.edit_distance(many_hint_id, other_many_hint_id)[0] < 3, "IDs using hints must be low-entropy and human-findable, while not colliding even across nodes!"
 
             forbidden_hint_id = self.jobstore_initialized.write_file(str(get_a_file()), hints=["", "whales", "/", """
