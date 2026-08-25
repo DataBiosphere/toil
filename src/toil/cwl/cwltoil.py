@@ -403,9 +403,9 @@ class Conditional:
         self.requirements = requirements or []
         self.container_engine = container_engine
 
-    def is_conditional(self) -> bool:
-        """Whether this has an expression to evaluate."""
-        return self.expression is not None
+    def is_empty(self) -> bool:
+        """Whether this is an empty Conditional."""
+        return self.expression is None
 
     def is_false(self, job: CWLObjectType) -> bool:
         """
@@ -3523,7 +3523,7 @@ def makeJob(
                         has_dynamic_resource_requirement = True
 
         if has_dynamic_resource_requirement or (
-            conditional is not None and conditional.is_conditional()
+            conditional is not None and not conditional.is_empty()
         ):
             # Resource requirements and the `when` conditional can depend on
             # promises from upstream steps that only resolve once the job
