@@ -1406,10 +1406,18 @@ class TestCWLWorkflow:
             with subtests.test(msg=f"Testing input {in_file} for status {status}"):
                 with get_data(in_file) as jobfile:
                     args = [TRS_SPEC, str(jobfile), f"--outdir={str(tmp_path)}"]
-                    with patch("toil.common.HistoryManager.record_workflow_metadata") as mock_record:
+                    with patch(
+                        "toil.common.HistoryManager.record_workflow_creation",
+                        return_value=True,
+                    ), patch(
+                        "toil.common.HistoryManager.record_workflow_metadata"
+                    ) as mock_record:
                         # History tracking is off for the tests that aren't really
                         # history tests, so we check if the TRS ID goes into the
                         # history system and not really if it goes to Dockstore.
+                        # record_workflow_creation is also mocked to report that
+                        # it created a new record, since record_workflow_metadata
+                        # is only called when it does.
                         #
                         # We know that common.py is talking to the
                         # HistoryManager and that it imports it with as.
