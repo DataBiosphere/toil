@@ -403,6 +403,10 @@ class Conditional:
         self.requirements = requirements or []
         self.container_engine = container_engine
 
+    def is_conditional(self) -> bool:
+        """Whether this has an expression to evaluate."""
+        return self.expression is not None
+
     def is_false(self, job: CWLObjectType) -> bool:
         """
         Determine if expression evaluates to False given completed step inputs.
@@ -2951,11 +2955,9 @@ class CWLJob(CWLNamedJob):
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
         parent_name: str | None = None,
-        conditional: Conditional | None = None,
     ):
         """Store the context for later execution."""
         self.cwltool = tool
-        self.conditional = conditional or Conditional()
 
         if runtime_context.builder:
             self.builder = runtime_context.builder
@@ -3159,9 +3161,6 @@ class CWLJob(CWLNamedJob):
 
         # Deletes duplicate listings
         remove_redundant_mounts(cwljob)
-
-        if self.conditional.is_false(cwljob):
-            return self.conditional.skipped_outputs()
 
         fill_in_defaults(
             self.step_inputs, cwljob, self.runtime_context.make_fs_access("")
@@ -3524,7 +3523,7 @@ def makeJob(
                         has_dynamic_resource_requirement = True
 
         if has_dynamic_resource_requirement or (
-            conditional is not None and conditional.expression is not None
+            conditional is not None and conditional.is_conditional()
         ):
             # Resource requirements and the `when` conditional can depend on
             # promises from upstream steps that only resolve once the job
@@ -3544,7 +3543,6 @@ def makeJob(
             jobobj,
             runtime_context,
             parent_name=parent_name,
-            conditional=conditional,
         )
         return job, job
 
