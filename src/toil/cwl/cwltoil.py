@@ -403,6 +403,10 @@ class Conditional:
         self.requirements = requirements or []
         self.container_engine = container_engine
 
+    def is_empty(self) -> bool:
+        """Whether this is an empty Conditional."""
+        return self.expression is None
+
     def is_false(self, job: CWLObjectType) -> bool:
         """
         Determine if expression evaluates to False given completed step inputs.
@@ -2893,10 +2897,11 @@ class ResolveIndirect(CWLNamedJob):
 
 class CWLJobWrapper(CWLNamedJob):
     """
-    Wrap a CWL job that uses dynamic resources requirement.
+    Determines how and whether to run the wrapped CWL job.
 
-    When executed, this creates a new child job which has the correct resource
-    requirement set.
+    Wraps a CWL job that uses a dynamic resource requirement or has a
+    conditional. This job is responsible for creating a CWLJob child with
+    the right resource requirements, when the job should not be skipped.
     """
 
     def __init__(
@@ -2924,7 +2929,7 @@ class CWLJobWrapper(CWLNamedJob):
         """Create a child job with the correct resource requirements set."""
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
-        # Check confitional to license full evaluation of job inputs.
+        # Check conditional to license full evaluation of job inputs.
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
 
@@ -2953,11 +2958,9 @@ class CWLJob(CWLNamedJob):
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
         parent_name: str | None = None,
-        conditional: Conditional | None = None,
     ):
         """Store the context for later execution."""
         self.cwltool = tool
-        self.conditional = conditional or Conditional()
 
         if runtime_context.builder:
             self.builder = runtime_context.builder
@@ -3161,9 +3164,6 @@ class CWLJob(CWLNamedJob):
 
         # Deletes duplicate listings
         remove_redundant_mounts(cwljob)
-
-        if self.conditional.is_false(cwljob):
-            return self.conditional.skipped_outputs()
 
         fill_in_defaults(
             self.step_inputs, cwljob, self.runtime_context.make_fs_access("")
@@ -3510,11 +3510,12 @@ def makeJob(
         wfjob.addFollowOn(followOn)
         return wfjob, followOn
     else:
-        # Decied if we have any requirements we care about that are dynamic
+        # Decide if we have any requirements we care about that are dynamic
         REQUIREMENT_TYPES = [
             "ResourceRequirement",
             "http://commonwl.org/cwltool#CUDARequirement",
         ]
+        has_dynamic_resource_requirement = False
         for requirement_type in REQUIREMENT_TYPES:
             req, _ = tool.get_requirement(requirement_type)
             if req:
@@ -3522,23 +3523,29 @@ def makeJob(
                     if isinstance(r, str) and ("$(" in r or "${" in r):
                         # One of the keys in this requirement has a text substitution in it.
                         # TODO: This is not a real lex!
+                        has_dynamic_resource_requirement = True
 
-                        # Found a dynamic resource requirement so use a job wrapper
-                        job_wrapper = CWLJobWrapper(
-                            cast(ToilCommandLineTool, tool),
-                            jobobj,
-                            runtime_context,
-                            parent_name=parent_name,
-                            conditional=conditional,
-                        )
-                        return job_wrapper, job_wrapper
-        # Otherwise, all requirements are known now.
+        if has_dynamic_resource_requirement or (
+            conditional is not None and not conditional.is_empty()
+        ):
+            # Resource requirements and the `when` conditional can depend on
+            # promises from upstream steps that only resolve once the job
+            # runs, so check them in a cheap local wrapper first.
+            job_wrapper = CWLJobWrapper(
+                cast(ToilCommandLineTool, tool),
+                jobobj,
+                runtime_context,
+                parent_name=parent_name,
+                conditional=conditional,
+            )
+            return job_wrapper, job_wrapper
+        # Otherwise, all requirements are known now, and the step is
+        # unconditional, so it can be scheduled directly.
         job = CWLJob(
             tool,
             jobobj,
             runtime_context,
             parent_name=parent_name,
-            conditional=conditional,
         )
         return job, job
 
