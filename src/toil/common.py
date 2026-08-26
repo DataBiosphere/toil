@@ -1133,15 +1133,6 @@ class Toil(ContextManager["Toil"]):
         if not config.restart:
             config.prepare_start()
             jobStore.initialize(config)
-            assert config.workflowID is not None
-            # Record that there is a workflow beign run
-            HistoryManager.record_workflow_creation(
-                config.workflowID, self.canonical_locator(config.jobStore)
-            )
-            # And since we have all its metadata now, record that
-            HistoryManager.record_workflow_metadata(
-                config.workflowID, self._workflow_name, self._trs_spec
-            )
         else:
             jobStore.resume()
             # Merge configuration from job store with command line options
@@ -1149,6 +1140,16 @@ class Toil(ContextManager["Toil"]):
             config.prepare_restart()
             config.setOptions(self.options)
             jobStore.write_config()
+
+        assert config.workflowID is not None
+        # Record that there is a workflow being run, in case this history database doesn't know about it yet
+        if HistoryManager.record_workflow_creation(
+            config.workflowID, self.canonical_locator(config.jobStore)
+        ):
+            # And since we have all its metadata now, record that
+            HistoryManager.record_workflow_metadata(
+                config.workflowID, self._workflow_name, self._trs_spec
+            )
         self.config = config
         self._jobStore = jobStore
         self._start_time = time.time()

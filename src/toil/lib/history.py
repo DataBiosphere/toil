@@ -269,6 +269,10 @@ class HistoryManager:
                     CREATE TABLE workflows (
                         id TEXT NOT NULL PRIMARY KEY,
                         job_store TEXT NOT NULL,
+                        /*
+                        creation_time is when the database record was created,
+                        not when the workflow was first run
+                        */
                         creation_time REAL NOT NULL,
                         name TEXT,
                         trs_spec TEXT
@@ -366,14 +370,13 @@ class HistoryManager:
 
     @classmethod
     @db_retry
-    def record_workflow_creation(cls, workflow_id: str, job_store_spec: str) -> None:
+    def record_workflow_creation(cls, workflow_id: str, job_store_spec: str) -> bool:
         """
         Record that a workflow is being run.
 
         Takes the Toil config's workflow ID and the location of the job store.
 
-        Should only be called on the *first* attempt on a job store, not on a
-        restart.
+        Idempotent: safe to call again for a workflow ID that is already known.
 
         A workflow may have multiple attempts to run it, some of which succeed
         and others of which fail. Probably only the last one should succeed.
@@ -382,10 +385,13 @@ class HistoryManager:
             be canonical and always start with the type and a colon. If the
             job store is later moved by the user, the location will not be
             updated.
+
+        :return: True if this call created the workflow's record, or False if
+            a record for this workflow ID already existed.
         """
 
         if not cls.enabled():
-            return
+            return False
 
         logger.info(
             "Recording workflow creation of %s in %s", workflow_id, job_store_spec
@@ -396,9 +402,10 @@ class HistoryManager:
         try:
             cls.ensure_tables(con, cur)
             cur.execute(
-                "INSERT INTO workflows VALUES (?, ?, ?, NULL, NULL)",
+                "INSERT OR IGNORE INTO workflows VALUES (?, ?, ?, NULL, NULL)",
                 (workflow_id, job_store_spec, time.time()),
             )
+            created = cur.rowcount == 1
         except:
             con.rollback()
             con.close()
@@ -408,6 +415,7 @@ class HistoryManager:
             con.close()
 
         # If we raise out of here the connection goes away and the transaction rolls back.
+        return created
 
     @classmethod
     @db_retry

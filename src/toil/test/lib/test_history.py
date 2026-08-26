@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import sqlite3
 import time
 from collections.abc import Generator
 from pathlib import Path
@@ -234,3 +235,39 @@ class TestHistory:
         remaining_workflows = HistoryManager.count_workflows()
         logger.info("Still have %s workflows", remaining_workflows)
         assert remaining_workflows > 0
+
+    def test_history_workflow_creation_is_idempotent(self) -> None:
+        """
+        Make sure record_workflow_creation can be called more than once for
+        the same workflow without error, and only reports creating the
+        record the first time.
+        """
+        workflow_id = "999"
+        job_store_spec = "file:/tmp/tree"
+
+        assert HistoryManager.record_workflow_creation(workflow_id, job_store_spec) is True
+        assert HistoryManager.count_workflows() == 1
+
+        assert HistoryManager.record_workflow_creation(workflow_id, job_store_spec) is False
+        assert HistoryManager.count_workflows() == 1
+
+    def test_history_attempt_after_restart_backfill(self) -> None:
+        """
+        Make sure that recording a workflow attempt works even when this
+        history database never saw the workflow's creation, as long as the
+        workflow is recorded first, as Toil now does on every restart and
+        not just the first attempt.
+        """
+        workflow_id = "1000"
+
+        # Recording an attempt for a workflow this database has never heard
+        # of fails, because of the foreign key relationship.
+        with pytest.raises(sqlite3.IntegrityError):
+            HistoryManager.record_workflow_attempt(workflow_id, 1, True, time.time(), 0.1)
+
+        # Recording the workflow first fixes that.
+        assert HistoryManager.record_workflow_creation(workflow_id, "file:/tmp/tree") is True
+        HistoryManager.record_workflow_attempt(workflow_id, 1, True, time.time(), 0.1)
+
+        assert HistoryManager.count_workflows() == 1
+        assert HistoryManager.count_workflow_attempts() == 1
