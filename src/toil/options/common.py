@@ -257,10 +257,6 @@ def add_base_toil_options(
             workDir = values
             if workDir is not None:
                 workDir = os.path.abspath(workDir)
-                if not os.path.exists(workDir):
-                    raise RuntimeError(
-                        f"The path provided to --workDir ({workDir}) does not exist."
-                    )
 
                 if len(workDir) > 80:
                     logger.warning(
@@ -281,10 +277,6 @@ def add_base_toil_options(
             coordination_dir = values
             if coordination_dir is not None:
                 coordination_dir = os.path.abspath(coordination_dir)
-                if not os.path.exists(coordination_dir):
-                    raise RuntimeError(
-                        f"The path provided to --coordinationDir ({coordination_dir}) does not exist."
-                    )
             setattr(namespace, self.dest, coordination_dir)
 
     def make_closed_interval_action(
@@ -356,6 +348,16 @@ def add_base_toil_options(
         help="Absolute path to directory where Toil will keep state and lock files. "
         "When sharing a cache between containers on a host, this directory must be "
         "shared between the containers.",
+    )
+    core_options.add_argument(
+        "--runDir",
+        dest="runDir",
+        default=None,
+        env_var="TOIL_RUN_DIR",
+        metavar="PATH",
+        help="Directory under which to place the job store, work dir, coordination "
+        "dir, and CWL/WDL image caches for this run, unless overridden individually. "
+        "Toil creates the directory and its subdirectories.",
     )
     core_options.add_argument(
         "--noStdOutErr",

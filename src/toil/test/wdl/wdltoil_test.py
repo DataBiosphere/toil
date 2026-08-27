@@ -1075,6 +1075,28 @@ class TestWDL:
                 )
 
     @needs_singularity_or_docker
+    def test_run_dir(self, tmp_path: Path) -> None:
+        """
+        Test that a WDL run with --runDir set succeeds end-to-end. The job
+        store/work dir derivation itself is covered by
+        commonTests.TestDeriveRunDirDefaults.
+        """
+        run_dir = tmp_path / "rundir"
+        with get_data("test/wdl/md5sum/md5sum.1.0.wdl") as wdl:
+            with get_data("test/wdl/md5sum/md5sum.json") as json_file:
+                subprocess.check_call(
+                    self.base_command
+                    + [
+                        str(wdl),
+                        str(json_file),
+                        "-o",
+                        str(tmp_path / "out"),
+                        f"--runDir={run_dir}",
+                        "--retryCount=0",
+                    ]
+                )
+
+    @needs_singularity_or_docker
     def test_miniwdl_self_test(
         self, tmp_path: Path, extra_args: list[str] | None = None
     ) -> None:

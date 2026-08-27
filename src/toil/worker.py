@@ -50,7 +50,7 @@ from toil.job import (
     JobDescription,
 )
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobStoreException, TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
-from toil.lib.io import make_public_dir, path_union
+from toil.lib.io import make_public_dir, path_union, ensure_dir_exists
 from toil.lib.resources import ResourceMonitor
 from toil.statsAndLogging import StatsDict, configure_root_logger, install_log_color, set_log_level
 
@@ -334,6 +334,10 @@ def workerScript(
     unstick_thread = threading.Thread(target=unstick_worker, args=())
     unstick_thread.daemon = True
     unstick_thread.start()
+    
+    # Make sure the directories we need exist.
+    ensure_dir_exists(config.workDir, "--workDir")
+    ensure_dir_exists(config.coordination_dir, "--coordinationDir")
 
     ##########################################
     # Load the environment for the job
