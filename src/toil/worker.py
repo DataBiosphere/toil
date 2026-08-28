@@ -49,17 +49,22 @@ from toil.job import (
     Job,
     JobDescription,
 )
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobStoreException, TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobStoreException 
 from toil.lib.io import make_public_dir, path_union
 from toil.lib.resources import ResourceMonitor
 from toil.statsAndLogging import StatsDict, configure_root_logger, install_log_color, set_log_level
 
 logger = logging.getLogger(__name__)
 
-# Value the worker exits with when warned that it is out of time
-WALLTIME_EXIT_CODE = 34
+# Value the worker exits with when it cannot access the job store, so the
+# leader can produce a useful error message.
+NO_JOB_STORE_EXIT_CODE = 76
 
-# Signal used to warn the worker that it is out of time.
+# Value the worker exits with when warned that it is told it is out of time, so
+# th time limit can be increased.
+WALLTIME_EXIT_CODE = 77
+
+# Signal the worker expects to tell it that it is out of time.
 # Batch systems that can signal before timeout should be set up to send this.
 # Should be a signal that shouldn't arrive for other reasons.
 WALLTIME_SIGNAL = signal.SIGUSR2
@@ -1041,7 +1046,7 @@ def main(argv: list[str] | None = None) -> None:
             "a local path.",
             options.jobStoreLocator,
         )
-        sys.exit(TOIL_WORKER_NO_JOB_STORE_EXIT_CODE)
+        sys.exit(NO_JOB_STORE_EXIT_CODE)
 
     config = job_store.config
 

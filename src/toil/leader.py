@@ -52,13 +52,14 @@ from toil.job import (
     ServiceJobDescription,
     TemporaryID,
 )
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.clusterScaler import ScalerThread, NonScalableBatchSystemError
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
 from toil.toilState import ToilState
+from toil.worker import NO_JOB_STORE_EXIT_CODE
 
 logger = logging.getLogger(__name__)
 
@@ -912,7 +913,7 @@ class Leader:
                     self.recommended_fail_exit_code = (
                         CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
                     )
-                elif update.exitStatus == TOIL_WORKER_NO_JOB_STORE_EXIT_CODE:
+                elif update.exitStatus == NO_JOB_STORE_EXIT_CODE:
                     # A worker could not access the job store. This is likely
                     # because the job store is not on a shared filesystem.
                     logger.warning(
