@@ -36,10 +36,6 @@ from typing import Any
 from configargparse import ArgParser
 
 from toil import logProcessContext, options
-from toil.batchSystems.abstractBatchSystem import (
-    TOIL_WORKER_INTERRUPTED_EXIT_CODE,
-    TOIL_WORKER_WARNING_SIGNAL,
-)
 from toil.common import Config, Toil, safeUnpickleFromStream
 from toil.cwl.utils import (
     CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
@@ -60,22 +56,26 @@ from toil.statsAndLogging import StatsDict, configure_root_logger, install_log_c
 
 logger = logging.getLogger(__name__)
 
-# Whether the batch system has warned us that it is about to kill this job. A
-# worker that fails after being warned reports a distinctive exit code, which
-# is the only way the batch system can tell that the job stopped because of the
-# warning rather than for a reason of its own.
-_interrupted = False
+# Value the worker exits with when warned that it is out of time
+WALLTIME_EXIT_CODE = 34
 
+# Signal used to warn the worker that it is out of time.
+# Batch systems that can signal before timeout should be set up to send this.
+# Should be a signal that shouldn't arrive for other reasons.
+WALLTIME_SIGNAL = signal.SIGUSR2
 
-def _note_interrupt(signal_number: int, frame: Any) -> None:
+# When a walltime signal arrives, we set this.
+_walltime_expired = False
+
+def handle_walltime_signal(signal_number: int, frame: Any) -> None:
     """
-    Record that we were warned, and interrupt the job.
+    Signal handler to stop the worker due to running out of time.
 
-    Raises KeyboardInterrupt, because that is what job code and the libraries
-    it uses already expect to have to clean up after.
+    Raises KeyboardInterrupt, because third-party code will probably shut down
+    cleanly when one happens in an arbirary location.
     """
-    global _interrupted
-    _interrupted = True
+    global _walltime_expired
+    _walltime_expired = True
     raise KeyboardInterrupt()
 
 
@@ -761,8 +761,10 @@ def workerScript(
         elif isinstance(e, SystemExit) and isinstance(e.code, int) and e.code != 0:
             # We're meant to be exiting with a particular code.
             failure_exit_code = e.code
-        elif _interrupted:
-            failure_exit_code = TOIL_WORKER_INTERRUPTED_EXIT_CODE
+        elif _walltime_expired:
+            # We got here after we got a time's-up signal from the backing
+            # scheduler.
+            failure_exit_code = WALLTIME_EXIT_CODE
         else:
             try:
                 from WDL.runtime.error import CommandFailed, Interrupted
@@ -1020,7 +1022,8 @@ def main(argv: list[str] | None = None) -> None:
     # Parse our command line
     options = parse_args(argv)
 
-    signal.signal(TOIL_WORKER_WARNING_SIGNAL, _note_interrupt)
+    # Watch for time-up messages from the backing scheduler
+    signal.signal(WALLTIME_SIGNAL, handle_walltime_signal)
 
     ##########################################
     # Load the jobStore/config file
@@ -1039,7 +1042,7 @@ def main(argv: list[str] | None = None) -> None:
             options.jobStoreLocator,
         )
         sys.exit(TOIL_WORKER_NO_JOB_STORE_EXIT_CODE)
-    
+
     config = job_store.config
 
     with in_contexts(options.context):

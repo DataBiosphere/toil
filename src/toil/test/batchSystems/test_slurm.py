@@ -11,12 +11,13 @@ import pytest
 import toil.batchSystems.slurm
 from toil.batchSystems.abstractBatchSystem import (
     EXIT_STATUS_UNAVAILABLE_VALUE,
-    TOIL_WORKER_INTERRUPTED_EXIT_CODE,
     BatchJobExitReason,
     BatchSystemSupport,
 )
 from toil.common import Config
 from toil.lib.misc import CalledProcessErrorStderr
+from toil.worker import WALLTIME_SIGNAL, WALLTIME_EXIT_CODE
+
 from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ def call_sacct(args, **_) -> str:
         767925: "767925|FAILED|2:0\n767925.extern|COMPLETED|0:0\n767925.0|FAILED|2:0\n",
         785023: "785023|FAILED|127:0\n785023.batch|FAILED|127:0\n785023.extern|COMPLETED|0:0\n",
         789456: "789456|FAILED|1:0\n",
-        789457: "789457|FAILED|74:0\n789457.extern|COMPLETED|0:0\n",
+        789457: f"789457|FAILED|{WALLTIME_EXIT_CODE}:0\n789457.extern|COMPLETED|0:0\n",
         789724: "789724|RUNNING|0:0\n789724.batch|RUNNING|0:0\n789724.extern|RUNNING|0:0\n",
         789868: "789868|PENDING|0:0\n",
         789869: "789869|COMPLETED|0:0\n789869.batch|COMPLETED|0:0\n789869.extern|COMPLETED|0:0\n",
@@ -450,11 +451,11 @@ class SlurmTest(ToilTest):
         result = self.worker.getJobExitCode(job_id)
         assert result == expected_result, f"{result} != {expected_result}"
 
-    def test_getJobExitCode_job_interrupted_before_time_limit(self):
+    def test_getJobExitCode_job_reported_timeout(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_either)
-        job_id = "789457"  # FAILED after heeding the pre-timeout signal
+        job_id = "789457"  # FAILED with the WALLTIME_EXIT_CODE exit code
         expected_result = (
-            TOIL_WORKER_INTERRUPTED_EXIT_CODE,
+            WALLTIME_EXIT_CODE,
             BatchJobExitReason.TIMELIMIT,
         )
         result = self.worker.getJobExitCode(job_id)

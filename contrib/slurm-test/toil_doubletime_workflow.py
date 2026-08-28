@@ -5,11 +5,8 @@ from toil.job import Job
 
 
 def slow_job(seconds):
-    # Sleep past the point where Slurm will warn us that our first walltime is
-    # nearly up, but not past the point where it would warn us about the
-    # doubled one, so that the job can only finish on the retry.
     time.sleep(seconds)
-    return f"Slept for {seconds} seconds"
+    return f"Sleep completed successfully"
 
 
 if __name__ == "__main__":
@@ -17,13 +14,16 @@ if __name__ == "__main__":
     options = parser.parse_args()
     options.clean = "always"
     with Toil(options) as toil:
-        # Sleep for exactly the first walltime. Slurm's warning always lands
-        # before the limit it is warning about, and it can land a whole
-        # scheduling tick early, so this is sure to be interrupted the first
-        # time and sure to be finished long before the warning on the doubled
-        # limit.
+        # Sleep for longer than the initial walltime.
+
+        # Toil's Slurm integration will signal the job some time *before* the
+        # time it asked for actually elapsed. So we need to make sure there's
+        # space for that extra time.
+
+        # TODO: Make Toil pad the time requested from the batch system and deal
+        # with the user sometimes not getting the partition they expected?
         output = toil.start(
-            Job.wrapFn(slow_job, 120, memory="1G", cores=1, disk="1G", walltime=120)
+            Job.wrapFn(slow_job, 120, memory="1G", cores=1, disk="1G", walltime=100)
         )
     with open("doubletime_output.txt", "w") as f:
         f.write(output)

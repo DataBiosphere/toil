@@ -1,1 +1,1 @@
-Slept for 120 seconds
+Sleep completed successfully

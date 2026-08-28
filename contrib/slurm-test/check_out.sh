@@ -21,7 +21,7 @@ else
   exit 1
 fi
 if ! grep -q "doubled the walltime" doubletime_log.txt; then
-  echo "Failed, the job finished without its walltime being doubled, so it never ran out of time"
+  echo "Failed, walltime was not doubled"
   exit 1
 fi
 rm sortedFile.txt

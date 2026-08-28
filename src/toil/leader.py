@@ -1590,9 +1590,6 @@ class Leader:
                             failed=True,
                         )
             if result_status != 0:
-                # If the batch system returned a non-zero exit code then the worker
-                # is assumed not to have captured the failure of the job, so we
-                # reduce the try count here.
                 if replacement_job.logJobStoreFileID is None:
                     logger.warning(
                         "No log file is present, despite job failing: %s",
