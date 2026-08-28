@@ -6,7 +6,7 @@ from toil.job import Job
 
 def slow_job(seconds):
     time.sleep(seconds)
-    return f"Sleep completed successfully"
+    return "Sleep completed successfully"
 
 
 if __name__ == "__main__":
@@ -26,4 +26,4 @@ if __name__ == "__main__":
             Job.wrapFn(slow_job, 120, memory="1G", cores=1, disk="1G", walltime=100)
         )
     with open("doubletime_output.txt", "w") as f:
-        f.write(output)
+        f.write(output + "\n")
