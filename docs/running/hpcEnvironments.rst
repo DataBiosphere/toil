@@ -35,6 +35,8 @@ If you do specify a time limit, a partition will be automatically selected that 
       --jobStore ./store --batchSystem slurm --batchLogsDir ./logs \
       --slurmTime 4:00:00 --slurmPartition medium --slurmGPUPartition gpu
 
+If some of your jobs can take a lot longer than others, you can set ``--defaultWalltime`` low enough to suit the quick ones and add ``--doubleTime``, which raises the time limit on jobs that run out of time when it retries them. A job that gets a longer limit may also move to a partition that allows longer jobs.
+
 Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.)
 
 Slurm Tips

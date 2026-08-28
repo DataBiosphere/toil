@@ -36,6 +36,10 @@ from typing import Any
 from configargparse import ArgParser
 
 from toil import logProcessContext, options
+from toil.batchSystems.abstractBatchSystem import (
+    TOIL_WORKER_INTERRUPTED_EXIT_CODE,
+    TOIL_WORKER_WARNING_SIGNAL,
+)
 from toil.common import Config, Toil, safeUnpickleFromStream
 from toil.cwl.utils import (
     CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
@@ -55,6 +59,24 @@ from toil.lib.resources import ResourceMonitor
 from toil.statsAndLogging import StatsDict, configure_root_logger, install_log_color, set_log_level
 
 logger = logging.getLogger(__name__)
+
+# Whether the batch system has warned us that it is about to kill this job. A
+# worker that fails after being warned reports a distinctive exit code, which
+# is the only way the batch system can tell that the job stopped because of the
+# warning rather than for a reason of its own.
+_interrupted = False
+
+
+def _note_interrupt(signal_number: int, frame: Any) -> None:
+    """
+    Record that we were warned, and interrupt the job.
+
+    Raises KeyboardInterrupt, because that is what job code and the libraries
+    it uses already expect to have to clean up after.
+    """
+    global _interrupted
+    _interrupted = True
+    raise KeyboardInterrupt()
 
 
 def nextChainable(
@@ -739,6 +761,8 @@ def workerScript(
         elif isinstance(e, SystemExit) and isinstance(e.code, int) and e.code != 0:
             # We're meant to be exiting with a particular code.
             failure_exit_code = e.code
+        elif _interrupted:
+            failure_exit_code = TOIL_WORKER_INTERRUPTED_EXIT_CODE
         else:
             try:
                 from WDL.runtime.error import CommandFailed, Interrupted
@@ -995,6 +1019,8 @@ def main(argv: list[str] | None = None) -> None:
         argv = sys.argv
     # Parse our command line
     options = parse_args(argv)
+
+    signal.signal(TOIL_WORKER_WARNING_SIGNAL, _note_interrupt)
 
     ##########################################
     # Load the jobStore/config file

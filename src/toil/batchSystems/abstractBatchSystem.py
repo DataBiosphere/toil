@@ -15,6 +15,7 @@ import enum
 import logging
 import os
 import shutil
+import signal
 import time
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
@@ -38,6 +39,17 @@ logger = logging.getLogger(__name__)
 # Value to use as exitStatus in UpdatedBatchJobInfo.exitStatus when status is not available.
 EXIT_STATUS_UNAVAILABLE_VALUE = 255
 
+# Signal a batch system sends to warn a worker that it is about to be killed.
+# A user-defined signal, because the point is to be sure that nothing but the
+# batch system sent it: SIGINT would arrive from a stray Ctrl-C or a
+# "scancel --signal" too, and SIGXCPU from a CPU rlimit.
+TOIL_WORKER_WARNING_SIGNAL = signal.SIGUSR2
+
+# Exit code the worker uses when it stops because it was warned. A batch system
+# that warns jobs before killing them can use this to tell a worker that heeded
+# the warning from one that failed on its own.
+TOIL_WORKER_INTERRUPTED_EXIT_CODE = 74
+
 
 class BatchJobExitReason(enum.IntEnum):
     FINISHED = 1
@@ -58,6 +70,8 @@ class BatchJobExitReason(enum.IntEnum):
     """Job ran longer than --maxJobDuration, so Toil killed it."""
     PARTITION = 9
     """Job was not able to talk to the leader via the job store, so Toil declared it failed."""
+    TIMELIMIT = 10
+    """Job hit batch system imposed time limit."""
 
     @classmethod
     def to_string(cls, value: int) -> str:

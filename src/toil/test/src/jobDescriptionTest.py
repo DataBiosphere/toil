@@ -16,6 +16,7 @@ import os
 
 from configargparse import ArgumentParser
 
+from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 from toil.common import Toil
 from toil.job import Job, JobDescription, TemporaryID
 from toil.resource import ModuleDescriptor
@@ -96,6 +97,46 @@ class JobDescriptionTest(ToilTest):
         j2.attach_body("fake", ModuleDescriptor.forModule("toil"))
         self.assertNotEqual(j, j2)
         ###TODO test other functionality
+
+    def _failing_job(self, **requirements):
+        """
+        Make a JobDescription that is attached to this test's config, so that
+        failure handling can consult the config and fall back on its defaults.
+        """
+        j = JobDescription(requirements=requirements, jobName="testFailure")
+        j.assignConfig(self.toil.config)
+        return j
+
+    def test_setupJobAfterFailure_time_limit_with_double_time(self):
+        self.toil.config.doubleTime = True
+        j = self._failing_job(walltime=600)
+
+        j.setupJobAfterFailure(exit_reason=BatchJobExitReason.TIMELIMIT)
+        assert j.walltime == 1200
+
+        j.setupJobAfterFailure(exit_reason=BatchJobExitReason.TIMELIMIT)
+        assert j.walltime == 2400
+
+    def test_setupJobAfterFailure_time_limit_without_double_time(self):
+        self.toil.config.doubleTime = False
+        j = self._failing_job(walltime=600)
+
+        j.setupJobAfterFailure(exit_reason=BatchJobExitReason.TIMELIMIT)
+        assert j.walltime == 600
+
+    def test_setupJobAfterFailure_plain_failure_with_double_time(self):
+        self.toil.config.doubleTime = True
+        j = self._failing_job(walltime=600)
+
+        j.setupJobAfterFailure(exit_reason=BatchJobExitReason.FAILED)
+        assert j.walltime == 600
+
+    def test_setupJobAfterFailure_no_walltime_with_double_time(self):
+        self.toil.config.doubleTime = True
+        j = self._failing_job(walltime=0)
+
+        j.setupJobAfterFailure(exit_reason=BatchJobExitReason.TIMELIMIT)
+        assert j.walltime == 0
 
     def testJobDescriptionSequencing(self):
         j = JobDescription(requirements={}, jobName="unimportant")

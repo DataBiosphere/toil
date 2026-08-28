@@ -26,6 +26,8 @@ from typing import NamedTuple, TypeVar
 
 from toil.batchSystems.abstractBatchSystem import (
     EXIT_STATUS_UNAVAILABLE_VALUE,
+    TOIL_WORKER_INTERRUPTED_EXIT_CODE,
+    TOIL_WORKER_WARNING_SIGNAL,
     BatchJobExitReason,
     InsufficientSystemResources,
 )
@@ -62,7 +64,7 @@ TERMINAL_STATES: dict[str, BatchJobExitReason] = {
     "PREEMPTED": BatchJobExitReason.KILLED,
     "REVOKED": BatchJobExitReason.KILLED,
     "SPECIAL_EXIT": BatchJobExitReason.FAILED,
-    "TIMEOUT": BatchJobExitReason.KILLED,
+    "TIMEOUT": BatchJobExitReason.TIMELIMIT,
 }
 
 # If a job is in one of these states, it might eventually move to a different
@@ -536,6 +538,13 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 # pass along the code it has.
                 return (rc, exit_reason)  # type: ignore[return-value] # mypy doesn't understand enums well
 
+            if rc == TOIL_WORKER_INTERRUPTED_EXIT_CODE:
+                # The worker stopped on the warning we asked Slurm to send
+                # before the time limit, so it ran out of time. Slurm calls
+                # this FAILED rather than TIMEOUT, because the job did exit
+                # before its limit expired.
+                exit_reason = BatchJobExitReason.TIMELIMIT
+
             if rc == 0:
                 # The job claims to be in a state other than COMPLETED, but
                 # also to have not encountered a problem. Say the exit status
@@ -871,17 +880,18 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             sbatch_line = ["sbatch", "-J", f"toil_job_{jobID}_{jobName}"]
 
             # Make sure the job gets a signal before it disappears so that e.g.
-            # container cleanup finally blocks can run. Ask for SIGINT so we
-            # can get the default Python KeyboardInterrupt which third-party
-            # code is likely to plan for. Make sure to send it to the batch
-            # shell process with "B:", not to all the srun steps it launches
-            # (because there shouldn't be any). We cunningly replaced the batch
-            # shell process with the Toil worker process, so Toil should be
-            # able to get the signal.
+            # container cleanup finally blocks can run. Make sure to send it to
+            # the batch shell process with "B:", not to all the srun steps it
+            # launches (because there shouldn't be any). We cunningly replaced
+            # the batch shell process with the Toil worker process, so Toil
+            # should be able to get the signal.
             #
-            # TODO: Add a way to detect when the job failed because it
-            # responded to this signal and use the right exit reason for it.
-            sbatch_line.append("--signal=B:INT@30")
+            # Slurm can send this further ahead of the limit than we ask for,
+            # because it only checks time limits every so often. A worker that
+            # stops on it is recognized by its exit code in
+            # _get_job_return_code.
+            warning_signal = TOIL_WORKER_WARNING_SIGNAL.name.removeprefix("SIG")
+            sbatch_line.append(f"--signal=B:{warning_signal}@30")
 
             environment = {}
             environment.update(self.boss.environment)

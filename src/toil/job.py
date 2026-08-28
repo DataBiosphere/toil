@@ -1445,11 +1445,15 @@ class JobDescription(Requirer):
         exit_reason: BatchJobExitReason | None = None,
     ) -> None:
         """
-        Configure job after a failure.
+        Prepare a failed job to be issued again.
 
-        Reduce the remainingTryCount if greater than zero and set the memory
-        to be at least as big as the default memory (in case of exhaustion of memory,
-        which is common).
+        Spends one of the job's remaining tries, so that a job which keeps
+        failing eventually runs out of them. Preemptions can be made free, in
+        which case they spend nothing.
+
+        A job that the batch system killed for outgrowing a resource would be
+        killed again if it went back unchanged, so the requirement it outgrew
+        is raised first, as far as the configuration allows.
 
         Requires a configuration to have been assigned (see :meth:`toil.job.Requirer.assignConfig`).
 
@@ -1484,9 +1488,6 @@ class JobDescription(Requirer):
                 self.jobStoreID,
                 self.remainingTryCount,
             )
-        # Set the default memory to be at least as large as the default, in
-        # case this was a malloc failure (we do this because of the combined
-        # batch system)
         if exit_reason == BatchJobExitReason.MEMLIMIT and self._config.doubleMem:
             self.memory = self.memory * 2
             logger.warning(
@@ -1494,6 +1495,25 @@ class JobDescription(Requirer):
                 self,
                 self.memory,
             )
+
+        if exit_reason == BatchJobExitReason.TIMELIMIT and self._config.doubleTime:
+            # A walltime of 0 means "no limit", so the limit this job hit was
+            # the batch system's own and doubling cannot move it.
+            if self.walltime == 0:
+                logger.warning(
+                    "We cannot honor the doubleTime flag for the failed job %s because it has no walltime limit of its own",
+                    self,
+                )
+            else:
+                self.walltime = self.walltime * 2
+                logger.warning(
+                    "We have doubled the walltime of the failed job %s to %s seconds due to doubleTime flag",
+                    self,
+                    self.walltime,
+                )
+
+        # Raise memory to the default, in case this was a malloc failure (we do
+        # this because of the combined batch system)
         if self.memory < self._config.defaultMemory:
             self.memory = self._config.defaultMemory
             logger.warning(

@@ -10,7 +10,7 @@ docker compose ps
 docker cp toil_workflow.py ${LEADER}:/home/admin
 docker cp -L sort.py ${LEADER}:/home/admin
 docker cp fileToSort.txt ${LEADER}:/home/admin
-docker cp toil_workflow.py ${LEADER}:/home/admin
+docker cp toil_doubletime_workflow.py ${LEADER}:/home/admin
 GIT_COMMIT=$(git rev-parse HEAD)
 # The base cluster image doesn't ship a working venv, or git
 docker exec -e DEBIAN_FRONTEND=noninteractive ${LEADER} sudo apt-get update
@@ -39,6 +39,13 @@ docker cp ${LEADER}:/home/admin/output.txt output_Docker.txt
 # Test 2: Make sure that "sort" workflow runs under slurm
 docker exec -e TOIL_CHECK_ENV=True ${LEADER} /home/admin/venv/bin/python /home/admin/sort.py file:my-job-store --batchSystem slurm --slurmTime 2:00 --disableCaching --retryCount 0
 docker cp ${LEADER}:/home/admin/sortedFile.txt sortedFile.txt
+# Test 3: Make sure --doubleTime gets a job that ran out of time through on a
+# retry. Leave --slurmTime off, so the job's own walltime is what Toil doubles.
+# The defaults have to stay within what the test nodes have, because a retried
+# job's memory and disk are raised to them.
+docker exec -e TOIL_CHECK_ENV=True ${LEADER} /home/admin/venv/bin/python /home/admin/toil_doubletime_workflow.py file:my-job-store --batchSystem slurm --doubleTime True --retryCount 1 --disableCaching --defaultMemory 1G --defaultDisk 1G --logFile doubletime_log.txt
+docker cp ${LEADER}:/home/admin/doubletime_output.txt doubletime_output.txt
+docker cp ${LEADER}:/home/admin/doubletime_log.txt doubletime_log.txt
 docker compose down -v
 ./check_out.sh
 echo "Sucessfully ran workflow on slurm cluster"

@@ -496,6 +496,10 @@ systems have issues!).
 			doubled and they will be retried. The remaining
 			retry count will be reduced by 1. Currently only
 			supported by LSF. default=False.
+  --doubleTime BOOL     If set, batch jobs which the batch system kills for
+                        exceeding their walltime requirement will have their
+                        walltime doubled when retried. The remaining retry
+                        count will be reduced by 1. default=False.
   --maxJobDuration INT
                         Maximum runtime of a job (in seconds) before we kill
                         it (this is a lower bound, and the actual time before
