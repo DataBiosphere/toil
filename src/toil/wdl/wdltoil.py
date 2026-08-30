@@ -249,6 +249,8 @@ class WDLContext(TypedDict):
 
     execution_dir: NotRequired[str]
     """Directory to use as the working directory for workflow code"""
+    source_dir: NotRequired[str]
+    """Directory containing the WDL source document, for resolving WDL 1.2 source-relative File/Directory paths"""
     container: NotRequired[str]
     """The type of container to use when executing a WDL task. Carries through the value of the commandline --container option."""
     task_path: str
@@ -1517,6 +1519,18 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     @property
     def execution_dir(self) -> str:
         return self._wdl_options.get("execution_dir", ".")
+
+    def _resolve_source_relative_path(self, filename: str) -> str:
+        """
+        Resolve a WDL 1.2 source-relative File/Directory path to a Toil-virtualized path.
+        """
+        if os.path.isabs(filename) or is_any_url(filename):
+            return filename
+        source_dir = self._wdl_options.get("source_dir") or self.execution_dir
+        # Virtualize it so it matches the same literal virtualized elsewhere,
+        # like a Decl's value, otherwise a Map key lookup can't find it.
+        # source_dir is a URI, so join with urljoin, not os.path.join.
+        return self._virtualize_filename(urljoin(source_dir, filename))
 
     @property
     def task_path(self) -> str:
@@ -4031,6 +4045,9 @@ class WDLTaskJob(WDLBaseJob):
         # MiniWDL guarantees that this will be "work" under the host directory.
         # MiniWDL also insists on creating it.
         wdl_options["execution_dir"] = os.path.join(host_dir, "work")
+        # source_dir must come from pos.abspath, since Toil always loads WDL
+        # via URI and task.source_dir only recognizes bare local paths.
+        wdl_options["source_dir"] = urljoin(self._task.pos.abspath, ".")
 
         # Set up the WDL standard library.
         # We process nonexistent files in WDLTaskWrapperJob as those must be
@@ -6125,6 +6142,7 @@ def main() -> None:
             # restart. For now we assume we are computing the same values.
             wdl_options: WDLContext = {
                 "execution_dir": execution_dir,
+                "source_dir": urljoin(target.pos.abspath, "."),
                 "container": options.container,
                 "task_path": target.name,
                 "namespace": target.name,
