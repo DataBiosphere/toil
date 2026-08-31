@@ -57,6 +57,7 @@ WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     "read_objects_task",  # object not supported
     "write_object_task",  # object not supported
     "write_objects_task",  # object not supported
+    "test_map",  # Map key not found: a File-typed Map key and a later lookup of the same path each virtualize it independently to a different toilfile: identity, since they run on different StdLib instances
 ]
 
 WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + [
@@ -71,7 +72,6 @@ WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + 
     "join_paths_task",  # PermissionError: [Errno 13] Permission denied: '/usr/bin/sudo'
     "file_sizes_task",  # WDL.Error.InputError: cannot coerce Map[String,Pair[Int,File?]] to Array[File?]
     "read_tsv_task",  # Ln 21 Col 5: Unknown type Object
-    "test_map",  # Map key not found: a File-typed Map key and a later lookup of the same path each virtualize it independently to a different toilfile: identity, since they run on different StdLib instances
 ]
 
 
