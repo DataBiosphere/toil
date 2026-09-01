@@ -491,15 +491,21 @@ systems have issues!).
                         If set, preemptible failures (or any failure due to an
                         instance getting unexpectedly terminated) will not count
                         towards job failures and ``--retryCount``.
-  --doubleMem           If set, batch jobs which die due to reaching memory
-                        limit on batch schedulers will have their memory
-			doubled and they will be retried. The remaining
-			retry count will be reduced by 1. Currently only
-			supported by LSF. default=False.
+  --doubleMem BOOL      If set, batch jobs which die due to reaching their
+                        memory limit on batch schedulers will have their memory
+                        doubled and they will be retried. The remaining retry
+                        count will be reduced by 1. default=False.
+  --doubleTime BOOL     If set, batch jobs which die due to reaching their
+                        walltime limit on batch schedulers will have their
+                        walltime doubled and they will be retried. The
+                        remaining retry count will be reduced by 1.
+                        default=False.
   --maxJobDuration INT
                         Maximum runtime of a job (in seconds) before we kill
-                        it (this is a lower bound, and the actual time before
-                        killing the job may be longer).
+                        it (This is a lower bound, and the actual time before
+                        killing the job may be longer.) This is separate from
+                        job walltime requirements and applies to the whole
+                        workflow.
   --rescueJobsFrequency INT
                         Period of time to wait (in seconds) between checking
                         for missing/overlong jobs, that is jobs which get lost
