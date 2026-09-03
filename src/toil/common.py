@@ -134,14 +134,15 @@ def derive_run_dir_defaults(
     --coordinationDir, fill in defaults for any of them left unset,
     derived from --runDir. Explicit values always win.
 
-    Creates the derived work dir and coordination dir; the job store
-    creates itself.
+    Creates run_dir on disk; work_dir, coordination_dir, and the job
+    store are only computed here and create themselves later.
 
     :return: (run_dir, job_store, work_dir, coordination_dir), with
              run_dir made absolute and the other three either the
              original explicit value or the runDir-derived default.
     """
     run_dir = os.path.abspath(run_dir)
+    os.makedirs(run_dir, exist_ok=True)
     if job_store is None:
         # Give each invocation its own job store directory under runDir,
         # so concurrent workflows sharing one --runDir don't collide
@@ -150,12 +151,11 @@ def derive_run_dir_defaults(
         job_store = parse_jobstore(
             os.path.join(run_dir, f"jobstore-{uuid.uuid4().hex}")
         )
+        # The job store must not already exist, so it isn't created here.
     if work_dir is None:
         work_dir = os.path.join(run_dir, "work")
-        os.makedirs(work_dir, exist_ok=True)
     if coordination_dir is None:
         coordination_dir = os.path.join(run_dir, "coordination")
-        os.makedirs(coordination_dir, exist_ok=True)
     return run_dir, job_store, work_dir, coordination_dir
 
 
@@ -1211,8 +1211,8 @@ class Toil(ContextManager["Toil"]):
         """
         Log the resolved job store, work dir, and coordination dir paths
         at INFO, once, so users can find them without tracing flag
-        precedence themselves. Skips the batch logs dir; the batch system
-        isn't built yet here, and grid systems log their own dir on startup.
+        precedence themselves. Skips the batch logs dir, since the batch
+        system isn't built yet here; see Leader.run for that.
         """
         assert config.workflowID is not None
         work_dir = self.getLocalWorkflowDir(config.workflowID, config.workDir)

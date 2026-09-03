@@ -61,8 +61,9 @@ class TestDeriveRunDirDefaults:
         )
 
         assert result == (str(run_dir), job_store, work_dir, coordination_dir)
-        # Explicit paths are the caller's responsibility; this function
-        # should not have touched the filesystem for them.
+        # run_dir is always created. Explicit paths are the caller's
+        # responsibility; this function doesn't touch them.
+        assert os.path.isdir(run_dir)
         assert not os.path.exists(work_dir)
         assert not os.path.exists(coordination_dir)
 
@@ -78,10 +79,11 @@ class TestDeriveRunDirDefaults:
         assert work_dir == str(run_dir / "work")
         assert coordination_dir == str(run_dir / "coordination")
 
-        # work_dir and coordination_dir are created directly; the job
-        # store is only a path here and creates itself later.
-        assert os.path.isdir(work_dir)
-        assert os.path.isdir(coordination_dir)
+        # run_dir is created directly; work_dir, coordination_dir, and
+        # the job store are only paths here and create themselves later.
+        assert os.path.isdir(run_dir)
+        assert not os.path.exists(work_dir)
+        assert not os.path.exists(coordination_dir)
         assert not os.path.exists(job_store.removeprefix("file:"))
 
     def test_job_store_paths_are_unique_across_calls(self, tmp_path: Path) -> None:
@@ -104,7 +106,7 @@ class TestDeriveRunDirDefaults:
         assert not os.path.exists(explicit_work_dir)
         assert job_store.startswith(f"file:{run_dir / 'jobstore-'}")
         assert coordination_dir == str(run_dir / "coordination")
-        assert os.path.isdir(coordination_dir)
+        assert not os.path.exists(coordination_dir)
 
     def test_relative_run_dir_is_absolutized(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

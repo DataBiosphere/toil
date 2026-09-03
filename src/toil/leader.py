@@ -1611,13 +1611,16 @@ class Leader:
                 # "no log file" warning below is only shown when Toil
                 # genuinely found nothing, and can say so specifically.
                 found_batch_system_log = False
-                if batch_system_id is not None:
+                if (
+                    isinstance(self.batchSystem, AbstractGridEngineBatchSystem)
+                    and batch_system_id is not None
+                ):
                     # Look for any standard output/error files created by the batch system.
                     # They will only appear if the batch system actually supports
                     # returning logs to the machine that submitted jobs, or if
                     # --workDir / TOIL_WORKDIR is on a shared file system.
-                    # They live directly in the Toil work directory because that is
-                    # guaranteed to exist on the leader and workers.
+                    # They live in --batchLogsDir, or the Toil work directory
+                    # if that isn't set.
                     file_list = glob.glob(
                         self.batchSystem.format_std_out_err_glob(batch_system_id)
                     )
@@ -1673,31 +1676,21 @@ class Leader:
                     and not found_batch_system_log
                 ):
                     # Alert the user that the worker failed to report in
-                    # like it was supposed to, and say specifically whether
-                    # Toil looked for batch system logs and found nothing,
-                    # or wasn't able to look in the first place.
-                    shared_message = (
-                        "No log file is present, despite job failing: %s. "
-                        "Toil does not retain worker logs by default; rerun "
-                        "with --writeLogs=PATH or --writeLogsGzip=PATH to "
-                        "save failed jobs' logs to disk. "
-                    )
-                    if batch_system_id is None:
-                        variable_message = (
-                            "Toil was not able to look for logs from the "
-                            "batch system for this job; check the batch "
-                            "system's own tools or logs directly."
-                        )
-                    else:
-                        variable_message = (
+                    # like it was supposed to. Only mention batch system
+                    # logs for batch systems that actually use them.
+                    if isinstance(self.batchSystem, AbstractGridEngineBatchSystem):
+                        logger.warning(
+                            "No log file is present, despite job failing: %s. "
                             "Toil looked for the batch system's own logs "
                             "(see --batchLogsDir) but found none; check the "
-                            "batch system's own tools or logs directly if "
-                            "you are running on a grid engine."
+                            "batch system's own tools or logs directly.",
+                            replacement_job,
                         )
-                    logger.warning(
-                        shared_message + variable_message, replacement_job
-                    )
+                    else:
+                        logger.warning(
+                            "No log file is present, despite job failing: %s.",
+                            replacement_job,
+                        )
 
                 # Tell the job to reset itself after a failure.
                 # It needs to know the failure reason if available; some are handled specially.
