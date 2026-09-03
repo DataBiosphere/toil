@@ -396,13 +396,7 @@ class Config:
 
         if self.runDir is not None:
             # A single --runDir was given. Derive defaults for anything the
-            # user didn't set explicitly; explicit flags always win. The
-            # jobStore-derivation branch inside this is only reachable for
-            # direct callers of the flag-based parser (jobstore_as_flag=True)
-            # that leave --jobStore unset. The CWL/WDL runners fill in their
-            # own jobStore default before calling setOptions, and the plain
-            # `toil` entry point requires jobStore as a positional argument,
-            # so neither ever reaches it in practice.
+            # user didn't set explicitly; explicit flags always win.
             self.runDir, self.jobStore, self.workDir, self.coordination_dir = (
                 derive_run_dir_defaults(
                     self.runDir, self.jobStore, self.workDir, self.coordination_dir
