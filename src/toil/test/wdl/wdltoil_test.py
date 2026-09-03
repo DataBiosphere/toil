@@ -35,7 +35,9 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "12d6d8a54a11803fb529aeca18ee01cba01f1d3e"
+# TODO: Revert to a pinned commit once DataBiosphere/wdl-conformance-tests#PR
+# (basic_directory regex fix) merges to master.
+WDL_CONFORMANCE_TEST_COMMIT = "fix-basic-directory-regex"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
