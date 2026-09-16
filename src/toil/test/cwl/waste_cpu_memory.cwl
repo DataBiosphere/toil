@@ -14,8 +14,9 @@ baseCommand:
     import time
     # Hold ~1 GiB in RAM for the duration of the run.
     data = bytearray(1024 * 1024 * 1024)
-    end = time.monotonic() + 30
-    while time.monotonic() < end:
+    end = time.process_time() + 30
+    while time.process_time() < end:
+        # Loop without sleeping to use up CPU-seconds
         pass
 
 inputs: []

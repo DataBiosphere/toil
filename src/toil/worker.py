@@ -49,12 +49,39 @@ from toil.job import (
     Job,
     JobDescription,
 )
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobStoreException, TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobStoreException 
 from toil.lib.io import make_public_dir, path_union
 from toil.lib.resources import ResourceMonitor
 from toil.statsAndLogging import StatsDict, configure_root_logger, install_log_color, set_log_level
 
 logger = logging.getLogger(__name__)
+
+# Value the worker exits with when it cannot access the job store, so the
+# leader can produce a useful error message.
+NO_JOB_STORE_EXIT_CODE = 76
+
+# Value the worker exits with when warned that it is told it is out of time, so
+# th time limit can be increased.
+WALLTIME_EXIT_CODE = 77
+
+# Signal the worker expects to tell it that it is out of time.
+# Batch systems that can signal before timeout should be set up to send this.
+# Should be a signal that shouldn't arrive for other reasons.
+WALLTIME_SIGNAL = signal.SIGUSR2
+
+# When a walltime signal arrives, we set this.
+_walltime_expired = False
+
+def handle_walltime_signal(signal_number: int, frame: Any) -> None:
+    """
+    Signal handler to stop the worker due to running out of time.
+
+    Raises KeyboardInterrupt, because third-party code will probably shut down
+    cleanly when one happens in an arbirary location.
+    """
+    global _walltime_expired
+    _walltime_expired = True
+    raise KeyboardInterrupt()
 
 
 def nextChainable(
@@ -739,6 +766,10 @@ def workerScript(
         elif isinstance(e, SystemExit) and isinstance(e.code, int) and e.code != 0:
             # We're meant to be exiting with a particular code.
             failure_exit_code = e.code
+        elif _walltime_expired:
+            # We got here after we got a time's-up signal from the backing
+            # scheduler.
+            failure_exit_code = WALLTIME_EXIT_CODE
         else:
             try:
                 from WDL.runtime.error import CommandFailed, Interrupted
@@ -996,6 +1027,9 @@ def main(argv: list[str] | None = None) -> None:
     # Parse our command line
     options = parse_args(argv)
 
+    # Watch for time-up messages from the backing scheduler
+    signal.signal(WALLTIME_SIGNAL, handle_walltime_signal)
+
     ##########################################
     # Load the jobStore/config file
     ##########################################
@@ -1012,8 +1046,8 @@ def main(argv: list[str] | None = None) -> None:
             "a local path.",
             options.jobStoreLocator,
         )
-        sys.exit(TOIL_WORKER_NO_JOB_STORE_EXIT_CODE)
-    
+        sys.exit(NO_JOB_STORE_EXIT_CODE)
+
     config = job_store.config
 
     with in_contexts(options.context):

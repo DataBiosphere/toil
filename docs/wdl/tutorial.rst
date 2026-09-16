@@ -491,7 +491,7 @@ workflow inputs::
 
 Then run it with Toil. If you are on a Slurm cluster, and you are currently in a shared directory available on all your nodes, you can run::
 
-    toil-wdl-runner --jobStore ./fizzbuzz_store --batchSystem slurm --slurmTime 00:10:00 --caching false --batchLogsDir ./logs fizzbuzz.wdl fizzbuzz.json -o fizzbuzz_out -m fizzbuzz_out.json
+    toil-wdl-runner --jobStore ./fizzbuzz_store --batchSystem slurm --defaultWalltime 600 --caching false --batchLogsDir ./logs fizzbuzz.wdl fizzbuzz.json -o fizzbuzz_out -m fizzbuzz_out.json
 
 If instead you want to run your workflow locally, you can run::
 

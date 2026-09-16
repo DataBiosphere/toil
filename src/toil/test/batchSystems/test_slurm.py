@@ -16,6 +16,8 @@ from toil.batchSystems.abstractBatchSystem import (
 )
 from toil.common import Config
 from toil.lib.misc import CalledProcessErrorStderr
+from toil.worker import WALLTIME_SIGNAL, WALLTIME_EXIT_CODE
+
 from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)
@@ -67,6 +69,7 @@ def call_sacct(args, **_) -> str:
         767925: "767925|FAILED|2:0\n767925.extern|COMPLETED|0:0\n767925.0|FAILED|2:0\n",
         785023: "785023|FAILED|127:0\n785023.batch|FAILED|127:0\n785023.extern|COMPLETED|0:0\n",
         789456: "789456|FAILED|1:0\n",
+        789457: f"789457|FAILED|{WALLTIME_EXIT_CODE}:0\n789457.extern|COMPLETED|0:0\n",
         789724: "789724|RUNNING|0:0\n789724.batch|RUNNING|0:0\n789724.extern|RUNNING|0:0\n",
         789868: "789868|PENDING|0:0\n",
         789869: "789869|COMPLETED|0:0\n789869.batch|COMPLETED|0:0\n789869.extern|COMPLETED|0:0\n",
@@ -79,6 +82,7 @@ def call_sacct(args, **_) -> str:
         767925: JOB_BASE_TIME + timedelta(days=2),
         785023: JOB_BASE_TIME + timedelta(days=3),
         789456: JOB_BASE_TIME + timedelta(days=3),
+        789457: JOB_BASE_TIME + timedelta(days=3),
         789724: JOB_BASE_TIME + timedelta(days=4),
         789868: JOB_BASE_TIME + timedelta(days=4),
         789869: JOB_BASE_TIME + timedelta(days=4),
@@ -440,6 +444,23 @@ class SlurmTest(ToilTest):
         result = self.worker.getJobExitCode(job_id)
         assert result == expected_result, f"{result} != {expected_result}"
 
+    def test_getJobExitCode_job_timed_out(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_either)
+        job_id = "754725"  # TIMEOUT
+        expected_result = (EXIT_STATUS_UNAVAILABLE_VALUE, BatchJobExitReason.TIMELIMIT)
+        result = self.worker.getJobExitCode(job_id)
+        assert result == expected_result, f"{result} != {expected_result}"
+
+    def test_getJobExitCode_job_reported_timeout(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_either)
+        job_id = "789457"  # FAILED with the WALLTIME_EXIT_CODE exit code
+        expected_result = (
+            WALLTIME_EXIT_CODE,
+            BatchJobExitReason.TIMELIMIT,
+        )
+        result = self.worker.getJobExitCode(job_id)
+        assert result == expected_result, f"{result} != {expected_result}"
+
     def test_getJobExitCode_job_not_exists(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_either)
         job_id = "1234"  # Non-existent
@@ -507,7 +528,7 @@ class SlurmTest(ToilTest):
         ]  # COMPLETED
         # RUNNING and PENDING jobs should return None
         expected_result = [
-            (EXIT_STATUS_UNAVAILABLE_VALUE, BatchJobExitReason.KILLED),
+            (EXIT_STATUS_UNAVAILABLE_VALUE, BatchJobExitReason.TIMELIMIT),
             (1, BatchJobExitReason.FAILED),
             None,
             None,

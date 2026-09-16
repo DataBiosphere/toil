@@ -233,6 +233,7 @@ class Config:
     stop_on_first_failure: bool
     enableUnlimitedPreemptibleRetries: bool
     doubleMem: bool
+    doubleTime: bool
     maxJobDuration: int
     rescueJobsFrequency: int
     job_store_timeout: float
@@ -415,6 +416,7 @@ class Config:
         set_option("stop_on_first_failure")
         set_option("enableUnlimitedPreemptibleRetries")
         set_option("doubleMem")
+        set_option("doubleTime")
         set_option("maxJobDuration")
         set_option("rescueJobsFrequency")
         set_option("job_store_timeout")
