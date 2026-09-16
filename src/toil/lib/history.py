@@ -205,10 +205,12 @@ class HistoryManager:
             # This has to be outside any transaction.
             # See <https://stackoverflow.com/q/78898176>
             con.execute("PRAGMA foreign_keys = ON")
-        # This has the side effect of definitely leaving autocommit off, which
-        # is what we want as the base state.
 
-        # Set up the connection to use the Row class so that we can look up row values by column name and not just order.
+        # We rely on the cleanup from no_transaction() to make sure we're in a
+        # transaction now.
+
+        # Set up the connection to use the Row class so that we can look up row
+        # values by column name and not just order.
         con.row_factory = sqlite3.Row
 
         return con
@@ -220,7 +222,10 @@ class HistoryManager:
         Temporarily disable the constant active transaction on the database
         connection, on Python versions where it exists.
 
-        Commits the current transaction.
+        Commits the current transaction (if any).
+
+        Guarantees that everything happening after the context manager ends is
+        in a transaction.
         """
 
         con.commit()
@@ -228,7 +233,14 @@ class HistoryManager:
             con.autocommit = True
         yield
         if hasattr(con, "autocommit"):
+            # For Python 3.12+ we cna just turn autocpmmit off
             con.autocommit = False
+        else:
+            # Before Python 3.12 isolation_level DEFERRED is supposed to
+            # automatically put us into a transaction when we write, but it
+            # doesn't seem to do quite the same thing as BEGIN DEFERRED, so we
+            # do that manually.
+            con.execute("BEGIN DEFERRED")
 
     @classmethod
     def ensure_tables(cls, con: sqlite3.Connection, cur: sqlite3.Cursor) -> None:
