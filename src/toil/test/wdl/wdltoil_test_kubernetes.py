@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 
 from toil.provisioners import cluster_factory
-from toil.test import integrative, slow
+from toil.test import integrative, slow, pneeds_aws_ec2
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 from toil.test.wdl.wdltoil_test import (
     WDL_CONFORMANCE_TEST_COMMIT,
@@ -13,6 +13,9 @@ from toil.test.wdl.wdltoil_test import (
 )
 
 logger = logging.getLogger(__name__)
+
+pytestmark = pneeds_aws_ec2  # this entire files needs aws_ec2
+# avoids an AssertionError in the class setup
 
 
 @integrative
