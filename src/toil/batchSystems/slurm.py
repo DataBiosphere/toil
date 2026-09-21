@@ -805,6 +805,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             for record in job_records:
                 job: dict[str, str] = {}
                 job_id = None
+                key: str | None = None
                 for line in record.splitlines():
                     for item in line.split():
                         # Output is in the form of many key=value pairs, multiple pairs on each line
@@ -814,18 +815,33 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                         # a key without a value, we consider that key part of the previous value.
                         bits = item.split("=", 1)
                         if len(bits) == 1:
-                            job[key] += " " + bits[0]  # type: ignore[has-type]  # we depend on the previous iteration to populate key
+                            if key is None:
+                                # A value with nothing to continue: this chunk is not a job record.
+                                break
+                            job[key] += " " + bits[0]
                         else:
                             key = bits[0]
                             job[key] = bits[1]
                     # The first line of the record contains the JobId. Stop processing the remainder
                     # of this record, if we're not interested in this job.
-                    job_id = int(job["JobId"])
-                    if job_id not in job_id_list:
-                        logger.log(
-                            TRACE, "%s job %d is not in the list", args[0], job_id
-                        )
-                        break
+                    if job_id is None:
+                        try:
+                            job_id = int(job["JobId"])
+                        except (KeyError, ValueError):
+                            # Not a job record.  With no job id on the command line scontrol dumps
+                            # every job on the cluster, and a foreign job whose field (Comment,
+                            # JobName, ...) spans a blank line, or a whitespace-only line between
+                            # records, yields a chunk that does not start with JobId=.  Skip it
+                            # rather than take the whole leader down with it.
+                            logger.warning(
+                                "Ignoring unparseable %s record: %r", args[0], record[:200]
+                            )
+                            break
+                        if job_id not in job_id_list:
+                            logger.log(
+                                TRACE, "%s job %d is not in the list", args[0], job_id
+                            )
+                            break
                 if job_id is None or job_id not in job_id_list:
                     continue
                 state = job["JobState"]
