@@ -231,6 +231,17 @@ def call_scontrol(args, **_) -> str:
                NtasksPerTRES:0
             """
         ),
+        790001: textwrap.dedent(
+            """\
+            JobId=790001 JobName=somebody_elses_job
+               UserId=someone(1000) GroupId=someone(1000) MCS_label=N/A
+               Comment=first line of a comment
+            
+            second line of the comment, after a blank line
+               JobState=RUNNING Reason=None Dependency=(null)
+               Requeue=0 Restarts=0 BatchFlag=1 Reboot=0 ExitCode=0:0
+            """
+        ),
     }
     if job_id is not None:
         try:
@@ -245,6 +256,13 @@ def call_scontrol(args, **_) -> str:
         for value in scontrol_info.values():
             stdout += value + "\n"
     return stdout
+
+def call_scontrol_no_jobs(args, **_) -> str:
+    """
+    Return the output scontrol would produce if called when no jobs exist.
+    """
+
+    return "No jobs in the system\n"
 
 
 def call_sacct_raises(*_):
@@ -429,6 +447,20 @@ class SlurmTest(ToilTest):
 
     def test_getJobDetailsFromScontrol_many_none_exist(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
+        expected_result = {1234: (None, None), 1235: (None, None), 1236: (None, None)}
+        result = self.worker._getJobDetailsFromScontrol(list(expected_result))
+        assert result == expected_result, f"{result} != {expected_result}"
+
+    def test_getJobDetailsFromScontrol_one_unescaped_newlines(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
+        expected_result = {
+            790001: ("RUNNING", 0),
+        }
+        result = self.worker._getJobDetailsFromScontrol(list(expected_result))
+        assert result == expected_result, f"{result} != {expected_result}"
+
+    def test_getJobDetailsFromScontrol_no_jobs(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol_no_jobs)
         expected_result = {1234: (None, None), 1235: (None, None), 1236: (None, None)}
         result = self.worker._getJobDetailsFromScontrol(list(expected_result))
         assert result == expected_result, f"{result} != {expected_result}"

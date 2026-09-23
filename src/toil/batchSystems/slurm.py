@@ -782,13 +782,49 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 args.append(str(job_id_list[0]))
 
             stdout = call_command(args, quiet=True)
+            
+            # TODO: Upgrade to --json format when we no longer need to support
+            # Slurm before 24.05.
 
-            # Job records are separated by a blank line.
-            job_records = None
+            # TODO: use --json format when it is available.
+
+            # For now, we need to support parsing the blank-line-delimited
+            # output that can *also* contain blank lines inside fields like
+            # "Comment" or "JobName". In theory this is impossible in the
+            # general case, so we assume that those fields do not contain
+            # adversarial data that itself looks like other job records.
+
+            # We key on a line that starts with JobId= to mark the start of a
+            # job record. This will hold whole job records as strings.
+            job_records = []
+           
+            lines = None
             if isinstance(stdout, str):
-                job_records = stdout.strip().split("\n\n")
+                lines = stdout.strip().split("\n")
             elif isinstance(stdout, bytes):
-                job_records = stdout.decode("utf-8").strip().split("\n\n")
+                lines = stdout.decode("utf-8").strip().split("\n")
+            
+            # `scontrol` will report "No jobs in the system", if there are no
+            # jobs in the system, and if no job-id was passed as argument to
+            # `scontrol`. So we need to handle the case of having some text but
+            # no records.
+
+            # This holds the lines of the record we are currently reading, or
+            # None if no record has been started.
+            record_lines: list[str] | None = None
+            for line in lines:
+                if line.startswith("JobId="):
+                    if record_lines is not None:
+                        # Close out the existing record
+                        job_records.append("\n".join(record_lines))
+                    # Start a record
+                    record_lines = []
+                if record_lines is not None:
+                    # This line belongs to a record
+                    record_lines.append(line)
+            if record_lines is not None:
+                # Close out the last record
+                job_records.append("\n".join(record_lines))
 
             # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
             # job state and exit status. Initialize dict before processing output of `scontrol`.
@@ -797,14 +833,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             for job_id in job_id_list:
                 job_statuses[job_id] = (None, None)
 
-            # `scontrol` will report "No jobs in the system", if there are no jobs in the system,
-            # and if no job-id was passed as argument to `scontrol`.
-            if len(job_records) > 0 and job_records[0] == "No jobs in the system":
-                return job_statuses
-
             for record in job_records:
                 job: dict[str, str] = {}
-                job_id = None
+                key: str | None = None
                 for line in record.splitlines():
                     for item in line.split():
                         # Output is in the form of many key=value pairs, multiple pairs on each line
@@ -812,9 +843,16 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                         # added to a dictionary.
                         # Note: In some cases, the value itself may contain white-space. So, if we find
                         # a key without a value, we consider that key part of the previous value.
+                        #
+                        # We don't promise that whitespace-containing values will
+                        # be parsed as written: they can end up with different
+                        # whitespace.
                         bits = item.split("=", 1)
                         if len(bits) == 1:
-                            job[key] += " " + bits[0]  # type: ignore[has-type]  # we depend on the previous iteration to populate key
+                            # We should always have had a most recent key,
+                            # since a record always starts with a JobId key.
+                            assert key is not None
+                            job[key] += " " + bits[0]  # we depend on the previous iteration to populate key
                         else:
                             key = bits[0]
                             job[key] = bits[1]
@@ -826,7 +864,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                             TRACE, "%s job %d is not in the list", args[0], job_id
                         )
                         break
-                if job_id is None or job_id not in job_id_list:
+                # If there wasn't a JobId=, there wouldn't be a record.
+                assert job_id is not None
+                if job_id not in job_id_list:
                     continue
                 state = job["JobState"]
                 state = self._canonicalize_state(state)
