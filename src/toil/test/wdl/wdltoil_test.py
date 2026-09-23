@@ -35,7 +35,9 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "12d6d8a54a11803fb529aeca18ee01cba01f1d3e"
+# TODO: Revert to a pinned commit once DataBiosphere/wdl-conformance-tests#PR
+# (basic_directory regex fix) merges to master.
+WDL_CONFORMANCE_TEST_COMMIT = "fix-basic-directory-regex"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -49,58 +51,29 @@ WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
 # These tests (in the same order as in SPEC.md) are known to fail
 WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     "test_object",  # Objects are not supported
-    "map_to_struct",  # miniwdl cannot coerce map to struct, https://github.com/chanzuckerberg/miniwdl/issues/712
-    "relative_and_absolute_task",  # needs root to run
     "test_gpu_task",  # needs gpu to run, else warning
-    "hisat2_task",  # This needs way too many resources (and actually doesn't work?), see https://github.com/DataBiosphere/wdl-conformance-tests/blob/2d617b703a33791f75f30a9db43c3740a499cd89/README_UNIT.md?plain=1#L8
-    "gatk_haplotype_caller_task",  # same as above
     "input_ref_call",  # Inputs refering into workflow body not yet implemented: see https://github.com/DataBiosphere/toil/issues/4993
     "call_imported",  # Same as input_ref_call since it imports it
-    "call_imported_task",  # Same as input_ref_call since it imports it
-    "test_sub",  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
-    "read_bool_task",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
     "write_json_fail",  # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
     "read_object_task",  # object not supported
     "read_objects_task",  # object not supported
     "write_object_task",  # object not supported
     "write_objects_task",  # object not supported
-    "test_transpose",  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/699
-    "test_as_map_fail",  # miniwdl bug, evalerror, see https://github.com/chanzuckerberg/miniwdl/issues/700
-    "test_collect_by_key",  # same as test_as_map_
+    "test_map",  # Map key not found: a File-typed Map key and a later lookup of the same path each virtualize it independently to a different toilfile: identity, since they run on different StdLib instances
 ]
 
 WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + [
-    "relative_paths_context",  # Toil can't yet resolve File coercion at task scope relative to task file.
+    "relative_paths_context",  # Workflow succeeds but output content does not match expected ("Expected and result do not match!")
     "file_directory_equality",  # String to Directory coercion not yet implemented.
-    "single_return_code_task",  # MiniWDL 1.13.1 only knows returnCodes and not return_codes.
-    "all_return_codes_task",  # MiniWDL 1.13.1 only knows returnCodes and not return_codes.
-    "test_runtime_info_task",  # MiniWDL 1.13.1 can't yet expose the task global.
-    "placeholder_none",  # 'outputs' section expected 1 results (['placeholder_none.s']), got 0 instead ([]) with exit code 1
-    "person_struct_task",  # Doesn't work as written in the spec; see https://github.com/openwdl/wdl/issues/739
-    "import_structs",  # Feature not yet implemented?
-    "environment_variable_should_echo",  # Ln 14 Col 45: Unexpected token STRING1_FRAGMENT
-    "outputs_task",  # 'outputs' section expected 2 results (['outputs.threshold', 'outputs.two_csvs']), got 3 instead (['outputs.two_csvs', 'outputs.csvs', 'outputs.threshold']) with exit code 0
-    "glob_task",  # 'outputs' section expected 1 results (['glob.last_file_contents']), got 2 instead (['glob.last_file_contents', 'glob.outfiles']) with exit code 0
-    "test_hints_task",  # Test is written as if the file has 3 lines, but it really has 2. See https://github.com/openwdl/wdl/issues/741
-    "input_hint_task",  # Missing outputs in test definition: https://github.com/openwdl/wdl/issues/740
-    "test_allow_nested_inputs",  # Ln 27 Col 3: Unexpected token HINTS
-    "multi_nested_inputs",  # Ln 8 Col 9: Unexpected token STRING1_FRAGMENT
-    "allow_nested",  # Ln 32 Col 9: Unexpected token STRING1_FRAGMENT
-    "test_find_task",  # Ln 9 Col 22: No such function: find
-    "test_matches_task",  # Ln 7 Col 29: No such function: matches
-    "change_extension_task",  # 'outputs' section expected 2 results (['change_extension.data', 'change_extension.index']), got 3 instead (['change_extension.index', 'change_extension.data', 'change_extension.data_file']) with exit code 0
-    "join_paths_task",  # Ln 14 Col 15: No such function: join_paths
-    "gen_files_task",  # 'outputs' section expected 1 results (['gen_files.glob_len']), got 2 instead (['gen_files.glob_len', 'gen_files.files']) with exit code 0
-    "file_sizes_task",  # WDL.Error.StaticTypeMismatch: Expected File? instead of Map[String,Pair[Int,File?]] 
+    "single_return_code_task",  # Task correctly exits 1 as declared via requirements.return_codes, but Toil/miniwdl still requires exit code 0 - return_codes override is not honored
+    "all_return_codes_task",  # Task correctly exits 42 as declared via requirements.return_codes: "*", but Toil/miniwdl still requires exit code 0 - return_codes override is not honored
+    "test_runtime_info_task",  # WDL.Error.EvalError from a KeyError; task runtime global still not fully exposed
+    "placeholder_none",  # WDL.Error.EvalError: select_first() given empty or all-null array; prevent this or append a default value
+    "environment_variable_should_echo",  # Now parses; Expected and result do not match!
+    "multi_nested_inputs",  # Workflow did not fail! Fails for toil-wdl and miniwdl
+    "join_paths_task",  # PermissionError: [Errno 13] Permission denied: '/usr/bin/sudo'
+    "file_sizes_task",  # WDL.Error.InputError: cannot coerce Map[String,Pair[Int,File?]] to Array[File?]
     "read_tsv_task",  # Ln 21 Col 5: Unknown type Object
-    "write_tsv_task",  # Ln 28 Col 16: write_tsv expects 1 argument(s)
-    "test_contains",  # Ln 25 Col 22: No such function: contains
-    "chunk_array",  # Ln 8 Col 17: No such function: chunk
-    "test_select_first",  # Ln 14 Col 17: select_first expects 1 argument(s)
-    "test_keys",  # Ln 32 Col 36: Expected Map[Any,Any] instead of Name
-    "test_contains_key",  # Ln 18 Col 20: No such function: contains_key
-    "test_values",  # Ln 28 Col 20: No such function: values
-    "test_length",  # length() isn't implemented for maps and strings yet
 ]
 
 
