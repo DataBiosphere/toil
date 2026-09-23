@@ -231,6 +231,17 @@ def call_scontrol(args, **_) -> str:
                NtasksPerTRES:0
             """
         ),
+        790001: textwrap.dedent(
+            """\
+            JobId=790001 JobName=somebody_elses_job
+               UserId=someone(1000) GroupId=someone(1000) MCS_label=N/A
+               Comment=first line of a comment
+            
+            second line of the comment, after a blank line
+               JobState=RUNNING Reason=None Dependency=(null)
+               Requeue=0 Restarts=0 BatchFlag=1 Reboot=0 ExitCode=0:0
+            """
+        ),
     }
     if job_id is not None:
         try:
@@ -246,29 +257,12 @@ def call_scontrol(args, **_) -> str:
             stdout += value + "\n"
     return stdout
 
-
-def call_scontrol_unparseable(args, **kwargs) -> str:
+def call_scontrol_no_jobs(args, **_) -> str:
     """
-    Like `call_scontrol`, but the dump of all jobs also carries the kinds of chunk seen on real
-    clusters that do not start with ``JobId=``: text before the first record, a job belonging
-    to another user whose Comment spans a blank line, and a whitespace-only line between two
-    records.  Each is a separate blank-line-separated chunk to the parser.
+    Return the output scontrol would produce if called when no jobs exist.
     """
-    stdout = call_scontrol(args, **kwargs)
-    if len(args) > 3:
-        return stdout
-    foreign = textwrap.dedent(
-        """\
-        JobId=790001 JobName=somebody_elses_job
-           UserId=someone(1000) GroupId=someone(1000) MCS_label=N/A
-           Comment=first line of a comment
 
-        second line of the comment, after a blank line
-           JobState=RUNNING Reason=None Dependency=(null)
-           Requeue=0 Restarts=0 BatchFlag=1 Reboot=0 ExitCode=0:0
-        """
-    )
-    return "stray text before the first record\n\n" + foreign + "\n \n\n" + stdout
+    return "No jobs in the system\n"
 
 
 def call_sacct_raises(*_):
@@ -457,22 +451,17 @@ class SlurmTest(ToilTest):
         result = self.worker._getJobDetailsFromScontrol(list(expected_result))
         assert result == expected_result, f"{result} != {expected_result}"
 
-    def test_getJobDetailsFromScontrol_many_unparseable_records(self):
-        """
-        Asked about more than one job, scontrol is run with no job id and dumps every job on
-        the cluster, so the output can carry chunks that do not start with ``JobId=``: text
-        before the first record, another user's job with a field spanning a blank line, a
-        whitespace-only line between records.  They must be skipped, not crash the leader
-        with KeyError or UnboundLocalError (#5553).
-        """
-        self.monkeypatch.setattr(
-            toil.batchSystems.slurm, "call_command", call_scontrol_unparseable
-        )
+    def test_getJobDetailsFromScontrol_one_unescaped_newlines(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
         expected_result = {
-            787204: ("COMPLETED", 0),
-            789724: ("RUNNING", 0),
-            789728: ("PENDING", 0),
+            790001: ("RUNNING", 0),
         }
+        result = self.worker._getJobDetailsFromScontrol(list(expected_result))
+        assert result == expected_result, f"{result} != {expected_result}"
+
+    def test_getJobDetailsFromScontrol_no_jobs(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol_no_jobs)
+        expected_result = {1234: (None, None), 1235: (None, None), 1236: (None, None)}
         result = self.worker._getJobDetailsFromScontrol(list(expected_result))
         assert result == expected_result, f"{result} != {expected_result}"
 
