@@ -130,6 +130,61 @@ all CWL intermediate files on disk and share them between jobs using file
 paths, instead of storing them in the file store and downloading them when jobs
 need them.
 
+Running CWL workflows with MPI
+------------------------------
+
+MPI support for CWL workflows in Toil is provided by ``cwltool`` through its
+``cwltool:MPIRequirement`` extension. For details on using this extension, see
+`the cwltool MPI documentation <cwltool_mpi_>`_.
+
+The following CWL tool, saved as ``hostname.cwl``, requests four MPI
+processes:
+
+::
+
+    cwlVersion: v1.2
+    class: CommandLineTool
+    $namespaces:
+      cwltool: "http://commonwl.org/cwltool#"
+    requirements:
+      cwltool:MPIRequirement:
+        processes: 4
+
+    baseCommand: hostname
+
+    inputs: []
+    outputs: []
+
+The MPI launcher is configured separately in ``mpi_config.yml``. For example,
+to use Slurm's ``srun`` launcher:
+
+::
+
+    runner: srun
+    nproc_flag: "-n"
+    extra_flags:
+      - "--partition=debug"
+
+You can then run the workflow on a two-node Slurm allocation with:
+
+::
+
+    $ toil-cwl-runner \
+      --batchSystem slurm \
+      --slurmArgs="--partition=debug \
+        --account=project_123 \
+        --nodes=2 \
+        --ntasks-per-node=2 \
+        --export=ALL" \
+      --mpi-config-file mpi_config.yml \
+      hostname.cwl
+
+In this example, the workflow runs four MPI processes distributed across two
+nodes. Adjust the Slurm and MPI configuration options as needed for your
+cluster.
+
+.. _cwltool_mpi: https://github.com/common-workflow-language/cwltool#running-mpi-based-tools-that-need-to-be-launched
+
 Toil & CWL Tips
 ---------------
 
