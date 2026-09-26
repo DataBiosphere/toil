@@ -977,6 +977,19 @@ def needs_fetchable_appliance(test_item: MT) -> MT:
     else:
         return test_item
 
+def needs_stubserver(test_item: MT) -> MT:
+    """
+    Decorate classes or methods that depend on the abandoned stubserver package
+    """
+    test_item = _mark_test("rsync", test_item)
+    try:
+        import stubserver
+        str(stubserver)
+    except ImportError:
+        return unittest.skip("stubserver needs to be installed to run this test.")(test_item)
+    return test_item
+
+
 
 def integrative(test_item: MT) -> MT:
     """

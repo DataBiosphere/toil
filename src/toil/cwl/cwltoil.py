@@ -1048,6 +1048,13 @@ class ToilCommandLineTool(
     CWL CommandLineTool that connects to ToilPathMapper and other hooks.
     """
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """
+        Init hook to set up member variables.
+        """
+        super().__init__(*args, **kwargs)
+
+
     def make_job_runner(
         self, runtimeContext: cwltool.context.RuntimeContext
     ) -> type[cwltool.job.JobBase]:
