@@ -1053,9 +1053,7 @@ class TestWDL:
     @needs_singularity_or_docker
     def test_run_dir(self, tmp_path: Path) -> None:
         """
-        Test that a WDL run with --runDir set succeeds end-to-end. The job
-        store/work dir derivation itself is covered by
-        commonTests.TestDeriveRunDirDefaults.
+        Test that a WDL run with --runDir set succeeds end-to-end.
         """
         run_dir = tmp_path / "rundir"
         with get_data("test/wdl/md5sum/md5sum.1.0.wdl") as wdl:
