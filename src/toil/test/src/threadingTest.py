@@ -1,6 +1,7 @@
 import logging
 import multiprocessing
 import os
+import io
 import random
 import time
 import traceback
@@ -8,8 +9,11 @@ from functools import partial
 from pathlib import Path
 import errno
 
-from toil.lib.threading import LastProcessStandingArena, cpu_count, global_mutex, safe_lock, safe_unlock_and_close
+from toil.lib.threading import LastProcessStandingArena, cpu_count, global_mutex, safe_lock, safe_unlock_and_close, CGROUP1_QUOTA_FILE, CGROUP1_PERIOD_FILE, CGROUP2_COMBINED_FILE
 from unittest.mock import patch
+
+import pytest
+import psutil
 
 log = logging.getLogger(__name__)
 
@@ -198,3 +202,32 @@ def _testLastProcessStandingTask(scope: Path, arena_name: str, number: int) -> b
     except:
         traceback.print_exc()
         return False
+
+
+def test_cpu_count_cgroups_v2_max_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    def mock_path_exists(path: str) -> bool:
+        if path in (CGROUP1_PERIOD_FILE, CGROUP1_QUOTA_FILE):
+            return False
+        if path == CGROUP2_COMBINED_FILE:
+            return True
+        return os.path.exists(path)
+
+    class cgroups_v2_stream:
+        def read(self) -> str:
+            return "max 100000\n"
+
+    def mock_open(path: str) -> cgroups_v2_stream:
+        return cgroups_v2_stream()
+
+    def mock_psutil_cpu_count(logical: bool) -> int | None:
+        return None
+
+    class psutil_process:
+        pass  # no cpu_affinity attribute
+
+    monkeypatch.setattr(os.path, "exists", mock_path_exists)
+    monkeypatch.setattr(io, "open", mock_open)
+    monkeypatch.setattr(psutil, "cpu_count", mock_psutil_cpu_count)
+    monkeypatch.setattr(psutil, "Process", psutil_process)
+
+    assert cpu_count() == 1

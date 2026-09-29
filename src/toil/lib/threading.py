@@ -20,6 +20,7 @@ import errno
 import fcntl
 import logging
 import math
+import io
 import os
 import platform
 import subprocess
@@ -39,6 +40,12 @@ from toil.lib.io import robust_rmtree
 from toil.lib.misc import StrPath
 
 logger = logging.getLogger(__name__)
+
+# CGroups v1 keeps quota and period separate
+CGROUP1_QUOTA_FILE = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
+CGROUP1_PERIOD_FILE = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
+# CGroups v2 keeps both in one file, space-separated, quota first
+CGROUP2_COMBINED_FILE = "/sys/fs/cgroup/cpu.max"
 
 
 def ensure_filesystem_lockable(
@@ -328,26 +335,22 @@ def cpu_count() -> int:
         quota: int | None = None
         period: int | None = None
 
-        # CGroups v1 keeps quota and period separate
-        CGROUP1_QUOTA_FILE = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
-        CGROUP1_PERIOD_FILE = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
-        # CGroups v2 keeps both in one file, space-separated, quota first
-        CGROUP2_COMBINED_FILE = "/sys/fs/cgroup/cpu.max"
-
         if os.path.exists(CGROUP1_QUOTA_FILE) and os.path.exists(CGROUP1_PERIOD_FILE):
             logger.debug("CPU quota and period available from cgroups v1")
-            with open(CGROUP1_QUOTA_FILE) as stream:
+            with io.open(CGROUP1_QUOTA_FILE) as stream:
                 # Read the quota
                 quota = int(stream.read())
 
-            with open(CGROUP1_PERIOD_FILE) as stream:
+            with io.open(CGROUP1_PERIOD_FILE) as stream:
                 # Read the period in which we are allowed to burn the quota
                 period = int(stream.read())
         elif os.path.exists(CGROUP2_COMBINED_FILE):
             logger.debug("CPU quota and period available from cgroups v2")
-            with open(CGROUP2_COMBINED_FILE) as stream:
+            with io.open(CGROUP2_COMBINED_FILE) as stream:
                 # Read the quota and the period together
-                quota, period = (int(part) for part in stream.read().split(" "))
+                quota_raw, period_raw = stream.read().split(" ")
+                period = int(period_raw)
+                quota = int(quota_raw) if quota_raw != 'max' else -1
         else:
             logger.debug("CPU quota/period not available from cgroups v1 or cgroups v2")
 
