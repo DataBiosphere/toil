@@ -153,6 +153,7 @@ class TestWDLConformance:
         p.check_returncode()
 
     @slow
+    @needs_docker
     def test_unit_tests_v11(self, wdl_conformance_test_repo: Path) -> None:
         # TODO: Using a branch lets Toil commits that formerly passed start to
         # fail CI when the branch moves.
@@ -189,6 +190,7 @@ class TestWDLConformance:
         self.check(p2)
 
     @slow
+    @needs_docker
     def test_unit_tests_v12(self, wdl_conformance_test_repo: Path) -> None:
         # TODO: Using a branch lets Toil commits that formerly passed start to
         # fail CI when the branch moves.
@@ -225,6 +227,7 @@ class TestWDLConformance:
         self.check(p2)
 
     @slow
+    @needs_docker
     def test_single_unit_test(self, wdl_conformance_test_repo: Path) -> None:
         """
         Run a single WDL spec unit test.  Defaults to ``glob_task`` on WDL
@@ -269,6 +272,7 @@ class TestWDLConformance:
 
     # estimated running time: 10 minutes
     @slow
+    @needs_docker
     def test_conformance_tests_v10(self, wdl_conformance_test_repo: Path) -> None:
         os.chdir(wdl_conformance_test_repo)
         commands = [
@@ -290,6 +294,7 @@ class TestWDLConformance:
 
     # estimated running time: 10 minutes
     @slow
+    @needs_docker
     def test_conformance_tests_v11(self, wdl_conformance_test_repo: Path) -> None:
         os.chdir(wdl_conformance_test_repo)
         commands = [
@@ -312,6 +317,7 @@ class TestWDLConformance:
     # estimated running time: 10 minutes (once all the appropriate tests get
     # marked as "development")
     @slow
+    @needs_docker
     def test_conformance_tests_development(
         self, wdl_conformance_test_repo: Path
     ) -> None:
@@ -334,6 +340,7 @@ class TestWDLConformance:
         self.check(p)
 
     @slow
+    @needs_docker
     def test_conformance_tests_integration(
         self, wdl_conformance_test_repo: Path
     ) -> None:
@@ -515,6 +522,7 @@ class TestWDL:
             assert isinstance(result["url_to_file.first_line"], str)
             assert result["url_to_file.first_line"] == "chr1\t248387328"
 
+    @needs_docker
     def test_string_file_coercion(self, tmp_path: Path) -> None:
         """
         Test if input Files can be coerced to string and back.
