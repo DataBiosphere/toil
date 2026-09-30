@@ -229,5 +229,6 @@ def test_cpu_count_cgroups_v2_max_limit(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(io, "open", mock_open)
     monkeypatch.setattr(psutil, "cpu_count", mock_psutil_cpu_count)
     monkeypatch.setattr(psutil, "Process", psutil_process)
-
-    assert cpu_count() == 1
+    monkeypatch.setattr(cpu_count, "result", None)
+    count = cpu_count()
+    assert count == 1, count
