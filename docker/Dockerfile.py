@@ -139,10 +139,10 @@ print(heredoc('''
     # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites -m https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
     # ipfs add -r .
     RUN if [ $TARGETARCH = amd64 ] ; then \
-        wget https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmUFzRvWmw6uJihmUjximxLz2gqEJv52YS8A3keHYNZxzF/rpm.aventer.biz/Ubuntu/noble/pool/main/a/aventer-mesos/aventer-mesos_1.11.0-0.9.0.ubuntu2404_amd64.deb && \
-        wget https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmUFzRvWmw6uJihmUjximxLz2gqEJv52YS8A3keHYNZxzF/rpm.aventer.biz/Ubuntu/noble/pool/main/d/docker-volume-s3/docker-volume-s3_0.1.3-1.ubuntu2404_amd64.deb && \
-        wget https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmUFzRvWmw6uJihmUjximxLz2gqEJv52YS8A3keHYNZxzF/rpm.aventer.biz/Ubuntu/noble/pool/main/m/mesos-dns/mesos-dns_0.10.1-1.ubuntu2404_amd64.deb && \
-        wget https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmUFzRvWmw6uJihmUjximxLz2gqEJv52YS8A3keHYNZxzF/rpm.aventer.biz/Ubuntu/noble/pool/main/z/zookeeper/zookeeper_3.9.4-0.1_amd64.deb && \
+        curl -O https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmUFzRvWmw6uJihmUjximxLz2gqEJv52YS8A3keHYNZxzF/rpm.aventer.biz/Ubuntu/noble/pool/main/a/aventer-mesos/aventer-mesos_1.11.0-0.9.0.ubuntu2404_amd64.deb && \
+        curl -O https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmUFzRvWmw6uJihmUjximxLz2gqEJv52YS8A3keHYNZxzF/rpm.aventer.biz/Ubuntu/noble/pool/main/d/docker-volume-s3/docker-volume-s3_0.1.3-1.ubuntu2404_amd64.deb && \
+        curl -O https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmUFzRvWmw6uJihmUjximxLz2gqEJv52YS8A3keHYNZxzF/rpm.aventer.biz/Ubuntu/noble/pool/main/m/mesos-dns/mesos-dns_0.10.1-1.ubuntu2404_amd64.deb && \
+        curl -O https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmUFzRvWmw6uJihmUjximxLz2gqEJv52YS8A3keHYNZxzF/rpm.aventer.biz/Ubuntu/noble/pool/main/z/zookeeper/zookeeper_3.9.4-0.1_amd64.deb && \
         dpkg -i *.deb && \
         rm *.deb  && \
         mesos-agent --help >/dev/null ; \
