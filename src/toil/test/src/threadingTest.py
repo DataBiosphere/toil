@@ -9,7 +9,7 @@ from functools import partial
 from pathlib import Path
 import errno
 
-from toil.lib.threading import LastProcessStandingArena, cpu_count, global_mutex, safe_lock, safe_unlock_and_close, CGROUP1_QUOTA_FILE, CGROUP1_PERIOD_FILE, CGROUP2_COMBINED_FILE
+from toil.lib.threading import LastProcessStandingArena, cpu_count, global_mutex, safe_lock, safe_unlock_and_close, parse_quota_cgroups2
 from unittest.mock import patch
 
 import pytest
@@ -74,7 +74,7 @@ class TestThreading:
                 assert not filename.startswith(
                     "precious"
                 ), f"File {filename} still exists"
-    
+
 class BaseSafeLockingTest:
     """
     Base class for testing retry and error-swallowing behavior in safe_lock
@@ -92,7 +92,7 @@ class BaseSafeLockingTest:
         with patch("fcntl.flock", side_effect=[error, None]) as mock_flock:
             safe_lock(0)
             assert mock_flock.call_count == 2
-    
+
     def test_safe_lock_fails_after_max_retries(self) -> None:
         """safe_lock should raise OSError after exhausting all retries."""
         error = self.get_error()
@@ -104,7 +104,7 @@ class BaseSafeLockingTest:
                     assert False, "Expected OSError to be raised"
                 except OSError as e:
                     assert e.errno == error.errno
-    
+
     def test_safe_unlock_and_close_swallows(self) -> None:
         """safe_unlock_and_close should swallow the error and still close the fd."""
         error = self.get_error()
@@ -204,31 +204,10 @@ def _testLastProcessStandingTask(scope: Path, arena_name: str, number: int) -> b
         return False
 
 
-def test_cpu_count_cgroups_v2_max_limit(monkeypatch: pytest.MonkeyPatch) -> None:
-    def mock_path_exists(path: str) -> bool:
-        if path in (CGROUP1_PERIOD_FILE, CGROUP1_QUOTA_FILE):
-            return False
-        if path == CGROUP2_COMBINED_FILE:
-            return True
-        return os.path.exists(path)
+def test_cpu_count_cgroups_v2_max_limit(tmp_path: Path) -> None:
 
-    class cgroups_v2_stream:
-        def read(self) -> str:
-            return "max 100000\n"
+    mock_file = tmp_path / "cpu.max"
+    with open(mock_file, "w") as fp:
+        fp.write("max 100000\n")
 
-    def mock_open(path: str) -> cgroups_v2_stream:
-        return cgroups_v2_stream()
-
-    def mock_psutil_cpu_count(logical: bool) -> int | None:
-        return None
-
-    class psutil_process:
-        pass  # no cpu_affinity attribute
-
-    monkeypatch.setattr(os.path, "exists", mock_path_exists)
-    monkeypatch.setattr(io, "open", mock_open)
-    monkeypatch.setattr(psutil, "cpu_count", mock_psutil_cpu_count)
-    monkeypatch.setattr(psutil, "Process", psutil_process)
-    monkeypatch.setattr(cpu_count, "result", None)
-    count = cpu_count()
-    assert count == 1, count
+    assert parse_quota_cgroups2(mock_file) == (-1, 100000)
