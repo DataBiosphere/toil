@@ -1,6 +1,7 @@
 import logging
 import multiprocessing
 import os
+import io
 import random
 import time
 import traceback
@@ -8,8 +9,11 @@ from functools import partial
 from pathlib import Path
 import errno
 
-from toil.lib.threading import LastProcessStandingArena, cpu_count, global_mutex, safe_lock, safe_unlock_and_close
+from toil.lib.threading import LastProcessStandingArena, cpu_count, global_mutex, safe_lock, safe_unlock_and_close, parse_quota_cgroups2
 from unittest.mock import patch
+
+import pytest
+import psutil
 
 log = logging.getLogger(__name__)
 
@@ -70,7 +74,7 @@ class TestThreading:
                 assert not filename.startswith(
                     "precious"
                 ), f"File {filename} still exists"
-    
+
 class BaseSafeLockingTest:
     """
     Base class for testing retry and error-swallowing behavior in safe_lock
@@ -88,7 +92,7 @@ class BaseSafeLockingTest:
         with patch("fcntl.flock", side_effect=[error, None]) as mock_flock:
             safe_lock(0)
             assert mock_flock.call_count == 2
-    
+
     def test_safe_lock_fails_after_max_retries(self) -> None:
         """safe_lock should raise OSError after exhausting all retries."""
         error = self.get_error()
@@ -100,7 +104,7 @@ class BaseSafeLockingTest:
                     assert False, "Expected OSError to be raised"
                 except OSError as e:
                     assert e.errno == error.errno
-    
+
     def test_safe_unlock_and_close_swallows(self) -> None:
         """safe_unlock_and_close should swallow the error and still close the fd."""
         error = self.get_error()
@@ -198,3 +202,12 @@ def _testLastProcessStandingTask(scope: Path, arena_name: str, number: int) -> b
     except:
         traceback.print_exc()
         return False
+
+
+def test_cpu_count_cgroups_v2_max_limit(tmp_path: Path) -> None:
+
+    mock_file = tmp_path / "cpu.max"
+    with open(mock_file, "w") as fp:
+        fp.write("max 100000\n")
+
+    assert parse_quota_cgroups2(mock_file) == (-1, 100000)
