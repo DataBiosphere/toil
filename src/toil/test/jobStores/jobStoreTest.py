@@ -32,7 +32,6 @@ from typing import Any, Callable
 from urllib.request import Request, urlopen
 
 import pytest
-from stubserver import FTPStubServer
 
 from toil.common import Config
 from toil.fileStores import FileID
@@ -54,6 +53,7 @@ from toil.test import (
     needs_encryption,
     needs_google_project,
     needs_google_storage,
+    needs_stubserver,
     slow,
 )
 
@@ -1080,8 +1080,11 @@ class AbstractJobStoreTest:
             finally:
                 http.server_close()
 
+        @needs_stubserver
         def testImportFtpFile(self):
             """Test importing a file over FTP"""
+            from stubserver import FTPStubServer
+
             ftpfile = {"name": "foo", "content": "foo bar baz qux"}
             ftp = FTPStubServer(0)
             ftp.run()
