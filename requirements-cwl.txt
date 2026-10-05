@@ -3,7 +3,7 @@ schema-salad>=8.4.20230128170514,<9
 galaxy-tool-util<27
 galaxy-util<27
 ruamel.yaml>=0.15,<=0.19.1
-ruamel.yaml.clib>=0.2.6
+ruamel.yaml.clib>=0.2.15
 networkx!=2.8.1,<4
 CacheControl[filecache]
 cwl-utils>=0.41
