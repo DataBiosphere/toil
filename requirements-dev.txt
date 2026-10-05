@@ -10,8 +10,8 @@ sphinx-autoapi>=3.2.1,<4
 astroid>=3,<5
 sphinx-autodoc-typehints>=1.24.0,<4
 sphinxcontrib-autoprogram==0.1.9
+mypy==2.4.0
 cwltest>=2.7.20260814150058
-mypy==1.20.1
 types-aws-xray-sdk
 types-boto<2.49.18.20241020
 types-Flask-Cors
