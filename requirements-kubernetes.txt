@@ -5,5 +5,5 @@ kubernetes>=12.0.1, <37
 kubernetes-stubs==v22.6.0post1
 types-urllib3
 types-PyYAML
-idna>=2
+idna>=3.20
 # Kubernetes's urllib3 can mange to use idna without really depending on it.
