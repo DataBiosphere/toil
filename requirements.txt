@@ -5,7 +5,7 @@ urllib3>=1.26.0,<3
 python-dateutil
 psutil >= 6.1.0, < 8
 PyPubSub >=4.0.3, <5
-addict>=2.2.1, <2.5
+addict>=2.4.0, <2.5
 enlighten>=1.5.2, <2
 configargparse>=1.7,<2
 ruamel.yaml>=0.15
