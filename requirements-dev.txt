@@ -28,7 +28,7 @@ autoflake
 isort
 diff_cover
 lxml
-docutils>=0.21,<0.24  # 0.21 is the last version with Python 3.10 support
+docutils>=0.23,<0.24  # 0.21 is the last version with Python 3.10 support
 pyupgrade
 pytest-xdist
 build
