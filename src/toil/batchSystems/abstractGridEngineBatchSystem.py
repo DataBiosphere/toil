@@ -17,6 +17,7 @@ from abc import ABCMeta, abstractmethod
 from datetime import datetime
 from queue import Empty, Queue
 from threading import Lock, Thread
+from typing import Generic, TypeVar
 
 from toil.batchSystems.abstractBatchSystem import (
     BatchJobExitReason,
@@ -50,8 +51,9 @@ class ExceededRetryAttempts(Exception):
     def __init__(self):
         super().__init__("Exceeded retry attempts talking to scheduler.")
 
+T = TypeVar("T")
 
-class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
+class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport, Generic[T]):
     """
     A partial implementation of BatchSystemSupport for batch systems run on a
     standard HPC cluster. By default auto-deployment is not implemented.
@@ -146,14 +148,14 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 self.boss.config.max_jobs
             ):
                 activity = True
-                jobID, cpu, memory, walltime, command, jobName, environment, gpus = (
+                jobID, cpu, memory, disk, walltime, command, jobName, environment, gpus = (
                     self.waitingJobs.pop(0)
                 )
                 if self.boss.config.memory_is_product and cpu > 1:
                     memory = memory // cpu
                 # prepare job submission command
                 subLine = self.prepareSubmission(
-                    cpu, memory, walltime, jobID, command, jobName, environment, gpus
+                    cpu, memory, disk, walltime, jobID, command, jobName, environment, gpus
                 )
                 logger.debug("Running %r", subLine)
                 batchJobID = self.boss.with_retries(self.submitJob, subLine)
@@ -364,30 +366,33 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self,
             cpu: int,
             memory: int,
+            disk: int,
             walltime: int,
             jobID: int,
             command: str,
             jobName: str,
             job_environment: dict[str, str] | None = None,
             gpus: int | None = None,
-        ) -> list[str]:
+        ) -> T:
             """
-            Preparation in putting together a command-line string
+            Preparation in putting together something submittable
             for submitting to batch system (via submitJob().)
 
-            :param: int cpu
-            :param: int memory
-            :param: int jobID: Toil job ID
-            :param: string subLine: the command line string to be called
-            :param: string jobName: the name of the Toil job, to provide metadata to batch systems if desired
-            :param: dict job_environment: the environment variables to be set on the worker
+            :param: cpu: number of cores
+            :param: memory: bytes of memory
+            :param: walltime: amount of wall clock time in seconds
+            :param: jobID: Toil job ID
+            :param: command: the command line string to be called
+            :param: jobName: the name of the Toil job, to provide metadata to batch systems if desired
+            :param: job_environment: the environment variables to be set on the worker
+            :param: gpus: number of gpus
 
             :rtype: List[str]
             """
             raise NotImplementedError()
 
         @abstractmethod
-        def submitJob(self, subLine):
+        def submitJob(self, subLine: T) -> str|int:
             """
             Wrapper routine for submitting the actual command-line call, then
             processing the output to get the batch system job ID
@@ -501,6 +506,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                     job_id,
                     job_desc.cores,
                     job_desc.memory,
+                    job_desc.disk,
                     job_desc.walltime,
                     command,
                     get_job_kind(job_desc.get_names()),

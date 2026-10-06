@@ -133,6 +133,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             self,
             cpu: int,
             memory: int,
+            disk: int,
+            walltime: int,
             jobID: int,
             command: str,
             jobName: str,

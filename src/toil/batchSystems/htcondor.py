@@ -49,73 +49,28 @@ JobTuple = tuple[
 schedd_lock = Lock()
 
 
-class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
+class HTCondorBatchSystem(AbstractGridEngineBatchSystem[htcondor.Submit]):
     # When using HTCondor, the Schedd handles scheduling
 
-    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
-
-        # Override the createJobs method so that we can use htcondor.Submit objects
-        # and so that we can get disk allocation requests and ceil the CPU request.
-        def createJobs(self, newJob: JobTuple) -> bool:
-            activity = False
-
-            if newJob is not None:
-                self.waitingJobs.append(newJob)
-
-            # Queue jobs as necessary:
-            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(
-                self.boss.config.max_jobs
-            ):
-                activity = True
-                (
-                    jobID,
-                    cpu,
-                    memory,
-                    disk,
-                    jobName,
-                    command,
-                    environment,
-                    accelerators,
-                ) = self.waitingJobs.pop(0)
-
-                if accelerators:
-                    logger.warning(
-                        "Scheduling job %s without enforcing accelerator requirement",
-                        jobID,
-                    )
-
-                # Prepare the htcondor.Submit object
-                submitObj: htcondor.Submit = self.prepareSubmission(
-                    cpu, memory, disk, jobID, jobName, command, environment
-                )
-                logger.debug("Submitting %r", submitObj)
-
-                # Submit job and get batch system ID (i.e. the ClusterId)
-                batchJobID = self.submitJob(submitObj)
-                logger.debug("Submitted job %s", str(batchJobID))
-
-                # Store dict for mapping Toil job ID to batch job ID
-                # TODO: Note that this currently stores a tuple of (batch system
-                # ID, Task), but the second value is None by default and doesn't
-                # seem to be used
-                self.batchJobIDs[jobID] = (batchJobID, None)
-
-                # Add to queue of queued ("running") jobs
-                self.runningJobs.add(jobID)
-
-            return activity
+    class GridEngineThread(AbstractGridEngineBatchSystem[htcondor.Submit].GridEngineThread):
 
         def prepareSubmission(
             self,
             cpu: int,
             memory: int,
             disk: int,
+            walltime: int,
             jobID: int,
-            jobName: str,
             command: str,
-            environment: dict[str, str],
+            jobName: str,
+            job_environment: dict[str, str] | None = None,
+            gpus: int | None = None,
         ) -> htcondor.Submit:
-            # Note that we don't yet take the accelerators here.
+            if gpus:
+                logger.warning(
+                    "Scheduling job %s without enforcing accelerator requirement",
+                    jobID,
+                )
 
             # Convert resource requests
             cpu = int(math.ceil(cpu))  # integer CPUs
@@ -146,7 +101,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 "executable": "/bin/sh",
                 "transfer_executable": "False",
                 "arguments": f'''"-c '{self.duplicate_quotes(command)}'"'''.encode(),  # Workaround for HTCondor Python bindings Unicode conversion bug
-                "environment": self.getEnvString(environment),
+                "environment": self.getEnvString(job_environment or {}),
                 "getenv": "True",
                 "should_transfer_files": "Yes",  # See note above for stdoutfile, stderrfile
                 "output": stdoutfile,
@@ -449,33 +404,3 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             # Each variable should be separated by a single space
             return '"' + " ".join(env_items) + '"'
 
-    # Override the issueBatchJob method so HTCondor can be given the disk request
-    def issueBatchJob(
-        self, command: str, jobNode, job_environment: dict[str, str] | None = None
-    ):
-        # Avoid submitting internal jobs to the batch queue, handle locally
-        localID = self.handleLocalJob(command, jobNode)
-        if localID is not None:
-            return localID
-        else:
-            self.check_resource_request(jobNode)
-            jobID = self.getNextJobID()
-            self.currentJobs.add(jobID)
-
-            # Construct our style of job tuple
-            self.newJobsQueue.put(
-                (
-                    jobID,
-                    jobNode.cores,
-                    jobNode.memory,
-                    jobNode.disk,
-                    jobNode.jobName,
-                    command,
-                    job_environment or {},
-                    jobNode.accelerators,
-                )
-            )
-            logger.debug(
-                "Issued the job command: %s with job id: %s ", command, str(jobID)
-            )
-        return jobID

@@ -175,7 +175,7 @@ def parse_slurm_option_value(args: list[str], i: int) -> tuple[str, int]:
     return arg.split("=", 1)[1], i
 
 
-class SlurmBatchSystem(AbstractGridEngineBatchSystem):
+class SlurmBatchSystem(AbstractGridEngineBatchSystem[list[str]]):
     class PartitionInfo(NamedTuple):
         partition_name: str
         gres: bool
@@ -353,6 +353,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             self,
             cpu: int,
             memory: int,
+            disk: int,
             walltime: int,
             jobID: int,
             command: str,
