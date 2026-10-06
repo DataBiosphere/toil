@@ -518,6 +518,8 @@ class BatchSystemSupport(AbstractBatchSystem):
             if workflowDirContents in ([], [cacheDirName(info.workflow_id)]):
                 logger.debug("Deleting workflow directory %s", workflowDir)
                 shutil.rmtree(workflowDir, ignore_errors=True)
+            else:
+                logger.debug("Leaving workflow directory %s with contents %s", workflowDir, workflowDirContents)
             if coordination_dir != workflowDir:
                 # No more coordination to do here either.
                 logger.debug("Deleting coordination directory %s", coordination_dir)

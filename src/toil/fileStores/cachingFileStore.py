@@ -227,6 +227,7 @@ class CachingFileStore(AbstractFileStore):
         self.workflowAttemptNumber = self.jobStore.config.workflowAttemptNumber
 
         # Make sure the cache directory exists
+        logger.debug("Local cache directory: %s", self.localCacheDir)
         os.makedirs(self.localCacheDir, exist_ok=True)
 
         # Connect to the cache database in there, or create it if not present.
@@ -237,6 +238,7 @@ class CachingFileStore(AbstractFileStore):
         self.dbPath = os.path.join(
             self.coordination_dir, f"cache-{self.workflowAttemptNumber}.db"
         )
+        logger.debug("Caching database: %s", self.dbPath)
 
         # Database connections are provided by magic properties self.con and
         # self.cur that always have the right object for the current thread to
@@ -1000,6 +1002,9 @@ class CachingFileStore(AbstractFileStore):
         Deletes the job's database entry and its whole temporary directory, and
         forgets all its refs.
 
+        Not responsible for shrinking the cache down to fit in the remaining
+        space.
+
         Any files the job downloaded outside its temporary directory are no
         longer our problem.
 
@@ -1031,14 +1036,27 @@ class CachingFileStore(AbstractFileStore):
 
     def _deallocateSpaceForJob(self):
         """
-        Our current job that was using oldJobReqs space has finished.
+        Our current job has finished.
 
-        We need to record that the job is no longer running, so its space not
-        taken up by files in the cache will be free.
+        We need to record that the job is no longer running, so its disk
+        requirement is no longer available to the cache as space.
+
+        Responsible for shrinking the cache down to fit.
 
         """
 
         self._removeJob(self.con, self.cur, self.jobID)
+
+        available = self.getCacheAvailable()
+
+        logger.debug("Available space without job: %d bytes", available)
+
+        if available >= 0:
+            # We're fine on disk space
+            return
+
+        # Otherwise we need to clear stuff.
+        self._freeUpSpace()
 
     def _tryToFreeUpSpace(self):
         """
