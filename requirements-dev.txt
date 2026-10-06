@@ -5,7 +5,7 @@ pytest_httpserver>=1.1.3,<2
 pytest-randomly>=3.16.0,<6
 stubserver>=1.1,<2
 setuptools>=65.5.1,<83
-sphinx>=7,<9
+sphinx>=8.1.3,<10  # 8.1.3 is the last version with Python 3.10 support
 sphinx-autoapi>=3.8.1,<4
 astroid>=3,<5
 sphinx-autodoc-typehints>=3.0.1,<4
@@ -29,7 +29,7 @@ autoflake
 isort
 diff_cover
 lxml
-docutils>=0.16,<0.23
+docutils>=0.21,<0.24  # 0.21 is the last version with Python 3.10 support
 pyupgrade
 pytest-xdist
 build
