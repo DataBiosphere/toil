@@ -1530,6 +1530,28 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # The later pass over whole bindings handles virtualization.
         return urljoin(source_dir, filename)
 
+    def _coerce_source_relative_path(
+        self, value: WDL.Value.Base, desired_type: WDL.Type.Base
+    ) -> WDL.Value.Base:
+        """
+        Coerce a value, resolving source-relative paths in the Files and
+        Directories that Toil hasn't already virtualized.
+        """
+        value = value.coerce(desired_type)
+
+        def rewrite_path(inode: WDL.Value.File | WDL.Value.Directory) -> str:
+            filename: str = inode.value
+            if (
+                get_inode_virtualized_value(inode) is not None
+                or get_shared_fs_path(inode) is not None
+            ):
+                return filename
+            if isinstance(inode, WDL.Value.Directory):
+                filename = filename.rstrip("/") + "/"
+            return self._resolve_source_relative_path(filename)
+
+        return WDL.Value.rewrite_paths(value, rewrite_path).coerce(desired_type)
+
     @property
     def task_path(self) -> str:
         task_path: str = self._wdl_options["task_path"]
