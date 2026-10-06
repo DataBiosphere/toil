@@ -252,7 +252,7 @@ class TestCWLWorkflow:
 
     def test_cwl_run_dir(self, tmp_path: Path) -> None:
         """
-        Test that --runDir derives the CWL image cache location.
+        Test that the CWL image cache location is derived from --runDir.
         """
         from toil.cwl import cwltoil
 

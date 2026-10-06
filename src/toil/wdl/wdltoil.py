@@ -5991,12 +5991,7 @@ def main() -> None:
     set_logging_from_options(options)
 
     if options.runDir is not None:
-        # A single --runDir was given. Derive defaults for the job store,
-        # work dir, and coordination dir from it, for anything not set
-        # explicitly. This has to happen here, before the fallback below
-        # runs, because by the time Toil's own Config.setOptions sees
-        # these options, options.jobStore is never None (the fallback
-        # below always fills it in first).
+        # Apply the --runDir defaults before we fill in a None jobStore below.
         options.runDir, options.jobStore, options.workDir, options.coordination_dir = (
             derive_run_dir_defaults(
                 options.runDir,

@@ -4756,12 +4756,7 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
     # See https://github.com/DataBiosphere/toil/issues/5310
 
     if options.runDir is not None:
-        # A single --runDir was given. Derive defaults for the job store,
-        # work dir, coordination dir, and cachedir from it, for anything
-        # not set explicitly. This has to happen here, before the
-        # fallbacks below run, because by the time Toil's own
-        # Config.setOptions sees these options, options.jobStore is
-        # never None (the fallback below always fills it in first).
+        # Apply the --runDir defaults before we fill in a None jobStore below.
         options.runDir, options.jobStore, options.workDir, options.coordination_dir = (
             derive_run_dir_defaults(
                 options.runDir,
@@ -4882,9 +4877,8 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
             expected_config.setOptions(options)
 
             if expected_config.runDir is not None and "CWL_SINGULARITY_CACHE" not in os.environ:
-                # try_prepull() and cwltool's own Singularity execution code
-                # read this straight from the environment, so default it
-                # here rather than on an options/config attribute.
+                # TODO: Get cwltool to be able to take this from somewhere
+                # other than the environment.
                 os.environ["CWL_SINGULARITY_CACHE"] = os.path.join(
                     expected_config.runDir, "image-cache", "singularity"
                 )

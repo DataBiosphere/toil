@@ -134,8 +134,8 @@ def derive_run_dir_defaults(
     --coordinationDir, fill in defaults for any of them left unset,
     derived from --runDir. Explicit values always win.
 
-    Creates run_dir on disk; work_dir, coordination_dir, and the job
-    store are only computed here and create themselves later.
+    Creates run_dir on disk. The other paths are only computed here;
+    Toil creates them later.
 
     :return: (run_dir, job_store, work_dir, coordination_dir), with
              run_dir made absolute and the other three either the
