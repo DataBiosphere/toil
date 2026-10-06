@@ -35,9 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-# TODO: Revert to a pinned commit once DataBiosphere/wdl-conformance-tests#PR
-# (basic_directory regex fix) merges to master.
-WDL_CONFORMANCE_TEST_COMMIT = "fix-basic-directory-regex"
+WDL_CONFORMANCE_TEST_COMMIT = "56df9b2b3018c5bca7fd078ca4d8c539f3e5984c"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -59,7 +57,6 @@ WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     "read_objects_task",  # object not supported
     "write_object_task",  # object not supported
     "write_objects_task",  # object not supported
-    "test_map",  # Map key not found: a File-typed Map key and a later lookup of the same path each virtualize it independently to a different toilfile: identity, since they run on different StdLib instances
 ]
 
 WDL_12_UNIT_TESTS_UNSUPPORTED_BY_TOIL = WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL + [

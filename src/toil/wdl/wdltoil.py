@@ -1522,15 +1522,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
     def _resolve_source_relative_path(self, filename: str) -> str:
         """
-        Resolve a WDL 1.2 source-relative File/Directory path to a Toil-virtualized path.
+        Resolve a WDL 1.2 source-relative File/Directory path to an absolute path.
         """
         if os.path.isabs(filename) or is_any_url(filename):
             return filename
         source_dir = self._wdl_options.get("source_dir") or self.execution_dir
-        # Virtualize it so it matches the same literal virtualized elsewhere,
-        # like a Decl's value, otherwise a Map key lookup can't find it.
-        # source_dir is a URI, so join with urljoin, not os.path.join.
-        return self._virtualize_filename(urljoin(source_dir, filename))
+        # The later pass over whole bindings handles virtualization.
+        return urljoin(source_dir, filename)
 
     @property
     def task_path(self) -> str:
@@ -2620,6 +2618,12 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
             ),
         )
 
+    def _resolve_source_relative_path(self, filename: str) -> str:
+        """
+        Leave relative paths as they are, since they are relative to the task's working directory.
+        """
+        return filename
+
     def _stdout(self) -> WDL.Value.File:
         """
         Get the standard output of the command that ran, as a WDL File, outside the container.
@@ -2838,8 +2842,9 @@ def evaluate_named_expression(
             raise
 
     if expected_type:
-        # Coerce to the type it should be.
-        value = value.coerce(expected_type)
+        # Coerce to the type it should be, resolving source-relative paths
+        # the same way StdLib functions and operators do.
+        value = stdlib._coerce_source_relative_path(value, expected_type)
 
     return value
 
@@ -4667,6 +4672,9 @@ class WDLWorkflowNodeJob(WDLBaseJob):
 
             if isinstance(self._node.callee, WDL.Tree.Workflow):
                 # This is a call of a workflow
+                wdl_options["source_dir"] = urljoin(
+                    self._node.callee.pos.abspath, "."
+                )
                 subjob: WDLBaseJob = WDLWorkflowJob(
                     self._node.callee,
                     [input_bindings, passed_down_bindings],
