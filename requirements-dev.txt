@@ -8,7 +8,7 @@ setuptools>=65.5.1,<83
 sphinx>=7,<9
 sphinx-autoapi>=3.8.1,<4
 astroid>=3,<5
-sphinx-autodoc-typehints>=1.24.0,<4
+sphinx-autodoc-typehints>=3.0.1,<4
 sphinxcontrib-autoprogram==0.1.9
 mypy==2.4.0
 cwltest>=2.7.20260814150058
