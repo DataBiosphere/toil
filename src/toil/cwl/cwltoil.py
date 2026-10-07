@@ -403,6 +403,10 @@ class Conditional:
         self.requirements = requirements or []
         self.container_engine = container_engine
 
+    def is_empty(self) -> bool:
+        """Whether this is an empty Conditional."""
+        return self.expression is None
+
     def is_false(self, job: CWLObjectType) -> bool:
         """
         Determine if expression evaluates to False given completed step inputs.
@@ -638,35 +642,37 @@ class ValueFrom:
         return f"ValueFrom({self.expr}, {self.source}, {self.req}, {self.container_engine})"
 
     def eval_prep(
-        self, step_inputs: CWLObjectType, file_store: AbstractFileStore
+        self, step_input: CWLObjectType, file_store: AbstractFileStore
     ) -> None:
         """
-        Resolve the contents of any file in a set of inputs.
+        Prepare the step_input object before evaluation of valueFrom expression.
 
-        The inputs must be associated with the ValueFrom object's self.source.
+        Responsible for checking loadContents, when enabled load the contents
+        if the input is of type File/File[].
 
-        Called when loadContents is specified.
-
-        :param step_inputs: Workflow step inputs.
+        :param step_input: step input.
         :param file_store: A toil file store, needed to resolve toilfile:// paths.
         """
-        for v in step_inputs.values():
-            val = cast(CWLObjectType, v)
+        values = step_input if isinstance(step_input, MutableSequence) else [step_input]
+        for val in values:
             source_input = getattr(self.source, "input", {})
-            if isinstance(val, dict) and isinstance(source_input, dict):
-                if (
-                    val.get("contents") is None
-                    and source_input.get("loadContents") is True
-                ):
-                    # This is safe to use even if we're bypassing the file
-                    # store for the workflow. In that case, no toilfile:// or
-                    # other special URIs will exist in the workflow to be read
-                    # from, and ToilFsAccess still supports file:// URIs.
-                    fs_access = functools.partial(ToilFsAccess, file_store=file_store)
-                    with fs_access("").open(cast(str, val["location"]), "rb") as f:
-                        val["contents"] = cwltool.builder.content_limit_respected_read(
-                            f
-                        )
+            if (
+                isinstance(val, dict)
+                and isinstance(source_input, dict)
+                and val.get("class") == "File"
+                and val.get("contents") is None
+                and val.get("location") is not None
+                and source_input.get("loadContents") is True
+            ):
+                # This is safe to use even if we're bypassing the file
+                # store for the workflow. In that case, no toilfile:// or
+                # other special URIs will exist in the workflow to be read
+                # from, and ToilFsAccess still supports file:// URIs.
+                fs_access = functools.partial(ToilFsAccess, file_store=file_store)
+                with fs_access("").open(cast(str, val["location"]), "rb") as f:
+                    val["contents"] = cwltool.builder.content_limit_respected_read(
+                        f
+                    )
 
     def resolve(self) -> Any:
         """
@@ -768,8 +774,9 @@ def resolve_dict_w_promises(
     result: CWLObjectType = {}
     for k, v in dict_w_promises.items():
         if isinstance(v, ValueFrom):
-            if file_store:
-                v.eval_prep(first_pass_results, file_store)
+            if file_store and first_pass_results[k]:
+                step_input = cast(CWLObjectType, first_pass_results[k])
+                v.eval_prep(step_input, file_store)
             result[k] = v.do_eval(inputs=first_pass_results)
         else:
             result[k] = first_pass_results[k]
@@ -2890,10 +2897,11 @@ class ResolveIndirect(CWLNamedJob):
 
 class CWLJobWrapper(CWLNamedJob):
     """
-    Wrap a CWL job that uses dynamic resources requirement.
+    Determines how and whether to run the wrapped CWL job.
 
-    When executed, this creates a new child job which has the correct resource
-    requirement set.
+    Wraps a CWL job that uses a dynamic resource requirement or has a
+    conditional. This job is responsible for creating a CWLJob child with
+    the right resource requirements, when the job should not be skipped.
     """
 
     def __init__(
@@ -2921,7 +2929,7 @@ class CWLJobWrapper(CWLNamedJob):
         """Create a child job with the correct resource requirements set."""
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
-        # Check confitional to license full evaluation of job inputs.
+        # Check conditional to license full evaluation of job inputs.
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
 
@@ -2950,11 +2958,9 @@ class CWLJob(CWLNamedJob):
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
         parent_name: str | None = None,
-        conditional: Conditional | None = None,
     ):
         """Store the context for later execution."""
         self.cwltool = tool
-        self.conditional = conditional or Conditional()
 
         if runtime_context.builder:
             self.builder = runtime_context.builder
@@ -3158,9 +3164,6 @@ class CWLJob(CWLNamedJob):
 
         # Deletes duplicate listings
         remove_redundant_mounts(cwljob)
-
-        if self.conditional.is_false(cwljob):
-            return self.conditional.skipped_outputs()
 
         fill_in_defaults(
             self.step_inputs, cwljob, self.runtime_context.make_fs_access("")
@@ -3507,11 +3510,12 @@ def makeJob(
         wfjob.addFollowOn(followOn)
         return wfjob, followOn
     else:
-        # Decied if we have any requirements we care about that are dynamic
+        # Decide if we have any requirements we care about that are dynamic
         REQUIREMENT_TYPES = [
             "ResourceRequirement",
             "http://commonwl.org/cwltool#CUDARequirement",
         ]
+        has_dynamic_resource_requirement = False
         for requirement_type in REQUIREMENT_TYPES:
             req, _ = tool.get_requirement(requirement_type)
             if req:
@@ -3519,23 +3523,29 @@ def makeJob(
                     if isinstance(r, str) and ("$(" in r or "${" in r):
                         # One of the keys in this requirement has a text substitution in it.
                         # TODO: This is not a real lex!
+                        has_dynamic_resource_requirement = True
 
-                        # Found a dynamic resource requirement so use a job wrapper
-                        job_wrapper = CWLJobWrapper(
-                            cast(ToilCommandLineTool, tool),
-                            jobobj,
-                            runtime_context,
-                            parent_name=parent_name,
-                            conditional=conditional,
-                        )
-                        return job_wrapper, job_wrapper
-        # Otherwise, all requirements are known now.
+        if has_dynamic_resource_requirement or (
+            conditional is not None and not conditional.is_empty()
+        ):
+            # Resource requirements and the `when` conditional can depend on
+            # promises from upstream steps that only resolve once the job
+            # runs, so check them in a cheap local wrapper first.
+            job_wrapper = CWLJobWrapper(
+                cast(ToilCommandLineTool, tool),
+                jobobj,
+                runtime_context,
+                parent_name=parent_name,
+                conditional=conditional,
+            )
+            return job_wrapper, job_wrapper
+        # Otherwise, all requirements are known now, and the step is
+        # unconditional, so it can be scheduled directly.
         job = CWLJob(
             tool,
             jobobj,
             runtime_context,
             parent_name=parent_name,
-            conditional=conditional,
         )
         return job, job
 

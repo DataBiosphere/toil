@@ -69,7 +69,7 @@ import tempfile
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import IO, Any, NamedTuple, Optional, TypeVar, cast
+from typing import IO, Any, MutableSequence, NamedTuple, Optional, TypeVar, cast
 
 from pubsub.core import Publisher
 from pubsub.core.listener import Listener
@@ -296,7 +296,7 @@ def bytes_to_message(message_type: type[MessageType], data: bytes) -> MessageTyp
         raise RuntimeError(f"Cannot parse {field_names} from {parts}")
 
     # Parse each part according to its type and put it in here
-    typed_parts = []
+    typed_parts: MutableSequence[int | float | bool | str] = []
 
     for name, part in zip(field_names, parts):
         field_type = field_to_type[name]

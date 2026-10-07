@@ -924,6 +924,16 @@ def add_base_toil_options(
         "retry count will be reduced by 1. Currently supported by LSF.",
     )
     job_options.add_argument(
+        "--doubleTime",
+        dest="doubleTime",
+        type=strtobool,
+        default=False,
+        metavar="BOOL",
+        help="If set, batch jobs which the batch system kills for exceeding their "
+        "walltime requirement will have their walltime doubled when retried. The "
+        "remaining retry count will be reduced by 1.",
+    )
+    job_options.add_argument(
         "--maxJobDuration",
         dest="maxJobDuration",
         default=SYS_MAX_SIZE,

@@ -32,8 +32,6 @@ from typing import Any, Callable
 from urllib.request import Request, urlopen
 
 import pytest
-from stubserver import FTPStubServer
-import edit_distance
 
 from toil.common import Config
 from toil.fileStores import FileID
@@ -55,6 +53,7 @@ from toil.test import (
     needs_encryption,
     needs_google_project,
     needs_google_storage,
+    needs_stubserver,
     slow,
 )
 
@@ -618,6 +617,7 @@ class AbstractJobStoreTest:
             assert "tigers" in other_many_hint_id
             assert "bears" in other_many_hint_id
 
+            import edit_distance
             assert edit_distance.edit_distance(many_hint_id, other_many_hint_id)[0] < 3, "IDs using hints must be low-entropy and human-findable, while not colliding even across nodes!"
 
             forbidden_hint_id = self.jobstore_initialized.write_file(str(get_a_file()), hints=["", "whales", "/", """
@@ -1080,8 +1080,11 @@ class AbstractJobStoreTest:
             finally:
                 http.server_close()
 
+        @needs_stubserver
         def testImportFtpFile(self):
             """Test importing a file over FTP"""
+            from stubserver import FTPStubServer
+
             ftpfile = {"name": "foo", "content": "foo bar baz qux"}
             ftp = FTPStubServer(0)
             ftp.run()

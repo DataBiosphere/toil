@@ -720,7 +720,7 @@ def make_inode(
     a when a is typed with a TypeVar.
     """
 
-    return cast(AnyINode, type(example_inode)(value, expr))
+    return type(example_inode)(value, expr)
 
 
 def set_inode_value(inode: AnyINode, new_value: str) -> AnyINode:

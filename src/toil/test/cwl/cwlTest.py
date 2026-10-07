@@ -1406,10 +1406,18 @@ class TestCWLWorkflow:
             with subtests.test(msg=f"Testing input {in_file} for status {status}"):
                 with get_data(in_file) as jobfile:
                     args = [TRS_SPEC, str(jobfile), f"--outdir={str(tmp_path)}"]
-                    with patch("toil.common.HistoryManager.record_workflow_metadata") as mock_record:
+                    with patch(
+                        "toil.common.HistoryManager.record_workflow_creation",
+                        return_value=True,
+                    ), patch(
+                        "toil.common.HistoryManager.record_workflow_metadata"
+                    ) as mock_record:
                         # History tracking is off for the tests that aren't really
                         # history tests, so we check if the TRS ID goes into the
                         # history system and not really if it goes to Dockstore.
+                        # record_workflow_creation is also mocked to report that
+                        # it created a new record, since record_workflow_metadata
+                        # is only called when it does.
                         #
                         # We know that common.py is talking to the
                         # HistoryManager and that it imports it with as.
@@ -2078,6 +2086,89 @@ def test_pick_value_with_one_null_value(
                         "You had a conditional step that did not run, but you did not use pickValue to handle the skipped input."
                         not in line
                     )
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_when_false_not_scheduled(
+    caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    """
+    A step skipped by its `when` condition must only run the CWLJobWrapper not the CWLJob. See: #3990.
+    """
+    from toil.cwl import cwltoil
+
+    with get_data("test/cwl/conditional_wf.cwl") as cwl_file:
+        with get_data("test/cwl/conditional_wf.yaml") as job_file:
+            with caplog.at_level(logging.DEBUG, logger="toil.leader"):
+                cwltoil.main(
+                    ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), str(job_file), "--disableChaining=True"]
+                )
+                assert any(
+                    "Finished toil run successfully" in record.getMessage()
+                    for record in caplog.records
+                ), "Toil run didn't finish"
+                assert any(
+                        "Issued job 'CWLJobWrapper'" in record.getMessage()
+                        for record in caplog.records
+                ), "'CWLJobWrapper' not issued"
+                assert not any(
+                        "Issued job 'CWLJob'" in record.getMessage()
+                        for record in caplog.records
+                ), "'CWLJob' issued"
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_when_on_step_output_scheduled(
+    caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    """
+    A step whose `when` references an upstream step's output must still only
+    run the CWLJobWrapper when skipped, and the CWLJob when not. See: #3990.
+    """
+    from toil.cwl import cwltoil
+
+    with get_data("test/cwl/conditional_step_depends_on_step.cwl") as cwl_file:
+        # produce/result (1) is not > 1: consume is skipped and only its
+        # CWLJobWrapper should run.
+        with caplog.at_level(logging.DEBUG, logger="toil.leader"):
+            cwltoil.main(
+                ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), "--number", "1", "--disableChaining=True"]
+            )
+            assert any(
+                "Finished toil run successfully" in record.getMessage()
+                for record in caplog.records
+            ), "Toil run didn't finish"
+            assert any(
+                "Issued job 'CWLJobWrapper'" in record.getMessage()
+                and "consume" in record.getMessage()
+                for record in caplog.records
+            ), "consume's 'CWLJobWrapper' not issued"
+            assert not any(
+                "Issued job 'CWLJob'" in record.getMessage()
+                and "consume" in record.getMessage()
+                for record in caplog.records
+            ), "consume's real 'CWLJob' issued despite being skipped"
+
+        caplog.clear()
+
+        # produce/result (2) is > 1: consume should actually run.
+        with caplog.at_level(logging.DEBUG, logger="toil.leader"):
+            cwltoil.main(
+                ["--logDebug", f"--outdir={tmp_path}", str(cwl_file), "--number", "2", "--disableChaining=True"]
+            )
+            assert any(
+                "Finished toil run successfully" in record.getMessage()
+                for record in caplog.records
+            ), "Toil run didn't finish"
+            assert any(
+                "Issued job 'CWLJob'" in record.getMessage()
+                and "consume" in record.getMessage()
+                for record in caplog.records
+            ), "consume's real 'CWLJob' not issued"
 
 
 @needs_cwl

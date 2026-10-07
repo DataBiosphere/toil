@@ -91,22 +91,13 @@ Running WDL workflows using Toil is still in alpha, and currently experimental. 
 
    This installs the ``toil-wdl-runner`` executable.
 
-#. Copy and paste the following code block into ``wdl-helloworld.wdl``::
+#. Copy and paste the following code block into ``wdl-helloworld.wdl``:
 
-        workflow write_simple_file {
-          call write_file
-        }
-        task write_file {
-          String message
-          command { echo ${message} > wdl-helloworld-output.txt }
-          output { File test = "wdl-helloworld-output.txt" }
-        }
+   .. literalinclude:: ../../src/toil/test/docs/scripts/wdl-helloworld.wdl
 
-   and this code into ``wdl-helloworld.json``::
+   and this code into ``wdl-helloworld.json``:
 
-        {
-          "write_simple_file.write_file.message": "Hello world!"
-        }
+   .. literalinclude:: ../../src/toil/test/docs/scripts/wdl-helloworld.json
 
 #. To run the workflow simply enter ::
 

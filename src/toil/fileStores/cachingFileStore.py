@@ -997,8 +997,11 @@ class CachingFileStore(AbstractFileStore):
         Get rid of the job with the given ID.
         The job must be owned by us.
 
-        Deletes the job's database entry, all its references, and its whole
-        temporary directory.
+        Deletes the job's database entry and its whole temporary directory, and
+        forgets all its refs.
+
+        Any files the job downloaded outside its temporary directory are no
+        longer our problem.
 
         :param sqlite3.Connection con: Connection to the cache database.
         :param sqlite3.Cursor cur: Cursor in the cache database.
@@ -1011,23 +1014,17 @@ class CachingFileStore(AbstractFileStore):
         ):
             jobTemp = row[0]
 
-        for row in cls._static_read(
-            cur, "SELECT path FROM refs WHERE job_id = ?", (jobID,)
-        ):
-            try:
-                # Delete all the reference files.
-                os.unlink(row[0])
-            except OSError:
-                # May not exist
-                pass
-        # And their database entries
-        cls._static_write(con, cur, [("DELETE FROM refs WHERE job_id = ?", (jobID,))])
-
         try:
             # Delete the job's temp directory to the extent that we can.
             shutil.rmtree(jobTemp)
         except OSError:
             pass
+
+        # Forget all the refs
+        cls._static_write(con, cur, [("DELETE FROM refs WHERE job_id = ?", (jobID,))])
+        # We definitely don't want to delete the referenced files, because jobs
+        # are allowed to read/write directly between the job store and other
+        # shared storage (like the WDL call cache).
 
         # Strike the job from the database
         cls._static_write(con, cur, [("DELETE FROM jobs WHERE id = ?", (jobID,))])
@@ -1759,6 +1756,7 @@ class CachingFileStore(AbstractFileStore):
                 # Don't fake a delay here; this should be a rename always.
 
                 # We are giving it away
+                logger.debug("Giving away %s as %s", cachedPath, localFilePath)
                 shutil.move(cachedPath, localFilePath)
                 # Record that.
                 self._write(
@@ -1802,34 +1800,40 @@ class CachingFileStore(AbstractFileStore):
                 "Cannot create link to missing cache file %s", cachedPath
             )
 
+            try:
+                stats = os.lstat(cachedPath)
+                logger.critical("Is a broken symlink with stats: %s", stats)
+            except OSError:
+                pass
+
             # Dump relevant bits of the database
             self._read(
                 "SELECT * FROM files WHERE path = ?",
                 (cachedPath,)
             )
             file_id = None
-            row = cur.fetchone()
+            row = self.cur.fetchone()
             while row is not None:
                 logger.critical("File row: %s", row)
                 file_id = row[0]
-                row = cur.fetchone()
+                row = self.cur.fetchone()
             self._read(
                 "SELECT * FROM refs WHERE path = ?",
                 (localFilePath,)
             )
-            row = cur.fetchone()
+            row = self.cur.fetchone()
             while row is not None:
                 logger.critical("Our ref row: %s", row)
-                row = cur.fetchone()
+                row = self.cur.fetchone()
             if file_id is not None:
                 self._read(
                     "SELECT * FROM refs WHERE file_id = ?",
                     (file_id,)
                 )
-                row = cur.fetchone()
+                row = self.cur.fetchone()
                 while row is not None:
                     logger.critical("Cache ref row: %s", row)
-                    row = cur.fetchone()
+                    row = self.cur.fetchone()
             else:
                 logger.critical("Cached file not found in database either")
 
@@ -2056,7 +2060,7 @@ class CachingFileStore(AbstractFileStore):
     ) -> Generator:
         """
         Get a context manager that gives you either the local file path for a
-        copyuing reference to the given file, or None if that file is not in an
+        copying reference to the given file, or None if that file is not in an
         'uploadable' or 'uploading' state.
 
         It is the caller's responsibility to actually do the copy, if they
