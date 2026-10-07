@@ -49,7 +49,11 @@ logger = logging.getLogger(__name__)
 
 class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
-    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
+    class GridEngineThread(
+        AbstractGridEngineBatchSystem.GridEngineThread[
+            tuple[list[str], dict[str, str] | None]
+        ]
+    ):
         """LSF specific GridEngineThread methods."""
 
         def getRunningJobIDs(self):

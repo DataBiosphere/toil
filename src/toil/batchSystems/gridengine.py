@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
-    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
+    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread[list[str]]):
         """
         Grid Engine-specific AbstractGridEngineWorker methods
         """

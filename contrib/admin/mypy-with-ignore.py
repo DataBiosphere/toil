@@ -46,7 +46,7 @@ def main():
         'src/toil/batchSystems/registry.py',
         'src/toil/batchSystems/lsf.py',
         'src/toil/batchSystems/__init__.py',
-        'src/toil/batchSystems/abstractGridEngineBatchSystem.py',
+        #'src/toil/batchSystems/abstractGridEngineBatchSystem.py',
         'src/toil/batchSystems/awsBatch.py',
         'src/toil/batchSystems/lsfHelper.py',
         'src/toil/batchSystems/htcondor.py',

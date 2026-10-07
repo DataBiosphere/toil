@@ -49,10 +49,10 @@ JobTuple = tuple[
 schedd_lock = Lock()
 
 
-class HTCondorBatchSystem(AbstractGridEngineBatchSystem[htcondor.Submit]):
+class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
     # When using HTCondor, the Schedd handles scheduling
 
-    class GridEngineThread(AbstractGridEngineBatchSystem[htcondor.Submit].GridEngineThread):
+    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread[htcondor.Submit]):
 
         def prepareSubmission(
             self,

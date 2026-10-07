@@ -26,7 +26,7 @@ from toil.batchSystems.abstractBatchSystem import (
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.bus import ExternalBatchIdMessage, get_job_kind
 from toil.common import Config
-from toil.job import AcceleratorRequirement, JobDescription
+from toil.job import JobDescription
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.lib.retry import DEFAULT_DELAYS, old_retry
 from toil.statsAndLogging import TRACE
@@ -38,22 +38,24 @@ logger = logging.getLogger(__name__)
 # Assigned ID
 # Required cores
 # Required memory
+# Required disk
+# Required walltime
 # Command to run
 # Unit name of the job
 # Environment dict for the job
-# Accelerator requirements for the job
+# Number of GPUs
 JobTuple = tuple[
-    int, float, int, str, str, dict[str, str], list[AcceleratorRequirement]
+    int, float, int, int, int, str, str, dict[str, str] | None, int
 ]
 
 
 class ExceededRetryAttempts(Exception):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("Exceeded retry attempts talking to scheduler.")
 
 T = TypeVar("T")
 
-class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport, Generic[T]):
+class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     """
     A partial implementation of BatchSystemSupport for batch systems run on a
     standard HPC cluster. By default auto-deployment is not implemented.
@@ -62,13 +64,13 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport, Generic[T]):
     class GridEngineThreadException(Exception):
         pass
 
-    class GridEngineThread(Thread, metaclass=ABCMeta):
+    class GridEngineThread(Thread, Generic[T], metaclass=ABCMeta):
         def __init__(
             self,
-            newJobsQueue: Queue,
-            updatedJobsQueue: Queue,
-            killQueue: Queue,
-            killedJobsQueue: Queue,
+            newJobsQueue: Queue[JobTuple],
+            updatedJobsQueue: Queue[UpdatedBatchJobInfo],
+            killQueue: Queue[int],
+            killedJobsQueue: Queue[int],
             boss: "AbstractGridEngineBatchSystem",
         ) -> None:
             """

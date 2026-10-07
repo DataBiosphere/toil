@@ -175,7 +175,7 @@ def parse_slurm_option_value(args: list[str], i: int) -> tuple[str, int]:
     return arg.split("=", 1)[1], i
 
 
-class SlurmBatchSystem(AbstractGridEngineBatchSystem[list[str]]):
+class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     class PartitionInfo(NamedTuple):
         partition_name: str
         gres: bool
@@ -312,7 +312,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem[list[str]]):
             else:
                 return winning_partition.partition_name
 
-    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
+    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread[list[str]]):
         # Our boss is always the enclosing class
         boss: SlurmBatchSystem
 
