@@ -19,7 +19,7 @@ types-psutil>=7.2.2.20260906
 types-python-dateutil
 types-setuptools
 types-xmltodict
-flake8>=3.8.4,<8
+flake8>=7.4.1,<8
 flake8-bugbear>=26.9.30,<27
 black
 isort
