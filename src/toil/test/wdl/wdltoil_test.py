@@ -153,6 +153,7 @@ class TestWDLConformance:
         p.check_returncode()
 
     @slow
+    @needs_docker
     def test_unit_tests_v11(self, wdl_conformance_test_repo: Path) -> None:
         # TODO: Using a branch lets Toil commits that formerly passed start to
         # fail CI when the branch moves.
@@ -189,6 +190,7 @@ class TestWDLConformance:
         self.check(p2)
 
     @slow
+    @needs_docker
     def test_unit_tests_v12(self, wdl_conformance_test_repo: Path) -> None:
         # TODO: Using a branch lets Toil commits that formerly passed start to
         # fail CI when the branch moves.
@@ -225,6 +227,7 @@ class TestWDLConformance:
         self.check(p2)
 
     @slow
+    @needs_docker
     def test_single_unit_test(self, wdl_conformance_test_repo: Path) -> None:
         """
         Run a single WDL spec unit test.  Defaults to ``glob_task`` on WDL
@@ -269,6 +272,7 @@ class TestWDLConformance:
 
     # estimated running time: 10 minutes
     @slow
+    @needs_docker
     def test_conformance_tests_v10(self, wdl_conformance_test_repo: Path) -> None:
         os.chdir(wdl_conformance_test_repo)
         commands = [
@@ -290,6 +294,7 @@ class TestWDLConformance:
 
     # estimated running time: 10 minutes
     @slow
+    @needs_docker
     def test_conformance_tests_v11(self, wdl_conformance_test_repo: Path) -> None:
         os.chdir(wdl_conformance_test_repo)
         commands = [
@@ -312,6 +317,7 @@ class TestWDLConformance:
     # estimated running time: 10 minutes (once all the appropriate tests get
     # marked as "development")
     @slow
+    @needs_docker
     def test_conformance_tests_development(
         self, wdl_conformance_test_repo: Path
     ) -> None:
@@ -334,6 +340,7 @@ class TestWDLConformance:
         self.check(p)
 
     @slow
+    @needs_docker
     def test_conformance_tests_integration(
         self, wdl_conformance_test_repo: Path
     ) -> None:
@@ -388,6 +395,30 @@ class TestWDL:
                 assert isinstance(result["ga4ghMd5.value"], str)
                 assert os.path.exists(result["ga4ghMd5.value"])
                 assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
+
+    @needs_singularity_or_docker
+    def test_documentation_quickstart(self, tmp_path: Path) -> None:
+        """Test the WDL quickstart example from the documentation."""
+        with get_data("test/docs/scripts/wdl-helloworld.wdl") as wdl:
+            with get_data("test/docs/scripts/wdl-helloworld.json") as json_file:
+                result_json = subprocess.check_output(
+                    self.base_command
+                    + [
+                        str(wdl),
+                        str(json_file),
+                        "-o",
+                        str(tmp_path),
+                        "--logDebug",
+                        "--retryCount=0",
+                    ]
+                )
+                result = json.loads(result_json)
+
+                assert "write_simple_file.write_file.test" in result
+                output_path = result["write_simple_file.write_file.test"]
+                assert os.path.exists(output_path)
+                with open(output_path) as f:
+                    assert f.read().strip() == "Hello world!"
 
     @needs_singularity
     def test_sif_image(self, tmp_path: Path) -> None:
@@ -491,6 +522,7 @@ class TestWDL:
             assert isinstance(result["url_to_file.first_line"], str)
             assert result["url_to_file.first_line"] == "chr1\t248387328"
 
+    @needs_docker
     def test_string_file_coercion(self, tmp_path: Path) -> None:
         """
         Test if input Files can be coerced to string and back.

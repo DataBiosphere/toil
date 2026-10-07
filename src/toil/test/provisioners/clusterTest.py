@@ -28,6 +28,7 @@ from toil.test import (
     needs_env_var,
     needs_fetchable_appliance,
     slow,
+    pneeds_aws_ec2,
 )
 from toil.test.cwl.cwlTest import TestCWLv12Conformance
 
@@ -44,10 +45,6 @@ class AbstractClusterTest(ToilTest):
         self.leaderNodeType = "t2.medium"
         self.clusterType = "mesos"
         self.zone = get_best_aws_zone()
-        assert (
-            self.zone is not None
-        ), "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
-        self.region = zone_to_region(self.zone)
 
         # Get connection to AWS
         self.aws = AWSConnectionManager()

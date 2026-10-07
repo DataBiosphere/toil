@@ -38,7 +38,6 @@ logger = logging.getLogger(__name__)
 # Value to use as exitStatus in UpdatedBatchJobInfo.exitStatus when status is not available.
 EXIT_STATUS_UNAVAILABLE_VALUE = 255
 
-
 class BatchJobExitReason(enum.IntEnum):
     FINISHED = 1
     """Successfully finished."""
@@ -58,6 +57,8 @@ class BatchJobExitReason(enum.IntEnum):
     """Job ran longer than --maxJobDuration, so Toil killed it."""
     PARTITION = 9
     """Job was not able to talk to the leader via the job store, so Toil declared it failed."""
+    TIMELIMIT = 10
+    """Job hit batch system imposed time limit."""
 
     @classmethod
     def to_string(cls, value: int) -> str:

@@ -237,25 +237,25 @@ clean_docker_builder:
 
 docker: toil_docker prometheus_docker grafana_docker mtail_docker
 
-toil_docker: docker/Dockerfile src/toil/version.py
+toil_docker: docker/Dockerfile src/toil/version.py docker_builder
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd docker \
 	; docker buildx build --builder $(DOCKER_BUILDER_NAME) --platform=$(arch) --tag=$(docker_image):$(TOIL_DOCKER_TAG) --cache-from type=registry,ref=$(docker_image):$(TOIL_DOCKER_MAIN_CACHE_TAG) --cache-from type=registry,ref=$(docker_image):$(TOIL_DOCKER_CACHE_TAG) --cache-from type=local,src=../.docker-cache/toil --cache-to type=local,dest=../.docker-cache/toil -f Dockerfile .
 
-prometheus_docker:
+prometheus_docker: docker_builder
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd dashboard/prometheus \
 	; docker buildx build --builder $(DOCKER_BUILDER_NAME) --platform=$(arch) --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) --cache-from type=registry,ref=$(prometheus_image):$(TOIL_DOCKER_MAIN_CACHE_TAG) --cache-from type=registry,ref=$(prometheus_image):$(TOIL_DOCKER_CACHE_TAG) --cache-from type=local,src=../../.docker-cache/prometheus --cache-to type=local,dest=../../.docker-cache/prometheus -f Dockerfile .
 
-grafana_docker:
+grafana_docker: docker_builder
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd dashboard/grafana \
 	; docker buildx build --builder $(DOCKER_BUILDER_NAME) --platform=$(arch) --tag=$(grafana_image):$(TOIL_DOCKER_TAG) --cache-from type=registry,ref=$(grafana_image):$(TOIL_DOCKER_MAIN_CACHE_TAG) --cache-from type=registry,ref=$(grafana_image):$(TOIL_DOCKER_CACHE_TAG) --cache-from type=local,src=../../.docker-cache/grafana --cache-to type=local,dest=../../.docker-cache/grafana -f Dockerfile .
 
-mtail_docker:
+mtail_docker: docker_builder
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd dashboard/mtail \

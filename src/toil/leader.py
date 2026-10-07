@@ -55,13 +55,14 @@ from toil.job import (
     ServiceJobDescription,
     TemporaryID,
 )
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException, TOIL_WORKER_NO_JOB_STORE_EXIT_CODE
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.clusterScaler import ScalerThread, NonScalableBatchSystemError
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
 from toil.toilState import ToilState
+from toil.worker import NO_JOB_STORE_EXIT_CODE
 
 logger = logging.getLogger(__name__)
 
@@ -925,7 +926,7 @@ class Leader:
                     self.recommended_fail_exit_code = (
                         CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
                     )
-                elif update.exitStatus == TOIL_WORKER_NO_JOB_STORE_EXIT_CODE:
+                elif update.exitStatus == NO_JOB_STORE_EXIT_CODE:
                     # A worker could not access the job store. This is likely
                     # because the job store is not on a shared filesystem.
                     logger.warning(
@@ -1603,10 +1604,6 @@ class Leader:
                             failed=True,
                         )
             if result_status != 0:
-                # If the batch system returned a non-zero exit code then the worker
-                # is assumed not to have captured the failure of the job, so we
-                # reduce the try count here.
-
                 # Search for the batch system's own logs first, so the
                 # "no log file" warning below is only shown when Toil
                 # genuinely found nothing, and can say so specifically.

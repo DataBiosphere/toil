@@ -205,10 +205,12 @@ class HistoryManager:
             # This has to be outside any transaction.
             # See <https://stackoverflow.com/q/78898176>
             con.execute("PRAGMA foreign_keys = ON")
-        # This has the side effect of definitely leaving autocommit off, which
-        # is what we want as the base state.
 
-        # Set up the connection to use the Row class so that we can look up row values by column name and not just order.
+        # We rely on the cleanup from no_transaction() to make sure we're in a
+        # transaction now.
+
+        # Set up the connection to use the Row class so that we can look up row
+        # values by column name and not just order.
         con.row_factory = sqlite3.Row
 
         return con
@@ -220,7 +222,10 @@ class HistoryManager:
         Temporarily disable the constant active transaction on the database
         connection, on Python versions where it exists.
 
-        Commits the current transaction.
+        Commits the current transaction (if any).
+
+        Guarantees that everything happening after the context manager ends is
+        in a transaction.
         """
 
         con.commit()
@@ -228,7 +233,14 @@ class HistoryManager:
             con.autocommit = True
         yield
         if hasattr(con, "autocommit"):
+            # For Python 3.12+ we cna just turn autocpmmit off
             con.autocommit = False
+        else:
+            # Before Python 3.12 isolation_level DEFERRED is supposed to
+            # automatically put us into a transaction when we write, but it
+            # doesn't seem to do quite the same thing as BEGIN DEFERRED, so we
+            # do that manually.
+            con.execute("BEGIN DEFERRED")
 
     @classmethod
     def ensure_tables(cls, con: sqlite3.Connection, cur: sqlite3.Cursor) -> None:
@@ -269,6 +281,10 @@ class HistoryManager:
                     CREATE TABLE workflows (
                         id TEXT NOT NULL PRIMARY KEY,
                         job_store TEXT NOT NULL,
+                        /*
+                        creation_time is when the database record was created,
+                        not when the workflow was first run
+                        */
                         creation_time REAL NOT NULL,
                         name TEXT,
                         trs_spec TEXT
@@ -366,14 +382,13 @@ class HistoryManager:
 
     @classmethod
     @db_retry
-    def record_workflow_creation(cls, workflow_id: str, job_store_spec: str) -> None:
+    def record_workflow_creation(cls, workflow_id: str, job_store_spec: str) -> bool:
         """
         Record that a workflow is being run.
 
         Takes the Toil config's workflow ID and the location of the job store.
 
-        Should only be called on the *first* attempt on a job store, not on a
-        restart.
+        Idempotent: safe to call again for a workflow ID that is already known.
 
         A workflow may have multiple attempts to run it, some of which succeed
         and others of which fail. Probably only the last one should succeed.
@@ -382,10 +397,13 @@ class HistoryManager:
             be canonical and always start with the type and a colon. If the
             job store is later moved by the user, the location will not be
             updated.
+
+        :return: True if this call created the workflow's record, or False if
+            a record for this workflow ID already existed.
         """
 
         if not cls.enabled():
-            return
+            return False
 
         logger.info(
             "Recording workflow creation of %s in %s", workflow_id, job_store_spec
@@ -396,9 +414,10 @@ class HistoryManager:
         try:
             cls.ensure_tables(con, cur)
             cur.execute(
-                "INSERT INTO workflows VALUES (?, ?, ?, NULL, NULL)",
+                "INSERT OR IGNORE INTO workflows VALUES (?, ?, ?, NULL, NULL)",
                 (workflow_id, job_store_spec, time.time()),
             )
+            created = cur.rowcount == 1
         except:
             con.rollback()
             con.close()
@@ -408,6 +427,7 @@ class HistoryManager:
             con.close()
 
         # If we raise out of here the connection goes away and the transaction rolls back.
+        return created
 
     @classmethod
     @db_retry
