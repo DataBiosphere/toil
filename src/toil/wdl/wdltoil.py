@@ -254,6 +254,8 @@ class WDLContext(TypedDict):
 
     execution_dir: NotRequired[str]
     """Directory to use as the working directory for workflow code"""
+    source_dir: NotRequired[str]
+    """Directory containing the WDL source document, for resolving WDL 1.2 source-relative File/Directory paths"""
     container: NotRequired[str]
     """The type of container to use when executing a WDL task. Carries through the value of the commandline --container option."""
     task_path: str
@@ -867,6 +869,7 @@ def fill_execution_cache(
     output_bindings: WDLBindings,
     file_store: AbstractFileStore,
     wdl_options: WDLContext,
+    input_bindings: WDLBindings,
     miniwdl_logger: logging.Logger | None = None,
     miniwdl_config: WDL.runtime.config.Loader | None = None,
 ) -> WDLBindings:
@@ -955,7 +958,12 @@ def fill_execution_cache(
     )
 
     # Save the bindings to the cache, representing all files with their shared filesystem paths.
-    miniwdl_cache.put(cache_key, view_shared_fs_paths(output_bindings))
+    miniwdl_cache.put(
+        cache_key,
+        view_shared_fs_paths(output_bindings),
+        inputs=view_shared_fs_paths(input_bindings),
+        add_paths=WDL.runtime.cache.CallCacheAddPaths(),
+    )
     logger.debug("Saved result to cache under %s", cache_key)
 
     # Keep using the transformed bindings so that later tasks use
@@ -1520,6 +1528,38 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     @property
     def execution_dir(self) -> str:
         return self._wdl_options.get("execution_dir", ".")
+
+    def _resolve_source_relative_path(self, filename: str) -> str:
+        """
+        Resolve a WDL 1.2 source-relative File/Directory path to an absolute path.
+        """
+        if os.path.isabs(filename) or is_any_url(filename):
+            return filename
+        source_dir = self._wdl_options.get("source_dir") or self.execution_dir
+        # The later pass over whole bindings handles virtualization.
+        return urljoin(source_dir, filename)
+
+    def _coerce_source_relative_path(
+        self, value: WDL.Value.Base, desired_type: WDL.Type.Base
+    ) -> WDL.Value.Base:
+        """
+        Coerce a value, resolving source-relative paths in the Files and
+        Directories that Toil hasn't already virtualized.
+        """
+        value = value.coerce(desired_type)
+
+        def rewrite_path(inode: WDL.Value.File | WDL.Value.Directory) -> str:
+            filename: str = inode.value
+            if (
+                get_inode_virtualized_value(inode) is not None
+                or get_shared_fs_path(inode) is not None
+            ):
+                return filename
+            if isinstance(inode, WDL.Value.Directory):
+                filename = filename.rstrip("/") + "/"
+            return self._resolve_source_relative_path(filename)
+
+        return WDL.Value.rewrite_paths(value, rewrite_path).coerce(desired_type)
 
     @property
     def task_path(self) -> str:
@@ -2424,6 +2464,8 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
                     WDL.Env.Bindings(
                         WDL.Env.Binding("file", WDL.Value.File(exported_path))
                     ),
+                    inputs=file_input_bindings,
+                    add_paths=WDL.runtime.cache.CallCacheAddPaths(),
                 )
 
                 # Apply the shared filesystem path to the virtualized file
@@ -2606,6 +2648,12 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
                 "glob", [WDL.Type.String()], WDL.Type.Array(WDL.Type.File()), self._glob
             ),
         )
+
+    def _resolve_source_relative_path(self, filename: str) -> str:
+        """
+        Leave relative paths as they are, since they are relative to the task's working directory.
+        """
+        return filename
 
     def _stdout(self) -> WDL.Value.File:
         """
@@ -2825,8 +2873,9 @@ def evaluate_named_expression(
             raise
 
     if expected_type:
-        # Coerce to the type it should be.
-        value = value.coerce(expected_type)
+        # Coerce to the type it should be, resolving source-relative paths
+        # the same way StdLib functions and operators do.
+        value = stdlib._coerce_source_relative_path(value, expected_type)
 
     return value
 
@@ -4032,6 +4081,9 @@ class WDLTaskJob(WDLBaseJob):
         # MiniWDL guarantees that this will be "work" under the host directory.
         # MiniWDL also insists on creating it.
         wdl_options["execution_dir"] = os.path.join(host_dir, "work")
+        # source_dir must come from pos.abspath, since Toil always loads WDL
+        # via URI and task.source_dir only recognizes bare local paths.
+        wdl_options["source_dir"] = urljoin(self._task.pos.abspath, ".")
 
         # Set up the WDL standard library.
         # We process nonexistent files in WDLTaskWrapperJob as those must be
@@ -4548,6 +4600,7 @@ class WDLTaskJob(WDLBaseJob):
                 output_bindings,
                 file_store,
                 self._wdl_options,
+                unwrap(self._task_internal_bindings),
                 miniwdl_logger=miniwdl_logger,
                 miniwdl_config=miniwdl_config,
             )
@@ -4658,6 +4711,9 @@ class WDLWorkflowNodeJob(WDLBaseJob):
 
             if isinstance(self._node.callee, WDL.Tree.Workflow):
                 # This is a call of a workflow
+                wdl_options["source_dir"] = urljoin(
+                    self._node.callee.pos.abspath, "."
+                )
                 subjob: WDLBaseJob = WDLWorkflowJob(
                     self._node.callee,
                     [input_bindings, passed_down_bindings],
@@ -5649,6 +5705,7 @@ class WDLWorkflowJob(WDLSectionJob):
             self._enclosing_bindings,
             wdl_options=self._wdl_options,
             cache_key=cache_key,
+            input_bindings=bindings,
             local=True,
         )
         sink.addFollowOn(outputs_job)
@@ -5671,6 +5728,7 @@ class WDLOutputsJob(WDLBaseJob):
         enclosing_bindings: WDLBindings,
         wdl_options: WDLContext,
         cache_key: str | None = None,
+        input_bindings: Promised[WDLBindings] | None = None,
         **kwargs: Any,
     ):
         """
@@ -5684,6 +5742,9 @@ class WDLOutputsJob(WDLBaseJob):
         :param cache_key: If set and storing into the call cache is on, will
                cache the workflow execution result under the given key in a
                MiniWDL-compatible way.
+
+        :param input_bindings: The workflow call's input bindings, matching
+               what cache_key was derived from. Required if cache_key is set.
         """
         super().__init__(wdl_options=wdl_options, **kwargs)
 
@@ -5691,6 +5752,7 @@ class WDLOutputsJob(WDLBaseJob):
         self._enclosing_bindings = enclosing_bindings
         self._workflow = workflow
         self._cache_key = cache_key
+        self._input_bindings = input_bindings
 
     @report_wdl_errors("evaluate outputs")
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
@@ -5774,8 +5836,13 @@ class WDLOutputsJob(WDLBaseJob):
         output_bindings = virtualize_inodes(output_bindings, standard_library)
 
         if self._cache_key is not None:
+            assert self._input_bindings is not None
             output_bindings = fill_execution_cache(
-                self._cache_key, output_bindings, file_store, self._wdl_options
+                self._cache_key,
+                output_bindings,
+                file_store,
+                self._wdl_options,
+                unwrap(self._input_bindings),
             )
 
         # Let Files that are not output or available outside the call go out of
@@ -6133,6 +6200,7 @@ def main() -> None:
             # restart. For now we assume we are computing the same values.
             wdl_options: WDLContext = {
                 "execution_dir": execution_dir,
+                "source_dir": urljoin(target.pos.abspath, "."),
                 "container": options.container,
                 "task_path": target.name,
                 "namespace": target.name,
