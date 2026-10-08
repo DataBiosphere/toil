@@ -70,7 +70,10 @@ class WorkerCleanupContext:
         # Don't set self.arena or MyPy will be upset that sometimes it doesn't have the right type.
 
     def __enter__(self) -> None:
-        # Set up an arena so we know who is the last worker to leave
+        # Set up an arena so we know who is the last worker to leave.
+        # The arena is in the top-level coordination directory, *not* in the
+        # per-workflow coordination directory which the cleanup is going to
+        # delete.
         self.arena = LastProcessStandingArena(
             Toil.get_toil_coordination_dir(
                 self.workerCleanupInfo.work_dir, self.workerCleanupInfo.coordination_dir

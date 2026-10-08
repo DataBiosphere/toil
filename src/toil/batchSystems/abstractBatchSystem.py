@@ -505,26 +505,41 @@ class BatchSystemSupport(AbstractBatchSystem):
         logger.debug("Attempting worker cleanup")
         assert isinstance(info, WorkerCleanupInfo)
         assert info.workflow_id is not None
-        workflowDir = Toil.getLocalWorkflowDir(info.workflow_id, info.work_dir)
-        coordination_dir = Toil.get_local_workflow_coordination_dir(
+        workflow_dir = Toil.getLocalWorkflowDir(info.workflow_id, info.work_dir)
+        workflow_coordination_dir = Toil.get_local_workflow_coordination_dir(
             info.workflow_id, info.work_dir, info.coordination_dir
         )
-        DeferredFunctionManager.cleanupWorker(coordination_dir)
-        workflowDirContents = os.listdir(workflowDir)
+        DeferredFunctionManager.cleanupWorker(workflow_coordination_dir)
         AbstractFileStore.shutdownFileStore(
             info.workflow_id, info.work_dir, info.coordination_dir
         )
-        if info.clean_work_dir in ("always", "onSuccess", "onError"):
-            if workflowDirContents in ([], [cacheDirName(info.workflow_id)]):
-                logger.debug("Deleting workflow directory %s", workflowDir)
-                shutil.rmtree(workflowDir, ignore_errors=True)
-            else:
-                logger.debug("Leaving workflow directory %s with contents %s", workflowDir, workflowDirContents)
-            if coordination_dir != workflowDir:
-                # No more coordination to do here either.
-                logger.debug("Deleting coordination directory %s", coordination_dir)
-                shutil.rmtree(coordination_dir, ignore_errors=True)
 
+        if info.clean_work_dir in ("always", "onSuccess", "onError"):
+            # We want to clean up job work directories
+
+            if info.clean_work_dir == "always":
+                # Destroy the workflow directory completely, and any job work
+                # directories that somehow might have escaped the worker's own
+                # cleanup.
+                logger.debug("Deleting workflow directory %s", workflow_dir)
+                shutil.rmtree(workflow_dir, ignore_errors=True)
+            else:
+                # We are saving some per-job work directories. If there are any
+                # of them, we need to keep the workflow directory, since it is
+                # their parent. So delete it if it is empty.
+                try:
+                    os.rmdir(workflow_dir)
+                    logger.debug("Deleted empty workflow directory %s", workflow_dir)
+                except OSError:
+                    # This is likely indicating that the directory was not empty.
+                    logger.debug("Leaving workflow directory %s which may contain saved workdirs", workflow_dir)
+                    pass
+
+            if workflow_coordination_dir != workflow_dir:
+                # Destroy the coordination dir.
+                # It can't have any per-job work directories we would need to save.
+                logger.debug("Deleting workflow coordination directory %s", workflow_coordination_dir)
+                shutil.rmtree(workflow_coordination_dir, ignore_errors=True)
 
 class NodeInfo:
     """
