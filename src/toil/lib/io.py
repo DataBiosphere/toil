@@ -365,6 +365,34 @@ def try_path(path: str, min_size: int = 100 * 1024 * 1024) -> str | None:
 
     return path
 
+
+def ensure_dir_exists(path: str | None, arg_name: str) -> None:
+    """
+    Ensure that the given directory exists, creating it if necessary.
+
+    Logs a critical error and exits if the directory does not exist and
+    cannot be created.
+
+    :param arg_name: Name of the flag or option that provided the path, used
+           to make the error message actionable.
+    """
+
+    if path is None:
+        return
+    if not os.path.exists(path):
+        try:
+            os.makedirs(path, exist_ok=True)
+        except OSError as e:
+            logger.critical(
+                "The path provided to %s (%s) does not exist and could not "
+                "be created: %s",
+                arg_name,
+                path,
+                e,
+            )
+            sys.exit(1)
+
+
 def path_union(first_path: str, second_path: str | None) -> str:
     """
     Union two os.pathsep-separated PATH environment variables.
