@@ -316,9 +316,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         # Our boss is always the enclosing class
         boss: SlurmBatchSystem
 
-        def getRunningJobIDs(self) -> dict[int, int]:
+        def getRunningJobIDs(self) -> dict[int, float]:
             # Should return a dictionary of Job IDs and number of seconds
-            times = {}
+            times: dict[int, float] = {}
             with self.runningJobsLock:
                 currentjobs: dict[str, int] = {
                     str(self.batchJobIDs[x][0]): x for x in self.runningJobs
@@ -351,7 +351,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
         def prepareSubmission(
             self,
-            cpu: int,
+            cpu: float,
             memory: int,
             disk: int,
             walltime: int,
@@ -902,7 +902,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
         def prepareSbatch(
             self,
-            cpu: int,
+            cpu: float,
             mem: int,
             walltime: int,
             jobID: int,
@@ -1110,7 +1110,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             return sbatch_line
 
     def __init__(
-        self, config: Config, maxCores: float, maxMemory: float, maxDisk: float
+        self, config: Config, maxCores: float, maxMemory: float, maxDisk: int
     ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         self.partitions = SlurmBatchSystem.PartitionSet()
@@ -1149,6 +1149,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     job_id,
                     job_desc.cores,
                     memory,
+                    job_desc.disk,
                     job_desc.walltime,
                     command,
                     get_job_kind(job_desc.get_names()),
