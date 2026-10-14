@@ -40,7 +40,6 @@ def main():
         'src/toil/provisioners/aws/boto2Context.py',
         'src/toil/provisioners/aws/__init__.py',
         # update gridengine, toque, lsf, lsfHelper
-        'src/toil/batchSystems/gridengine.py',
         'src/toil/batchSystems/singleMachine.py',
         'src/toil/batchSystems/torque.py',
         'src/toil/batchSystems/options.py',
