@@ -117,7 +117,7 @@ from toil.options.common import SYS_MAX_SIZE
 from toil.resource import Resource
 
 if TYPE_CHECKING:
-    from kubernetes.watch.watch import _WatchEvent
+    from kubernetes.watch.watch import _Event, _ObjectEvent, _ListResponse
 
 logger = logging.getLogger(__name__)
 retryable_kubernetes_errors: list[type[Exception] | ErrorCondition] = [
@@ -142,7 +142,6 @@ def is_retryable_kubernetes_error(e: Exception) -> bool:
 KeyValuesList = list[tuple[str, list[str]]]
 P = ParamSpec("P")
 R = TypeVar("R")
-ItemT = TypeVar("ItemT")
 
 
 class KubernetesBatchSystem(BatchSystemCleanupSupport):
@@ -516,16 +515,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # Can't be called, so pass it by itself
                 return attr
 
-    class _ItemsHaver(Protocol[ItemT]):
-        """
-        Anything that has a .items that is a list of something.
-        """
-
-        items: list[ItemT]
-
     def _stream_until_error(
-        self, method: Callable[P, _ItemsHaver[R]], *args: P.args, **kwargs: P.kwargs
-    ) -> Iterator["_WatchEvent[R]"]:
+        self, method: Callable[P, "_ListResponse[R]"], *args: P.args, **kwargs: P.kwargs
+    ) -> Iterator["_Event[R]"]:
         """
         Kubernetes kubernetes.watch.Watch().stream() streams can fail and raise
         errors. We don't want to have those errors fail the entire workflow, so
@@ -538,7 +530,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         if it produces an error.
         """
 
-        w: Watch[R] = Watch()
+        w = Watch()
 
         # We will set this to bypass our second catch in the case of user errors.
         userError = False
@@ -1494,6 +1486,15 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 label_selector=f"toil_run={self.run_id}",
                 timeout_seconds=math.floor(maxWait),
             ):
+                if not isinstance(event, dict):
+                    logger.warning(
+                        "Kubernetes unexpected response while waiting "
+                        "for batch job to complete %s: %s",
+                        self.run_id,
+                        event,
+                    )
+                    continue
+                event = cast(_ObjectEvent[V1Job], event)
                 # Grab the metadata data, ID, the list of conditions of the current job, and the total pods
                 jobObject = event["object"]
 
