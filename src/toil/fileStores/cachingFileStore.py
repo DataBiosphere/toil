@@ -227,6 +227,7 @@ class CachingFileStore(AbstractFileStore):
         self.workflowAttemptNumber = self.jobStore.config.workflowAttemptNumber
 
         # Make sure the cache directory exists
+        logger.debug("Local cache directory: %s", self.localCacheDir)
         os.makedirs(self.localCacheDir, exist_ok=True)
 
         # Connect to the cache database in there, or create it if not present.
@@ -237,6 +238,7 @@ class CachingFileStore(AbstractFileStore):
         self.dbPath = os.path.join(
             self.coordination_dir, f"cache-{self.workflowAttemptNumber}.db"
         )
+        logger.debug("Caching database: %s (%s)", self.dbPath, "exists" if os.path.exists(self.dbPath) else "does not exist")
 
         # Database connections are provided by magic properties self.con and
         # self.cur that always have the right object for the current thread to
@@ -1000,6 +1002,9 @@ class CachingFileStore(AbstractFileStore):
         Deletes the job's database entry and its whole temporary directory, and
         forgets all its refs.
 
+        Not responsible for shrinking the cache down to fit in the remaining
+        space.
+
         Any files the job downloaded outside its temporary directory are no
         longer our problem.
 
@@ -1031,14 +1036,27 @@ class CachingFileStore(AbstractFileStore):
 
     def _deallocateSpaceForJob(self):
         """
-        Our current job that was using oldJobReqs space has finished.
+        Our current job has finished.
 
-        We need to record that the job is no longer running, so its space not
-        taken up by files in the cache will be free.
+        We need to record that the job is no longer running, so its disk
+        requirement is no longer available to the cache as space.
+
+        Responsible for shrinking the cache down to fit.
 
         """
 
         self._removeJob(self.con, self.cur, self.jobID)
+
+        available = self.getCacheAvailable()
+
+        logger.debug("Available space without job: %d bytes", available)
+
+        if available >= 0:
+            # We're fine on disk space
+            return
+
+        # Otherwise we need to clear stuff.
+        self._freeUpSpace()
 
     def _tryToFreeUpSpace(self):
         """
@@ -2419,42 +2437,41 @@ class CachingFileStore(AbstractFileStore):
             # can't find the journal).
 
             # So we just go and find the cache-n.db with the largest n value,
-            # and use that.
-            dbFilename = None
-            dbAttempt = float("-inf")
+            # and use that. This holds an absolute path.
+            db_path = None
+            db_attempt = float("-inf")
 
             # We also need to remember all the plausible database files and
-            # journals
+            # journals. This holds absolute paths.
             all_db_files = []
 
-            for dbCandidate in os.listdir(coordination_dir):
+            for basename in os.listdir(coordination_dir):
                 # For each thing in the coordination directory, see if it starts like a database file.
-                match = re.match("^cache-([0-9]+).db.*", dbCandidate)
+                match = re.match("^cache-([0-9]+).db.*", basename)
                 if match:
                     # This is caching-related.
-                    all_db_files.append(dbCandidate)
+                    candidate_path = os.path.join(coordination_dir, basename)
+                    all_db_files.append(candidate_path)
                     attempt_number = int(match.group(1))
                     if (
-                        attempt_number > dbAttempt
-                        and dbCandidate == f"cache-{attempt_number}.db"
+                        attempt_number > db_attempt
+                        and basename == f"cache-{attempt_number}.db"
                     ):
                         # This is a main database, and the newest we have seen.
-                        dbFilename = dbCandidate
-                        dbAttempt = attempt_number
+                        db_path = candidate_path
+                        db_attempt = attempt_number
 
-            if dbFilename is not None:
+            if db_path is not None:
                 # We found a caching database
 
                 logger.debug(
-                    "Connecting to latest caching database %s for cleanup", dbFilename
+                    "Connecting to latest caching database %s for cleanup", db_path
                 )
 
-                dbPath = os.path.join(coordination_dir, dbFilename)
-
-                if os.path.exists(dbPath):
+                if os.path.exists(db_path):
                     try:
                         # The database exists, see if we can open it
-                        con = sqlite3.connect(dbPath, timeout=SQLITE_TIMEOUT_SECS)
+                        con = sqlite3.connect(db_path, timeout=SQLITE_TIMEOUT_SECS)
                     except:
                         # Probably someone deleted it.
                         pass
@@ -2470,15 +2487,34 @@ class CachingFileStore(AbstractFileStore):
                         cls._removeDeadJobs(coordination_dir, con)
 
                         con.close()
+                else:
+                    logger.warning("Latest caching database vanished: %s", db_path)
             else:
                 logger.debug("No caching database found in %s", dir_)
 
             # Whether or not we found a database, we need to clean up the cache
-            # directory. Delete everything cached.
+            # directory.
+
+            # Since we're not actually using any of the reference-counting
+            # logic here, and just blowing away the whole cache, we need to be
+            # very careful about not leaving behind inconsistent states.
+
+            for db_path in all_db_files:
+                # Delete the cache databases first, because we don't want them
+                # somehow being left behind when the files they refer to are gone.
+                logger.debug("Deleting caching database file %s", db_path)
+
+                try:
+                    os.unlink(db_path)
+                    logger.debug("Caching database file %s deleted successfully", db_path)
+                except FileNotFoundError:
+                    logger.warning("Caching database file vanished: %s", db_path)
+                except OSError as e:
+                    logger.warning("Caching database file %s could not be removed: %s", e)
+
+            # Delete all the files that the database refered to
+            logger.debug("Deleting cache directory %s", cache_dir)
             robust_rmtree(cache_dir)
-            for filename in all_db_files:
-                # And delete everything related to the caching database
-                robust_rmtree(filename)
 
     def __del__(self):
         """
