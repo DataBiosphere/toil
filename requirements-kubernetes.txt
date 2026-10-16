@@ -1,5 +1,5 @@
 kubernetes>=12.0.1, <38
-kubernetes-stubs-elephant-fork>=12.0.1, <38
+kubernetes-stubs-elephant-fork>=37.0.1, <38
 types-urllib3
 types-PyYAML
 idna>=2
