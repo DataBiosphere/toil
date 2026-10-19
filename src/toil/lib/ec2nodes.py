@@ -141,6 +141,7 @@ def parse_storage(
         "1 x 410"
         "8 x 1.9 NVMe SSD"
         "900 GB NVMe SSD"
+        "1x1900 GB NVMe SSD"
 
     :param str storage_info: EC2 JSON storage param string.
     :return: Two floats representing: (# of disks), and (disk_capacity in GiB of each disk).
@@ -148,6 +149,8 @@ def parse_storage(
     if storage_info == "EBS only":
         return [0, 0]
     else:
+        # Space out multipliers
+        storage_info = re.sub("([0-9])x ?([0-9])", "\\1 x \\2", storage_info)
         specs = storage_info.strip().split()
         if is_number(specs[0]) and specs[1].lower() == "x" and is_number(specs[2]):
             return float(specs[0].replace(",", "")), float(specs[2].replace(",", ""))
