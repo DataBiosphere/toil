@@ -56,12 +56,12 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
     ):
         """LSF specific GridEngineThread methods."""
 
-        def getRunningJobIDs(self):
+        def getRunningJobIDs(self) -> dict[int, float]:
             times = {}
             with self.runningJobsLock:
                 currentjobs = {str(self.batchJobIDs[x][0]): x for x in self.runningJobs}
 
-            if check_lsf_json_output_supported:
+            if check_lsf_json_output_supported():
                 stdout = call_command(["bjobs", "-json", "-o", "jobid stat start_time"])
 
                 bjobs_records = self.parseBjobs(stdout)
@@ -77,12 +77,12 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                             )
                             times[currentjobs[single_item["JOBID"]]] = (
                                 datetime.now(tzlocal()) - jobstart
-                            )
+                            ).total_seconds()
             else:
                 times = self.fallbackRunningJobIDs(currentjobs)
             return times
 
-        def fallbackRunningJobIDs(self, currentjobs):
+        def fallbackRunningJobIDs(self, currentjobs: dict[str, int]) -> dict[int, float]:
             times = {}
             stdout = call_command(
                 ["bjobs", "-o", "jobid stat start_time delimiter='|'"]
@@ -91,15 +91,15 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 items = curline.strip().split("|")
                 if items[0] in currentjobs and items[1] == "RUN":
                     jobstart = parse(items[2], default=datetime.now(tzlocal()))
-                    times[currentjobs[items[0]]] = datetime.now(tzlocal()) - jobstart
+                    times[currentjobs[items[0]]] = (datetime.now(tzlocal()) - jobstart).total_seconds()
             return times
 
-        def killJob(self, jobID):
+        def killJob(self, jobID: int) -> None:
             call_command(["bkill", self.getBatchSystemID(jobID)])
 
         def prepareSubmission(
             self,
-            cpu: int,
+            cpu: float,
             memory: int,
             disk: int,
             walltime: int,
@@ -108,38 +108,44 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             jobName: str,
             job_environment: dict[str, str] | None = None,
             gpus: int | None = None,
-        ):
+        ) -> tuple[list[str], dict[str, str] | None]:
             return (
                 self.prepareBsub(cpu, memory, jobID) + [command],
                 job_environment,
             )  # pass job_environment to .submitJob()
 
-        def submitJob(self, subLine):
-            subLine, job_environment = subLine
+        def submitJob(self, subLine: tuple[list[str], dict[str, str] | None]) -> int | str:
+            job_args, job_environment = subLine
             combinedEnv = self.boss.environment
             combinedEnv.update(os.environ)
             if job_environment:
                 combinedEnv.update(job_environment)
 
-            stdout = call_command(subLine, env=combinedEnv)
+            stdout = call_command(job_args, env=combinedEnv)
             # Example success: Job <39605914> is submitted to default queue <general>.
             # Example fail: Service class does not exist. Job not submitted.
             result_search = re.search("Job <(.*)> is submitted", stdout)
 
+            result: int | str
             if result_search:
                 result = int(result_search.group(1))
                 logger.debug(f"Got the job id: {result}")
             else:
+                # TODO: This is not real error handling
                 logger.error(f"Could not submit job\nReason: {stdout}")
                 temp_id = randint(10000000, 99999999)
                 # Flag this job to be handled by getJobExitCode
                 result = f"NOT_SUBMITTED_{temp_id}"
             return result
 
-        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> list:
-            status_dict = {}
+        def coalesce_job_exit_codes(self, batch_job_id_list: list[str]) -> list[int | tuple[int, BatchJobExitReason | None] | None]:
+            status_dict: dict[
+                str, int | tuple[int, BatchJobExitReason | None] | None
+            ] = {}
             valid_batch_job_id_list = []
-            status_resonse = []
+            status_resonse: list[
+                int | tuple[int, BatchJobExitReason | None] | None
+            ] = []
             for single_lsf_id in batch_job_id_list:
                 if "NOT_SUBMITTED" in single_lsf_id:
                     logger.error(
@@ -188,7 +194,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             return status_resonse
 
         def getJobExitCode(
-            self, lsfJobID
+            self, lsfJobID: str
         ) -> int | tuple[int, BatchJobExitReason | None] | None:
             # the task is set as part of the job ID if using getBatchSystemID()
             if "NOT_SUBMITTED" in lsfJobID:
@@ -201,7 +207,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
             self.parseMaxMem(job)
             # first try bjobs to find out job state
-            if check_lsf_json_output_supported:
+            if check_lsf_json_output_supported():
                 args = [
                     "bjobs",
                     "-json",
@@ -221,7 +227,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             return self.fallbackGetJobExitCode(job)
 
         def parse_bjobs_record(
-            self, bjobs_record: dict, job: int
+            self, bjobs_record: dict[str, str], job: str
         ) -> int | tuple[int, BatchJobExitReason | None] | None:
             """
             Helper functions for getJobExitCode and  to parse the bjobs status record
@@ -283,7 +289,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 return self.getJobExitCodeBACCT(job)
 
         def getJobExitCodeBACCT(
-            self, job
+            self, job: str
         ) -> int | tuple[int, BatchJobExitReason | None] | None:
             # if not found in bjobs, then try bacct (slower than bjobs)
             logger.debug("bjobs failed to detect job - trying bacct: " "{}".format(job))
@@ -305,7 +311,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             return None
 
         def fallbackGetJobExitCode(
-            self, job
+            self, job: str
         ) -> int | tuple[int, BatchJobExitReason | None] | None:
             args = ["bjobs", "-l", str(job)]
             logger.debug(f"Checking job exit code for job via bjobs (fallback): {job}")
@@ -346,7 +352,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         Implementation-specific helper methods
         """
 
-        def prepareBsub(self, cpu: int, mem: int, jobID: int) -> list[str]:
+        def prepareBsub(self, cpu: float, mem: int, jobID: int) -> list[str]:
             """
             Make a bsub commandline to execute.
 
@@ -355,13 +361,18 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
               mem: number of bytes of memory needed
               jobID: ID number of the job
             """
-            bsubMem = []
+            bsubMem: list[str] = []
             if mem:
-                mem = float(mem)
+                mem_bytes = float(mem)
                 if per_core_reservation() and cpu:
-                    mem = mem / math.ceil(cpu)
-                mem = parse_memory(mem)
-                bsubMem = ["-R", f"select[mem>{mem}] " f"rusage[mem={mem}]", "-M", mem]
+                    mem_bytes = mem_bytes / math.ceil(cpu)
+                mem_str = parse_memory(mem_bytes)
+                bsubMem = [
+                    "-R",
+                    f"select[mem>{mem_str}] " f"rusage[mem={mem_str}]",
+                    "-M",
+                    mem_str,
+                ]
             bsubCpu = [] if cpu is None else ["-n", str(math.ceil(cpu))]
             bsubline = ["bsub", "-cwd", ".", "-J", f"toil_job_{jobID}"]
             bsubline.extend(bsubMem)
@@ -374,14 +385,14 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 bsubline.extend(lsfArgs.split())
             return bsubline
 
-        def parseBjobs(self, bjobs_output_str):
+        def parseBjobs(self, bjobs_output_str: str) -> list[dict[str, str]] | None:
             """
             Parse records from bjobs json type output
 
             :params bjobs_output_str: stdout of bjobs json type output
+            :returns: the records, or None if they could not be found
             """
-            bjobs_dict = None
-            bjobs_records = None
+            bjobs_records: list[dict[str, str]] | None = None
             # Handle Cannot connect to LSF. Please wait ... type messages
             dict_start = bjobs_output_str.find("{")
             dict_end = bjobs_output_str.rfind("}")
@@ -391,14 +402,15 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     bjobs_dict = json.loads(bjobs_output)
                 except json.decoder.JSONDecodeError:
                     logger.error(f"Could not parse bjobs output: {bjobs_output_str}")
-                if "RECORDS" in bjobs_dict:
-                    bjobs_records = bjobs_dict["RECORDS"]
+                else:
+                    if "RECORDS" in bjobs_dict:
+                        bjobs_records = bjobs_dict["RECORDS"]
             if bjobs_records is None:
                 logger.error(f"Could not find bjobs output json in: {bjobs_output_str}")
 
             return bjobs_records
 
-        def parseMaxMem(self, jobID):
+        def parseMaxMem(self, jobID: str) -> re.Match[str] | None:
             """
             Parse the maximum memory from job.
 
@@ -411,7 +423,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     logger.warning(
                         f"[job ID {jobID}] Unable to Collect Maximum Memory Usage: {output}"
                     )
-                    return
+                    return None
 
                 if not command:
                     logger.warning(
@@ -427,6 +439,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     f"[job ID {jobID}] Unable to Collect Maximum Memory Usage: {e}"
                 )
 
-    def getWaitDuration(self):
+    @classmethod
+    def getWaitDuration(cls) -> float:
         """We give LSF a second to catch its breath (in seconds)"""
         return 60

@@ -39,15 +39,13 @@ def main():
         'src/toil/provisioners/node.py',
         'src/toil/provisioners/aws/boto2Context.py',
         'src/toil/provisioners/aws/__init__.py',
-        # update gridengine, toque, lsf, lsfHelper
+        # update lsf, lsfHelper
         'src/toil/batchSystems/singleMachine.py',
-        'src/toil/batchSystems/torque.py',
         'src/toil/batchSystems/options.py',
         'src/toil/batchSystems/registry.py',
-        'src/toil/batchSystems/lsf.py',
+        #'src/toil/batchSystems/lsf.py',
         'src/toil/batchSystems/__init__.py',
         'src/toil/batchSystems/awsBatch.py',
-        'src/toil/batchSystems/lsfHelper.py',
         'src/toil/batchSystems/mesos/batchSystem.py',
         'src/toil/batchSystems/mesos/executor.py',
         'src/toil/batchSystems/mesos/conftest.py',
