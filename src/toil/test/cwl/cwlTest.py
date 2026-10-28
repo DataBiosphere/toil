@@ -2823,7 +2823,82 @@ def test_rm_tmpdir(tmp_path: Path, subtests: pytest.Subtests) -> None:
 
                 # Check that temp directories were cleaned up
                 leftover_dirs = os.listdir(to_clean)
-                assert len(leftover_dirs) == 0, f"Expected temp directories to be removed with --rm-tmpdir, but found: {leftover_dirs}"
+                if bypass_filestore and not successful_workflow:
+                    # The outputs of the jobs that finished are kept, in one
+                    # directory, so the workflow can be restarted.
+                    assert len(leftover_dirs) == 1, f"Expected only the job outputs directory to be left, but found: {leftover_dirs}"
+                    kept = sorted(p.read_text() for p in (to_clean / leftover_dirs[0]).rglob("*") if p.is_file())
+                    assert kept == ["", "", "hello\n", "world\n"], f"Expected only the outputs of the jobs that finished, but found: {kept}"
+                else:
+                    assert len(leftover_dirs) == 0, f"Expected temp directories to be removed with --rm-tmpdir, but found: {leftover_dirs}"
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_bypass_file_store_same_name_outputs(tmp_path: Path, subtests: pytest.Subtests) -> None:
+    """
+    Test that same-named outputs of scattered jobs don't overwrite each other
+    when bypassing the file store.
+    """
+    for tmpdir_option in ("--rm-tmpdir", "--leave-tmpdir"):
+        with subtests.test(msg=tmpdir_option):
+            base_dir = tmp_path / tmpdir_option.lstrip("-")
+            os.makedirs(base_dir / "tmpdir")
+            with get_data("test/cwl/scatter_same_name_outputs.cwl") as cwl_file:
+                cmd = [
+                    "toil-cwl-runner",
+                    f"--jobStore=file:{base_dir / 'jobstore'}",
+                    "--bypass-file-store",
+                    tmpdir_option,
+                    f"--tmpdir-prefix={base_dir / 'tmpdir' / 'prefix'}",
+                    f"--outdir={base_dir / 'outdir'}",
+                    "--retryCount=0",
+                    str(cwl_file),
+                ]
+                p = subprocess.run(cmd, capture_output=True, text=True)
+                assert p.returncode == 0, p.stderr
+
+            outputs = json.loads(p.stdout)
+            assert [Path(f["path"]).read_text() for f in outputs["outs"]] == ["a\n", "b\n", "c\n"]
+            assert [(Path(d["path"]) / "name.txt").read_text() for d in outputs["dirs"]] == ["a\n", "b\n", "c\n"]
+            # The step that reads all the Files must see each job's own.
+            assert Path(outputs["all"]["path"]).read_text() == "a\nb\nc\n"
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_bypass_file_store_restart(tmp_path: Path) -> None:
+    """
+    Test that a restart can use the outputs of the jobs that finished before
+    the workflow failed, when bypassing the file store, and that they are
+    removed once the restarted workflow succeeds.
+    """
+    to_clean = tmp_path / "tmpdir"
+    os.makedirs(to_clean)
+    flag = tmp_path / "flag"
+    flag.touch()
+    with get_data("test/cwl/fail_while_file_exists.cwl") as cwl_file:
+        cmd = [
+            "toil-cwl-runner",
+            f"--jobStore=file:{tmp_path / 'jobstore'}",
+            "--bypass-file-store",
+            f"--tmpdir-prefix={to_clean / 'prefix'}",
+            f"--tmp-outdir-prefix={to_clean / 'out_prefix'}",
+            f"--outdir={tmp_path / 'outdir'}",
+            "--retryCount=0",
+            str(cwl_file),
+            f"--flag={flag}",
+        ]
+        assert subprocess.run(cmd).returncode != 0
+        flag.unlink()
+        p = subprocess.run(cmd[:1] + ["--restart"] + cmd[1:])
+        assert p.returncode == 0
+
+    assert (tmp_path / "outdir" / "second.txt").read_text() == "first\n"
+    leftover_dirs = os.listdir(to_clean)
+    assert len(leftover_dirs) == 0, f"Expected temp directories to be removed, but found: {leftover_dirs}"
 
 
 # StreamHandler is generic, _typeshed doesn't exist at runtime, do a bit of typing trickery, see https://github.com/python/typeshed/issues/5680
