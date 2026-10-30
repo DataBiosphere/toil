@@ -3296,11 +3296,26 @@ class CWLJob(CWLNamedJob):
                 streaming_allowed=runtime_context.streaming_allowed,
             )
         else:
-            if runtime_context.outdir is not None:
-                # Multiple jobs may be racing to create the workflow outdir,
-                # and cwltool's creation code doesn't handle that, so create it
-                # now.
-                os.makedirs(runtime_context.outdir, exist_ok=True)
+            job_outdirs = getattr(runtime_context, "job_outdirs", None)
+            work_reuse = self.cwltool.get_requirement("WorkReuse")[0] or {}
+            if (
+                runtime_context.cachedir
+                and isinstance(self.cwltool, cwltool.command_line_tool.CommandLineTool)
+                and work_reuse.get("enableReuse", True)
+            ):
+                # cwltool keeps this job's outputs in the cache, which is
+                # never deleted. Leave them there: moving them would empty the
+                # cache, and copying them would change the paths in the cache
+                # keys of downstream jobs.
+                runtime_context.move_outputs = "leave"
+            elif job_outdirs is not None:
+                # cwltool deletes the job's temporary directories when it
+                # ends, after moving its outputs to runtime_context.outdir.
+                # Give each job its own: in a shared one, same-named outputs
+                # of different jobs would overwrite each other. The leader
+                # exports them all to the workflow outdir at the end.
+                os.makedirs(job_outdirs, exist_ok=True)
+                runtime_context.outdir = mkdtemp(dir=job_outdirs)
 
         # Collect standard output and standard error somewhere if they don't go to files.
         # We need to keep two FDs to these because cwltool will close what we give it.
@@ -5431,11 +5446,10 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
                 runtime_context.move_outputs = "move"
             elif options.rm_tmpdir:
                 # If bypassing the file store but wanting to clean up temp
-                # directories, we need to copy outputs out of tmpdir before
+                # directories, we need to move outputs out of tmpdir before
                 # deletion. Otherwise, downstream steps that reference files
                 # in the tmpdir will fail.
-                # TODO: "move" doesn't work here. Why?
-                runtime_context.move_outputs = "copy"
+                runtime_context.move_outputs = "move"
 
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need
@@ -5474,6 +5488,14 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
             tool = remove_pickle_problems(tool)
 
         with Toil(options, workflow_name=workflow_name, trs_spec=trs_spec) as toil:
+            job_outdirs = None
+            if options.bypass_file_store and options.rm_tmpdir:
+                # Where each job keeps its outputs (see CWLJob.run). Named
+                # after the workflow so that a --restart uses the same one.
+                job_outdirs = (
+                    f"{os.path.realpath(tmp_outdir_prefix)}{toil.config.workflowID}"
+                )
+                setattr(runtime_context, "job_outdirs", job_outdirs)
             if options.restart:
                 outobj = toil.restart()
             else:
@@ -5508,6 +5530,9 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
                 log_level=logging.INFO,
             )
             logger.info("Stored workflow outputs")
+            if job_outdirs is not None:
+                # Only a failed run keeps these, for --restart.
+                shutil.rmtree(job_outdirs, ignore_errors=True)
 
             if runtime_context.research_obj is not None:
                 cwltool.cwlprov.writablebagfile.create_job(
