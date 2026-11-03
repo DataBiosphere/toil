@@ -12,12 +12,12 @@ SHELL=bash
 # which is the docker image used for all toil autoscaling runs
 # https://toil.readthedocs.io/en/latest/running/cloud/amazon.html#toil-provisioner
 # TODO: Add and link a better readthedocs for the toil appliance
-export TOIL_DOCKER_REGISTRY?=quay.io/ucsc_cgl
-export TOIL_DOCKER_NAME?=toil
-export TOIL_DOCKER_TAG?=$(shell python version_template.py dockerTag)
-export TOIL_DOCKER_CACHE_TAG?=$(shell python version_template.py cacheTag)
-export TOIL_DOCKER_MAIN_CACHE_TAG?=$(shell python version_template.py mainCacheTag)
-export TOIL_APPLIANCE_SELF?=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(TOIL_DOCKER_TAG)
+TOIL_DOCKER_REGISTRY?=quay.io/ucsc_cgl
+TOIL_DOCKER_NAME?=toil
+TOIL_DOCKER_TAG?=$(shell python version_template.py dockerTag)
+TOIL_DOCKER_CACHE_TAG?=$(shell python version_template.py cacheTag)
+TOIL_DOCKER_MAIN_CACHE_TAG?=$(shell python version_template.py mainCacheTag)
+TOIL_APPLIANCE_SELF?=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(TOIL_DOCKER_TAG)
 
 # TOIL_CHECK_ENV=''  # Determines whether toil refers to the same virtualenv paths it spawned from (across machines)
 

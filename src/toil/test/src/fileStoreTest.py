@@ -1678,6 +1678,41 @@ class hidden:
                 text = fh.read().decode("utf-8").strip()
             logger.debug("Got file contents: %s", text)
 
+        def test_shutdown(self):
+            """
+            Make sure the caching system cleans up after shutdown.
+            """
+            workdir = self._createTempDir(purpose="nonLocalDir")
+            options = self.options()
+            options.retryCount = 0
+            options.logLevel = "DEBUG"
+            options.cleanWorkDir = "never"
+
+            # Run a job (presumably single-machine)
+            locator_job = Job.wrapJobFn(self._cache_finder_job)
+            cache_dir, cache_db = Job.Runner.startToil(locator_job, options)
+
+            # Neither the cache directory nor the cache database should be left
+            # behind after the file store shuts down, even if workdir cleaning
+            # isn't happening.
+            assert not os.path.exists(cache_dir), "Cache directory should be removed by file store shutdown"
+            assert not os.path.exists(cache_db), "Caching database should be removed by file store shutdown"
+
+        @staticmethod
+        def _cache_finder_job(job: Job) -> None:
+            """
+            Return the filestore cache directory and cache database.
+
+            Also make a file that would get cached.
+            """
+
+            with job.fileStore.writeGlobalFileStream(encoding="utf-8") as (fp, file_id):
+                fp.write("Test file\n")
+
+            return job.fileStore.localCacheDir, job.fileStore.dbPath
+
+
+
 
 class NonCachingFileStoreTestWithFileJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = "file"

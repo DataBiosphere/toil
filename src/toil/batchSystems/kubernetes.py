@@ -20,6 +20,7 @@ Within non-privileged Kubernetes containers, additional Docker containers
 cannot yet be launched. That functionality will need to wait for user-mode
 Docker
 """
+
 import datetime
 import io
 import logging
@@ -34,7 +35,16 @@ from argparse import ArgumentParser, _ArgumentGroup
 from collections.abc import Callable, Iterator
 from queue import Empty, Queue
 from threading import Condition, Event, RLock, Thread
-from typing import Any, Literal, ParamSpec, TypeVar, Union, cast, overload
+from typing import (
+    Any,
+    Literal,
+    ParamSpec,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+    TYPE_CHECKING,
+)
 
 from toil.lib.conversions import opt_strtobool
 from toil.lib.throttle import LocalThrottle
@@ -85,9 +95,7 @@ from kubernetes.client.exceptions import ApiException
 from kubernetes.config.config_exception import ConfigException
 from kubernetes.config.incluster_config import load_incluster_config
 from kubernetes.config.kube_config import list_kube_config_contexts, load_kube_config
-
-# TODO: Watch API is not typed yet
-from kubernetes.watch import Watch  # type: ignore
+from kubernetes.watch.watch import Watch
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (
@@ -107,6 +115,9 @@ from toil.lib.misc import get_user_name, slow_down, utc_now
 from toil.lib.retry import ErrorCondition, retry
 from toil.options.common import SYS_MAX_SIZE
 from toil.resource import Resource
+
+if TYPE_CHECKING:
+    from kubernetes.watch.watch import _Event, _ObjectEvent, _ListResponse
 
 logger = logging.getLogger(__name__)
 retryable_kubernetes_errors: list[type[Exception] | ErrorCondition] = [
@@ -129,6 +140,8 @@ def is_retryable_kubernetes_error(e: Exception) -> bool:
 
 # Represents a collection of label or taint keys and their sets of acceptable (or unacceptable) values.
 KeyValuesList = list[tuple[str, list[str]]]
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 class KubernetesBatchSystem(BatchSystemCleanupSupport):
@@ -502,51 +515,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # Can't be called, so pass it by itself
                 return attr
 
-    ItemT = TypeVar("ItemT")
-
-    class _ItemsHaver(Protocol[ItemT]):
-        """
-        Anything that has a .items that is a list of something.
-        """
-
-        # KubernetesBatchSystem isn't defined until the class executes, so any
-        # up-references to types from there that are in signatures (and not
-        # method code) need to be quoted
-        items: list["KubernetesBatchSystem.ItemT"]
-
-    CovItemT = TypeVar("CovItemT", covariant=True)
-
-    class _WatchEvent(Protocol[CovItemT]):
-        """
-        An event from a Kubernetes watch stream.
-        See https://github.com/kubernetes-client/python/blob/1271465acdb80bf174c50564a384fd6898635ea6/kubernetes/base/watch/watch.py#L130-L136.
-        """
-
-        # TODO: this can't be a TypedDict because of
-        # https://stackoverflow.com/a/71945477 so we go with an overloaded
-        # __getitem__ instead.
-
-        @overload
-        def __getitem__(self, name: Literal["type"]) -> str: ...
-
-        @overload
-        def __getitem__(
-            self, name: Literal["object"]
-        ) -> "KubernetesBatchSystem.CovItemT": ...
-
-        @overload
-        def __getitem__(self, name: Literal["raw_object"]) -> dict[str, Any]: ...
-
-        def __getitem__(
-            self, name: Literal["type"] | Literal["object"] | Literal["raw_object"]
-        ) -> Any: ...
-
-    P = ParamSpec("P")
-    R = TypeVar("R")
-
     def _stream_until_error(
-        self, method: Callable[P, _ItemsHaver[R]], *args: P.args, **kwargs: P.kwargs
-    ) -> Iterator[_WatchEvent[R]]:
+        self, method: Callable[P, "_ListResponse[R]"], *args: P.args, **kwargs: P.kwargs
+    ) -> Iterator["_Event[R]"]:
         """
         Kubernetes kubernetes.watch.Watch().stream() streams can fail and raise
         errors. We don't want to have those errors fail the entire workflow, so
@@ -570,7 +541,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 try:
                     # Show the item to user code
                     yield item
-                except Exception as e:
+                except Exception:
                     # If we get an error from user code, skip our catch around
                     # the Kubernetes generator.
                     userError = True
@@ -1515,6 +1486,15 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 label_selector=f"toil_run={self.run_id}",
                 timeout_seconds=math.floor(maxWait),
             ):
+                if not isinstance(event, dict):
+                    logger.warning(
+                        "Kubernetes unexpected response while waiting "
+                        "for batch job to complete %s: %s",
+                        self.run_id,
+                        event,
+                    )
+                    continue
+                event = cast(_ObjectEvent[V1Job], event)
                 # Grab the metadata data, ID, the list of conditions of the current job, and the total pods
                 jobObject = event["object"]
 

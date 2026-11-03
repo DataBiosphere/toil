@@ -30,7 +30,8 @@ import time
 import traceback
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import cast
+from pathlib import Path
+from typing import cast, Callable
 
 import psutil
 
@@ -287,6 +288,57 @@ class ExceptionalThread(threading.Thread):
             raise_(exc_type, exc_value, traceback)
 
 
+def parse_quota_cgroups1(
+    quota_file: str | Path = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
+    period_file: str | Path = "/sys/fs/cgroup/cpu/cpu.cfs_period_us",
+) -> tuple[int, int]:
+    """
+    Get the CPU quota and period values from cgroups v1.
+
+    :raises: FileNotFoundError if one or both files are missing.
+    :raises: IOError if file contents cannot be read.
+    :raises: ValueError if the file contents cannot be parsed.
+    """
+
+    if os.path.exists(quota_file) and os.path.exists(period_file):
+        logger.debug("CPU quota and period available from cgroups v1")
+        with open(quota_file) as stream:
+            # Read the quota
+            quota = int(stream.read())
+
+        with open(period_file) as stream:
+            # Read the period in which we are allowed to burn the quota
+            period = int(stream.read())
+
+        return quota, period
+    else:
+        raise FileNotFoundError("cgroups v1 file(s) not found")
+
+
+def parse_quota_cgroups2(file: str | Path = "/sys/fs/cgroup/cpu.max") -> tuple[int, int]:
+    """
+    Get the CPU quota and period values from cgroups v2.
+
+    When the quota is "max", it is represented as -1.
+
+    :raises: FileNotFoundError if the file is missing.
+    :raises: IOError if the file contents cannot be read.
+    :raises: ValueError if the file contents cannot be parsed.
+    """
+
+    if os.path.exists(file):
+        logger.debug("CPU quota and period available from cgroups v2")
+        with open(file) as stream:
+            # Read the quota and the period together
+            quota_raw, period_raw = stream.read().split(" ")
+            period = int(period_raw)
+            quota = int(quota_raw) if quota_raw != 'max' else -1
+
+        return quota, period
+    else:
+        raise FileNotFoundError("cgroups v2 file not found")
+
+
 def cpu_count() -> int:
     """
     Get the rounded-up integer number of whole CPUs available.
@@ -328,28 +380,14 @@ def cpu_count() -> int:
         quota: int | None = None
         period: int | None = None
 
-        # CGroups v1 keeps quota and period separate
-        CGROUP1_QUOTA_FILE = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
-        CGROUP1_PERIOD_FILE = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
-        # CGroups v2 keeps both in one file, space-separated, quota first
-        CGROUP2_COMBINED_FILE = "/sys/fs/cgroup/cpu.max"
-
-        if os.path.exists(CGROUP1_QUOTA_FILE) and os.path.exists(CGROUP1_PERIOD_FILE):
-            logger.debug("CPU quota and period available from cgroups v1")
-            with open(CGROUP1_QUOTA_FILE) as stream:
-                # Read the quota
-                quota = int(stream.read())
-
-            with open(CGROUP1_PERIOD_FILE) as stream:
-                # Read the period in which we are allowed to burn the quota
-                period = int(stream.read())
-        elif os.path.exists(CGROUP2_COMBINED_FILE):
-            logger.debug("CPU quota and period available from cgroups v2")
-            with open(CGROUP2_COMBINED_FILE) as stream:
-                # Read the quota and the period together
-                quota, period = (int(part) for part in stream.read().split(" "))
-        else:
-            logger.debug("CPU quota/period not available from cgroups v1 or cgroups v2")
+        # Try asking cgroups v1, and then if that isn't applicable cgroups v2
+        methods: list[Callable[[], tuple[int, int]]] = [parse_quota_cgroups1, parse_quota_cgroups2]
+        for method in methods:
+            try:
+                quota, period = method()
+                break
+            except FileNotFoundError:
+                pass
 
         if quota is not None and period is not None:
             # We got a quota and a period.
@@ -365,6 +403,8 @@ def cpu_count() -> int:
                 cgroup_size = int(math.ceil(float(quota) / float(period)))
 
             logger.debug("Control group size in cores: %s", cgroup_size)
+        else:
+            logger.debug("CPU quota/period not available from cgroups v1 or cgroups v2")
     except:
         # We can't actually read these cgroup fields. Maybe we are a mac or something.
         logger.debug("Could not inspect cgroup: %s", traceback.format_exc())
@@ -675,7 +715,7 @@ def global_mutex(base_dir: StrPath, mutex: str) -> Iterator[None]:
                     os.getpid(),
                     lock_filename,
                 )
-            else: 
+            else:
                 logger.error(
                     "PID %d had mutex %s get replaced while locked! Mutex system is not working!",
                     os.getpid(),

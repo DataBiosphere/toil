@@ -37,9 +37,10 @@ from toil.test import (
     get_data,
     integrative,
     needs_aws_ec2,
-    needs_aws_s3,
     needs_fetchable_appliance,
     needs_mesos,
+    pneeds_aws_ec2,
+    pneeds_aws_s3,
     slow,
     timeLimit,
 )
@@ -61,41 +62,38 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def aws_zone():
-    """
-    Supply an appropriate AWS zone to work in to tests that need one.
-    """
-    zone = get_best_aws_zone()
-    assert (
-        zone is not None
-    ), "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
-    return zone
-
-
-@pytest.fixture
-def aws_region(aws_zone):
-    """
-    Supply an appropriate AWS region to work in to tests that need one.
-    """
-    return zone_to_region(aws_zone)
-
-
-@pytest.fixture
-def ec2_client(aws_region):
-    """
-    Supply an AWS EC2 client tests that need one.
-    """
-    return toil.lib.aws.session.client("ec2", aws_region)
-
-
+@pneeds_aws_ec2
 class TestAWSProvisionerBenchTest:
     """
     Tests for the AWS provisioner that don't actually provision instances.
     """
 
+    @pytest.fixture
+    def aws_zone(self):
+        """
+        Supply an appropriate AWS zone to work in to tests that need one.
+        """
+        zone = get_best_aws_zone()
+        assert (
+            zone is not None
+        ), "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
+        return zone
+
+    @pytest.fixture
+    def aws_region(self, aws_zone):
+        """
+        Supply an appropriate AWS region to work in to tests that need one.
+        """
+        return zone_to_region(aws_zone)
+
+    @pytest.fixture
+    def ec2_client(self, aws_region):
+        """
+        Supply an AWS EC2 client tests that need one.
+        """
+        return toil.lib.aws.session.client("ec2", aws_region)
+
     # Needs to talk to EC2 for image discovery
-    @needs_aws_ec2
     def test_AMI_finding(self):
         for zone in ["us-west-2a", "eu-central-1a", "sa-east-1b"]:
             provisioner = AWSProvisioner(
@@ -105,8 +103,7 @@ class TestAWSProvisionerBenchTest:
             # Make sure we got an AMI and it looks plausible
             assert ami.startswith("ami-")
 
-    @needs_aws_ec2
-    @needs_aws_s3
+    @pneeds_aws_s3
     def test_read_write_global_files(self, aws_zone):
         """
         Make sure the `_write_file_to_cloud()` and `_read_file_from_cloud()`
@@ -133,7 +130,6 @@ class TestAWSProvisionerBenchTest:
             # the cluster was never launched, but we need to clean up the s3 bucket
             provisioner.destroyCluster()
 
-    @needs_aws_ec2
     def test_get_spot_history(self, ec2_client) -> None:
         """
         Make sure that we can download spot price history from AWS.
@@ -141,7 +137,6 @@ class TestAWSProvisionerBenchTest:
         history = _get_spot_history(ec2_client, "t3.large")
         # We should have 7 days of history, newest first.
 
-    @needs_aws_ec2
     def test_get_aws_zone_from_spot_market(self, ec2_client) -> None:
         """
         Make sure that we can process spot price history to pick a zone.
@@ -305,7 +300,9 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
 
         volumeID = self.getRootVolID()
         self.cluster.destroyCluster()
-        boto3_ec2: "EC2Client" = self.aws.client(region=self.region, service_name="ec2")
+        boto3_ec2: "EC2Client" = self.aws.client(
+            region=zone_to_region(self.region), service_name="ec2"
+        )
         volume_filter: "FilterTypeDef" = {"Name": "volume-id", "Values": [volumeID]}
         volumes: list["VolumeTypeDef"] | None = None
         for attempt in range(6):
@@ -380,7 +377,9 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         :return: volumeID
         """
         volumeID = super().getRootVolID()
-        boto3_ec2: "EC2Client" = self.aws.client(region=self.region, service_name="ec2")
+        boto3_ec2: "EC2Client" = self.aws.client(
+            region=zone_to_region(self.region), service_name="ec2"
+        )
         volume_filter: "FilterTypeDef" = {"Name": "volume-id", "Values": [volumeID]}
         volumes: "DescribeVolumesResultTypeDef" = boto3_ec2.describe_volumes(
             Filters=[volume_filter]
@@ -454,7 +453,9 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         # test that workers have expected storage size
         # just use the first worker
         worker = workers[0]
-        boto3_ec2: "EC2Client" = self.aws.client(region=self.region, service_name="ec2")
+        boto3_ec2: "EC2Client" = self.aws.client(
+            region=zone_to_region(self.region), service_name="ec2"
+        )
 
         worker: "InstanceTypeDef" = next(wait_instances_running(boto3_ec2, [worker]))
 

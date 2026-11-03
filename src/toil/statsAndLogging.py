@@ -37,7 +37,7 @@ root_logger = logging.getLogger()
 toil_logger = logging.getLogger("toil")
 
 DEFAULT_LOGLEVEL = logging.INFO
-__loggingFiles = []
+__loggingFiles: list[str] = []
 
 # We have some logging that belongs at a TRACE level, below DEBUG
 TRACE = logging.DEBUG - 5

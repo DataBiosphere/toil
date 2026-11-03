@@ -132,22 +132,29 @@ print(heredoc('''
 
     RUN add-apt-repository -y ppa:deadsnakes/ppa
 
-    # Find a repo with a Mesos build.
+    # Install everything *except* Mesos first because Mesos breaks all the time
+    RUN apt-get -y update --fix-missing && \
+        DEBIAN_FRONTEND=noninteractive apt-get -y install --no-upgrade {dependencies} && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
+
+    # The Aventer Mesos repository doesn't currently have a non-expired key published.
+    # So we pull all the debs from a mirror and install them.
     # This one was archived like:
     # mkdir mesos-repo && cd mesos-repo
     # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites -m https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
     # ipfs add -r .
-    # It contains a GPG key that will expire 2026-09-28
-    # This is served out of /public/groups/cgl/public_html on the GI public infrastructure.
-    # Make sure to use the current signing key setup as described in <https://askubuntu.com/a/1307181>
-    RUN echo "deb [signed-by=/etc/apt/keyrings/support_aventer.asc] https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/Qmcd6B5gS42p99BzKjNsWuBJ9X4dEk7JEh7N9Hr6EYMzfn/rpm.aventer.biz/Ubuntu/noble noble main" \
-        > /etc/apt/sources.list.d/mesos.list \
-        && mkdir -p /etc/apt/keyrings/ \
-        && curl https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/Qmcd6B5gS42p99BzKjNsWuBJ9X4dEk7JEh7N9Hr6EYMzfn/www.aventer.biz/assets/support_aventer.asc >/etc/apt/keyrings/support_aventer.asc
-
+    # We install the debs with apt so we can make sure to get *their* dependencies.
     RUN apt-get -y update --fix-missing && \
-        DEBIAN_FRONTEND=noninteractive apt-get -y install --no-upgrade {dependencies} && \
-        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install --no-upgrade aventer-mesos ; mesos-agent --help >/dev/null ; fi && \
+        if [ $TARGETARCH = amd64 ] ; then  \
+            curl -O https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmUFzRvWmw6uJihmUjximxLz2gqEJv52YS8A3keHYNZxzF/rpm.aventer.biz/Ubuntu/noble/pool/main/a/aventer-mesos/aventer-mesos_1.11.0-0.9.0.ubuntu2404_amd64.deb && \
+            curl -O https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmUFzRvWmw6uJihmUjximxLz2gqEJv52YS8A3keHYNZxzF/rpm.aventer.biz/Ubuntu/noble/pool/main/d/docker-volume-s3/docker-volume-s3_0.1.3-1.ubuntu2404_amd64.deb && \
+            curl -O https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmUFzRvWmw6uJihmUjximxLz2gqEJv52YS8A3keHYNZxzF/rpm.aventer.biz/Ubuntu/noble/pool/main/m/mesos-dns/mesos-dns_0.10.1-1.ubuntu2404_amd64.deb && \
+            curl -O https://public.gi.ucsc.edu/cgl/ci/toil/dependencies/ipfs/QmUFzRvWmw6uJihmUjximxLz2gqEJv52YS8A3keHYNZxzF/rpm.aventer.biz/Ubuntu/noble/pool/main/z/zookeeper/zookeeper_3.9.4-0.1_amd64.deb && \
+            DEBIAN_FRONTEND=noninteractive apt-get -y install --no-upgrade ./*.deb && \
+            rm *.deb  && \
+            mesos-agent --help >/dev/null ; \
+        fi && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 

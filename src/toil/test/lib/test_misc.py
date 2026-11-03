@@ -13,7 +13,10 @@
 # limitations under the License.
 import getpass
 import logging
+import os
+from unittest.mock import patch
 
+from toil.lib.io import ensure_dir_exists
 from toil.lib.misc import get_user_name
 from toil.test import ToilTest
 
@@ -59,6 +62,39 @@ class UserNameUnvailableTest(ToilTest):
         # Make sure we got something
         self.assertTrue(isinstance(apparent_user_name, str))
         self.assertNotEqual(apparent_user_name, "")
+
+
+class EnsureDirExistsTest(ToilTest):
+    """
+    Tests for ensure_dir_exists.
+    """
+
+    def test_none_path_is_a_noop(self):
+        ensure_dir_exists(None, "--workDir")
+
+    def test_creates_missing_directory(self):
+        target = os.path.join(self._createTempDir(), "missing", "nested")
+        self.assertFalse(os.path.exists(target))
+        ensure_dir_exists(target, "--workDir")
+        self.assertTrue(os.path.isdir(target))
+
+    def test_existing_directory_is_left_alone(self):
+        target = self._createTempDir()
+        marker = os.path.join(target, "keep-me")
+        with open(marker, "w") as f:
+            f.write("data")
+        ensure_dir_exists(target, "--coordinationDir")
+        self.assertTrue(os.path.exists(marker))
+
+    def test_exits_when_directory_cannot_be_created(self):
+        target = os.path.join(self._createTempDir(), "unwritable")
+        with patch("os.makedirs", side_effect=OSError("Permission denied")):
+            with self.assertLogs("toil.lib.io", level="CRITICAL") as cm:
+                with self.assertRaises(SystemExit) as exc_info:
+                    ensure_dir_exists(target, "--workDir")
+        self.assertEqual(exc_info.exception.code, 1)
+        self.assertIn("--workDir", cm.output[0])
+        self.assertIn(target, cm.output[0])
 
 
 class UserNameVeryBrokenTest(ToilTest):
