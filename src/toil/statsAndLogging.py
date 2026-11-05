@@ -19,6 +19,7 @@ import os
 import time
 from argparse import ArgumentParser, Namespace
 from collections.abc import Callable
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from threading import Event, Thread
 from typing import IO, TYPE_CHECKING, Any, Union
@@ -48,6 +49,17 @@ class StatsDict(MagicExpando):
     """Subclass of MagicExpando for type-checking purposes."""
 
     jobs: list[Expando]
+
+class LeaderLogMessage(Expando):
+    """
+    Represents a message logged to the leader.
+    """
+    text: str
+    level: int | str
+    timestamp: float
+    """
+    Seconds since Unix epoch.
+    """
 
 class StatsAndLogging:
     """A thread to aggregate statistics and logging."""
@@ -177,7 +189,30 @@ class StatsAndLogging:
         startTime = time.time()
         startClock = ResourceMonitor.get_total_cpu_time()
 
+        # We buffer log messages on each tick so we can pring them in an
+        # approximation of the order they were sent.
+        log_buffer: list[LeaderLogMessage] = []
+
+        def flush_buffer() -> None:
+            """
+            Print log_to_leader messages from the buffer in timestamp order.
+            """
+
+            log_buffer.sort(key=lambda m: m.timestamp)
+            for message in log_buffer:
+                message_time = datetime.fromtimestamp(message.timestamp, timezone.utc)
+                logger.log(
+                    int(message.level),
+                    "Got message from job at time %s: %s",
+                    message_time.strftime("%m-%d-%Y %H:%M:%S"),
+                    message.text,
+                )
+            log_buffer.clear()
+
         def callback(fileHandle: IO[bytes] | IO[str]) -> None:
+            """
+            Read stats and logging info from a job.
+            """
             statsStr = fileHandle.read()
             if not isinstance(statsStr, str):
                 statsStr = statsStr.decode()
@@ -192,13 +227,11 @@ class StatsAndLogging:
                 # To be expected if there were no calls to log_to_leader()
                 pass
             else:
-                for message in logs:
-                    logger.log(
-                        int(message.level),
-                        "Got message from job at time %s: %s",
-                        time.strftime("%m-%d-%Y %H:%M:%S"),
-                        message.text,
-                    )
+                # Buffer them
+                nonlocal log_buffer
+                for log in logs:
+                    # Promote to the real type
+                    log_buffer.append(LeaderLogMessage(log))
 
             try:
                 # Handle all the user-level text streams reported back (command output, etc.)
@@ -272,8 +305,10 @@ class StatsAndLogging:
             # This is an indirect way of getting a message to the thread to exit
             if stop.is_set():
                 jobStore.read_logs(callback)
+                flush_buffer()
                 break
             if jobStore.read_logs(callback) == 0:
+                flush_buffer()
                 time.sleep(0.5)  # Avoid cycling too fast
 
         # Finish the stats file
