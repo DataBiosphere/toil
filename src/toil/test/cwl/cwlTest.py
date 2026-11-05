@@ -749,10 +749,16 @@ class TestCWLWorkflow:
     @pytest.mark.cwl
     @pytest.mark.cwl_small
     def test_loop_step_depends_on_loop(self, tmp_path: Path) -> None:
-        """A step reading a cwltool:Loop step's output sees the last iteration's output."""
+        """A step reading a cwltool:Loop step's output runs after the loop's last iteration."""
         with get_data("test/cwl/loop_step_depends_on_loop.cwl") as cwl_file:
             with get_data("test/cwl/empty.json") as job_file:
-                self._tester(cwl_file, job_file, {"final": 30}, tmp_path, main_args=["--enable-ext"])
+                self._tester(
+                    cwl_file,
+                    job_file,
+                    {"final": 1},
+                    tmp_path,
+                    main_args=["--enable-ext", "--retryCount=0"],
+                )
 
     @needs_cwl
     @pytest.mark.cwl

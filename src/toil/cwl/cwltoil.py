@@ -4361,8 +4361,10 @@ class CWLWorkflow(CWLNamedJob):
                                     1000,
                                 ),
                             )
-                            # Later iterations are successors of this
-                            # job, so its follow-on runs after the last one.
+                            # Each iteration's body, and the next CWLLoop,
+                            # are successors of this job; steps reading the
+                            # loop's outputs hang off its follow-on, which
+                            # runs only after all of them.
                             followOn = ResolveIndirect(
                                 wfjob.rv(),
                                 parent_name=f"{parent_name}.{shortname(step_id)}",
