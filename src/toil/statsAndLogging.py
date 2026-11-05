@@ -228,7 +228,6 @@ class StatsAndLogging:
                 pass
             else:
                 # Buffer them
-                nonlocal log_buffer
                 for log in logs:
                     # Promote to the real type
                     log_buffer.append(LeaderLogMessage(log))
