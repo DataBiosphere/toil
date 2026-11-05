@@ -927,6 +927,7 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
         self.batchSystem.shutdown()
         self.config.local_accelerators = {"fpga": 1}
         self.batchSystem = self.createBatchSystem()
+        assert isinstance(self.batchSystem, SingleMachineBatchSystem)
 
         def fpgas(count: int) -> Requirer:
             return Requirer(
