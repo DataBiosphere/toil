@@ -16,12 +16,13 @@ import math
 import os
 import shlex
 import tempfile
-from queue import Empty
+from queue import Empty, Queue
 from shlex import quote
 
+from toil.batchSystems.abstractBatchSystem import UpdatedBatchJobInfo
 from toil.batchSystems.abstractGridEngineBatchSystem import (
     AbstractGridEngineBatchSystem,
-    UpdatedBatchJobInfo,
+    JobTuple,
 )
 from toil.lib.conversions import hms_duration_to_seconds
 from toil.lib.misc import CalledProcessErrorStderr, call_command
@@ -32,16 +33,21 @@ logger = logging.getLogger(__name__)
 class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
     # class-specific Worker
-    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
+    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread[list[str]]):
         def __init__(
-            self, newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss
-        ):
+            self,
+            newJobsQueue: Queue[JobTuple | None],
+            updatedJobsQueue: Queue[UpdatedBatchJobInfo],
+            killQueue: Queue[int],
+            killedJobsQueue: Queue[int],
+            boss: AbstractGridEngineBatchSystem,
+        ) -> None:
             super().__init__(
                 newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss
             )
             self._version = self._pbsVersion()
 
-        def _pbsVersion(self):
+        def _pbsVersion(self) -> str:
             """Determines PBS/Torque version via pbsnodes"""
             try:
                 out = call_command(["pbsnodes", "--version"])
@@ -61,11 +67,11 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         Torque-specific AbstractGridEngineWorker methods
         """
 
-        def getRunningJobIDs(self):
-            times = {}
+        def getRunningJobIDs(self) -> dict[int, float]:
+            times: dict[int, float] = {}
             with self.runningJobsLock:
                 currentjobs = {
-                    str(self.batchJobIDs[x][0].strip()).split(".")[0]: x
+                    str(self.batchJobIDs[x][0]).strip().split(".")[0]: x
                     for x in self.runningJobs
                 }
             logger.debug("getRunningJobIDs current jobs are: %s", currentjobs)
@@ -96,7 +102,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                         # normal qstat has a quirk with job time where it reports '0'
                         # when initially running; this catches this case
                         if walltime == "0":
-                            walltime = 0.0
+                            seconds = 0.0
                         elif not walltime:
                             # Sometimes we don't get any data here.
                             # See https://github.com/DataBiosphere/toil/issues/3715
@@ -104,35 +110,23 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                                 "Assuming 0 walltime due to missing field in qstat line: %s",
                                 currline,
                             )
-                            walltime = 0.0
+                            seconds = 0.0
                         else:
-                            walltime = hms_duration_to_seconds(walltime)
-                        times[currentjobs[jobid]] = walltime
+                            seconds = hms_duration_to_seconds(walltime)
+                        times[currentjobs[jobid]] = seconds
 
             logger.debug("Job times from qstat are: %s", times)
             return times
 
-        def getUpdatedBatchJob(self, maxWait):
-            try:
-                logger.debug("getUpdatedBatchJob: Job updates")
-                item = self.updatedJobsQueue.get(timeout=maxWait)
-                self.updatedJobsQueue.task_done()
-                jobID, retcode = (self.jobIDs[item.jobID], item.exitStatus)
-                self.currentjobs -= {self.jobIDs[item.jobID]}
-            except Empty:
-                logger.debug("getUpdatedBatchJob: Job queue is empty")
-            else:
-                return UpdatedBatchJobInfo(
-                    jobID=jobID, exitStatus=retcode, wallTime=None, exitReason=None
-                )
-
-        def killJob(self, jobID):
+        def killJob(self, jobID: int) -> None:
             call_command(["qdel", self.getBatchSystemID(jobID)])
 
         def prepareSubmission(
             self,
-            cpu: int,
+            cpu: float,
             memory: int,
+            disk: int,
+            walltime: int,
             jobID: int,
             command: str,
             jobName: str,
@@ -143,10 +137,10 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                 self.generateTorqueWrapper(command, jobID)
             ]
 
-        def submitJob(self, subLine):
+        def submitJob(self, subLine: list[str]) -> str:
             return call_command(subLine)
 
-        def getJobExitCode(self, torqueJobID):
+        def getJobExitCode(self, torqueJobID: str) -> int | None:
             if self._version == "pro":
                 args = ["qstat", "-x", "-f", str(torqueJobID).split(".")[0]]
             elif self._version == "oss":
@@ -182,7 +176,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
         def prepareQsub(
             self,
-            cpu: int,
+            cpu: float,
             mem: int,
             jobID: int,
             job_environment: dict[str, str] | None,
@@ -263,7 +257,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
             return qsubline
 
-        def generateTorqueWrapper(self, command, jobID):
+        def generateTorqueWrapper(self, command: str, jobID: int) -> str:
             """
             A very simple script generator that just wraps the command given; for
             now this goes to default tempdir
