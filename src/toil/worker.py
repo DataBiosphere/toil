@@ -361,7 +361,7 @@ def workerScript(
     unstick_thread = threading.Thread(target=unstick_worker, args=())
     unstick_thread.daemon = True
     unstick_thread.start()
-    
+
     # Make sure the directories we need exist.
     ensure_dir_exists(config.workDir, "--workDir")
     ensure_dir_exists(config.coordination_dir, "--coordinationDir")
