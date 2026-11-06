@@ -4343,8 +4343,7 @@ class CWLWorkflow(CWLNamedJob):
                             CWLLoop | CWLScatter | CWLWorkflow | CWLJob | CWLJobWrapper
                         )
                         followOn: (
-                            CWLLoop
-                            | CWLGather
+                            CWLGather
                             | ResolveIndirect
                             | CWLJob
                             | CWLJobWrapper
@@ -4362,7 +4361,15 @@ class CWLWorkflow(CWLNamedJob):
                                     1000,
                                 ),
                             )
-                            followOn = wfjob
+                            # Each iteration's body, and the next CWLLoop,
+                            # are successors of this job; steps reading the
+                            # loop's outputs hang off its follow-on, which
+                            # runs only after all of them.
+                            followOn = ResolveIndirect(
+                                wfjob.rv(),
+                                parent_name=f"{parent_name}.{shortname(step_id)}",
+                            )
+                            wfjob.addFollowOn(followOn)
                             logger.debug(
                                 "Is loop with job %s and follow-on %s",
                                 wfjob,
