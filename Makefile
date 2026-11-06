@@ -353,6 +353,13 @@ check_cpickle:
 	# https://github.com/BD2KGenomics/toil/issues/1503
 	! find src -iname '*.py' | xargs grep 'cPickle.dump' | grep --invert-match HIGHEST_PROTOCOL
 
+check_markers:
+	@# Fail if pytest markers are used in the project but aren't defined
+	@GITLAB_EXTRA_MARKERS="$$(comm -2 -3 <(cat .gitlab-ci.yml | grep MARKER: | cut -f2 -d':' | tr -d '"()' | tr ' ' '\n' | grep -v '^\(and\|or\|not\)$$' | grep -v '^$$' | sort | uniq) <(python3 -c 'import configparser; config = configparser.ConfigParser(); config.read("setup.cfg"); print("\n".join(sorted([x for x in config["tool:pytest"]["markers"].split() if x])))') | tr '\n' ' ')"; \
+		if [[ ! -z "$${GITLAB_EXTRA_MARKERS}" ]] ; then echo 1>&2 "Error: pytest markers found in Gitlab configuration but not in setup.cfg: $${GITLAB_EXTRA_MARKERS}"; exit 1; fi
+	@TEST_EXTRA_MARKERS="$$(comm -2 -3 <(grep -I -o 'pytest\.mark\.[a-zA-Z0-9_-]*' -h -r src/toil/test | cut -f3 -d'.' | grep -v '^\(skip\|skipif\|timeout\|usefixtures\|xfail\)$$' | sort | uniq) <(python3 -c 'import configparser; config = configparser.ConfigParser(); config.read("setup.cfg"); print("\n".join(sorted([x for x in config["tool:pytest"]["markers"].split() if x])))') | tr '\n' ' ')"; \
+		if [[ ! -z "$${TEST_EXTRA_MARKERS}" ]] ; then echo 1>&2 "Error: pytest markers found in tests but not in setup.cfg or on list of built-in markers: $${TEST_EXTRA_MARKERS}"; exit 1; fi
+
 PYSOURCES=$(shell find src -name '*.py') setup.py version_template.py
 
 # Linting and code style related targets
@@ -406,6 +413,7 @@ preflight: mypy touched_pylint
 .PHONY: help \
 		prepare \
 		check_cpickle \
+		check_markers \
 		develop clean_develop \
 		sdist clean_sdist \
 		download_cwl_spec \
