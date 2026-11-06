@@ -244,6 +244,12 @@ levels in toil are based on priority from the logging module:
                         system. Useful for running workflows on smaller
                         machines than they were designed for, by setting a
                         value less than 1. (default: 1)
+  --localAccelerators KIND=COUNT[,KIND=COUNT...]
+                        Accelerators other than GPUs that this machine has,
+                        by kind, for jobs that ask for them. Used in the
+                        single_machine batch system, which detects GPUs itself
+                        and refuses jobs asking for an accelerator kind it does
+                        not have.
   --slurmAllocateMem SLURM_ALLOCATE_MEM
                         If False, do not use --mem. Used as a workaround for
                         Slurm clusters that reject jobs with memory
@@ -258,6 +264,11 @@ levels in toil are based on priority from the logging module:
                         Partition to send Slurm jobs to if they ask for GPUs.
   --slurmGPUQOS SLURM_GPU_QOS
                         Quality Of Service to request for Slurm jobs if they ask for GPUs.
+  --slurmAcceleratorPartitions KIND=PARTITION[,KIND=PARTITION...]
+                        Partitions to send Slurm jobs to if they ask for
+                        accelerators other than GPUs, by accelerator kind.
+                        Jobs asking for an accelerator kind not listed here
+                        are refused.
   --slurmPE SLURM_PE    Special partition to send Slurm jobs to if they ask
                         for more than 1 CPU. Useful for Slurm clusters that do
                         not offer a partition accepting both single-core and

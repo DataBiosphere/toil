@@ -35,9 +35,10 @@ from toil.batchSystems.abstractGridEngineBatchSystem import (
 from toil.batchSystems.options import OptionSetter
 from toil.bus import get_job_kind
 from toil.common import Config
-from toil.job import JobDescription, Requirer
+from toil.job import AcceleratorRequirement, JobDescription, Requirer
 from toil.lib.conversions import strtobool
 from toil.lib.misc import CalledProcessErrorStderr, call_command
+from toil.options.common import parse_accelerator_kind_mapping
 from toil.statsAndLogging import TRACE
 from toil.worker import WALLTIME_EXIT_CODE, WALLTIME_SIGNAL
 
@@ -118,6 +119,70 @@ def parse_slurm_time(slurm_time: str) -> int:
         result = result * 60 + component
 
     return days * 86400 + result
+
+
+def parse_accelerator_partitions(spec: str) -> dict[str, str]:
+    """
+    Parse a mapping from accelerator kinds to the Slurm partitions providing them.
+
+    >>> parse_accelerator_partitions("fpga=fpgas,tpu=tpus")
+    {'fpga': 'fpgas', 'tpu': 'tpus'}
+    >>> parse_accelerator_partitions("gpu=gpus")
+    Traceback (most recent call last):
+    ...
+    ValueError: Use --slurmGPUPartition to choose the partition for gpu accelerators
+
+    Raises ValueError if not parseable.
+    """
+    mapping = parse_accelerator_kind_mapping(spec)
+    if "gpu" in mapping:
+        raise ValueError(
+            "Use --slurmGPUPartition to choose the partition for gpu accelerators"
+        )
+    return mapping
+
+
+def get_accelerator_partition(
+    accelerators: list[AcceleratorRequirement],
+    accelerator_partitions: dict[str, str],
+) -> str | None:
+    """
+    Get the partition that provides the given accelerators.
+
+    GPUs are requested through Slurm GRES and need no particular partition.
+    Every other kind of accelerator is provided by the partition it is mapped
+    to, and all of a job's non-GPU accelerators must map to the same
+    partition. The accelerator counts are left to the partition: a job sent
+    there is assumed to get the accelerators the partition's nodes provide.
+
+    >>> get_accelerator_partition([{"kind": "gpu", "count": 1}], {})
+    >>> get_accelerator_partition([{"kind": "fpga", "count": 1}], {"fpga": "fpgas"})
+    'fpgas'
+    >>> get_accelerator_partition([{"kind": "fpga", "count": 1}], {})
+    Traceback (most recent call last):
+    ...
+    ValueError: No Slurm partition is configured to provide fpga accelerators; map one with --slurmAcceleratorPartitions fpga=PARTITION
+
+    Raises ValueError if a kind has no partition, or the kinds need different
+    partitions.
+    """
+    partitions = set()
+    for accelerator in accelerators:
+        kind = accelerator["kind"]
+        if kind == "gpu":
+            continue
+        if kind not in accelerator_partitions:
+            raise ValueError(
+                f"No Slurm partition is configured to provide {kind} accelerators; "
+                f"map one with --slurmAcceleratorPartitions {kind}=PARTITION"
+            )
+        partitions.add(accelerator_partitions[kind])
+    if len(partitions) > 1:
+        raise ValueError(
+            f"The accelerators {accelerators} are provided by different Slurm "
+            f"partitions {sorted(partitions)}, but a job can only run in one"
+        )
+    return partitions.pop() if partitions else None
 
 
 # For parsing user-provided option overrides (or self-generated
@@ -358,12 +423,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             command: str,
             jobName: str,
             job_environment: dict[str, str] | None = None,
-            gpus: int | None = None,
+            accelerators: list[AcceleratorRequirement] | None = None,
         ) -> list[str]:
             # Make sure to use exec so we can get Slurm's signals in the Toil
             # worker instead of having an intervening Bash
             return self.prepareSbatch(
-                cpu, memory, walltime, jobID, jobName, job_environment, gpus
+                cpu, memory, walltime, jobID, jobName, job_environment, accelerators
             ) + [f"--wrap=exec {command}"]
 
         def submitJob(self, subLine: list[str]) -> int:
@@ -907,11 +972,17 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             jobID: int,
             jobName: str,
             job_environment: dict[str, str] | None,
-            gpus: int | None,
+            accelerators: list[AcceleratorRequirement] | None,
         ) -> list[str]:
             """
             Returns the sbatch command line to run to queue the job.
             """
+
+            accelerators = accelerators or []
+            gpus = sum(a["count"] for a in accelerators if a["kind"] == "gpu")
+            accelerator_partition = get_accelerator_partition(
+                accelerators, self.boss.config.slurm_accelerator_partitions or {}  # type: ignore[attr-defined]
+            )
 
             # Start by naming the job
             sbatch_line = ["sbatch", "-J", f"toil_job_{jobID}_{jobName}"]
@@ -1018,6 +1089,18 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     argList.append(f"{k}={quoted_value}")
 
                 export_list.extend(argList)
+
+            # The partition providing the job's accelerators is a requirement
+            # of the job, so it beats every partition override that is just a
+            # default.
+            if accelerator_partition is not None:
+                if partition is not None and partition != accelerator_partition:
+                    raise ValueError(
+                        f"Cannot use Slurm argument --partition={partition} for "
+                        f"job {jobName}, which needs the accelerators provided by "
+                        f"partition {accelerator_partition}"
+                    )
+                partition = accelerator_partition
 
             # If partition isn't set and we have a GPU partition override
             # that applies, apply it
@@ -1131,7 +1214,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             return local_id
         else:
             self.check_resource_request(job_desc)
-            gpus = self.count_needed_gpus(job_desc)
             job_id = self.getNextJobID()
             self.currentJobs.add(job_id)
 
@@ -1152,7 +1234,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     command,
                     get_job_kind(job_desc.get_names()),
                     job_environment,
-                    gpus,
+                    job_desc.accelerators,
                 )
             )
             logger.debug(
@@ -1164,16 +1246,19 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         return job_id
 
     def _check_accelerator_request(self, requirer: Requirer) -> None:
-        for accelerator in requirer.accelerators:
-            if accelerator["kind"] != "gpu":
-                raise InsufficientSystemResources(
-                    requirer,
-                    "accelerators",
-                    details=[
-                        f"The accelerator {accelerator} could not be provided"
-                        "The Toil Slurm batch system only supports gpu accelerators at the moment."
-                    ],
-                )
+        try:
+            get_accelerator_partition(
+                requirer.accelerators, self.config.slurm_accelerator_partitions or {}  # type: ignore[attr-defined]
+            )
+        except ValueError as e:
+            raise InsufficientSystemResources(
+                requirer,
+                "accelerators",
+                details=[
+                    f"The accelerators {requirer.accelerators} could not be provided.",
+                    str(e),
+                ],
+            ) from e
 
     ###
     ### The interface for SLURM
@@ -1258,6 +1343,17 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             help="Quality Of Service to request for Slurm jobs if they ask for GPUs.",
         )
         parser.add_argument(
+            "--slurmAcceleratorPartitions",
+            dest="slurm_accelerator_partitions",
+            type=parse_accelerator_partitions,
+            default={},
+            metavar="KIND=PARTITION[,KIND=PARTITION...]",
+            env_var="TOIL_SLURM_ACCELERATOR_PARTITIONS",
+            help="Partitions to send Slurm jobs to if they ask for accelerators "
+            "other than GPUs, by accelerator kind. Jobs asking for an accelerator "
+            "kind not listed here are refused.",
+        )
+        parser.add_argument(
             "--slurmPE",
             dest="slurm_pe",
             default=None,
@@ -1283,5 +1379,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         setOption("slurm_qos")
         setOption("slurm_gpu_partition")
         setOption("slurm_gpu_qos")
+        setOption("slurm_accelerator_partitions")
         setOption("slurm_pe")
         setOption("slurm_args")
