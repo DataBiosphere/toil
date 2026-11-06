@@ -25,8 +25,6 @@ from typing import (
     Any,
     ContextManager,
     Literal,
-    Protocol,
-    TypedDict,
     Union,
     cast,
     overload,
@@ -40,7 +38,6 @@ from toil.job import DebugStoppingPointReached, Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human
-from toil.lib.expando import Expando
 from toil.lib.io import WriteWatchingStream, mkdtemp
 from toil.statsAndLogging import LeaderLogMessage
 
