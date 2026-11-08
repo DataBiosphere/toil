@@ -85,7 +85,7 @@ def get_parsed_trs_spec(workflow_attempt: WorkflowAttemptSummary) -> tuple[str, 
     """
     Get the TRS ID and version of the workflow, or raise an error.
 
-    :returns: The TRS ID and the TRS version of the wrokflow run.
+    :returns: The TRS ID and the TRS version of the workflow run.
     :raises: ValueError if the workflow does not have a TRS spec or if the spec
         does not contain a version.
     """
@@ -293,7 +293,7 @@ class Submission:
                         all_submitted_and_marked = False
                         # If we can't mark one, keep marking others
                 for _, job_attempt_ids in task_metrics:
-                    # For each colleciton of task attempts of this TRS ID/version that we successfully submitted, mark it
+                    # For each collection of task attempts of this TRS ID/version that we successfully submitted, mark it
                     try:
                         HistoryManager.mark_job_attempts_submitted(job_attempt_ids)
                     except:
@@ -328,7 +328,7 @@ def create_history_submission(
     submission = Submission()
 
     # We don't want to submit many large workflows' tasks in one request. So we
-    # count how many tasks we've colected so far.
+    # count how many tasks we've collected so far.
     total_tasks = 0
 
     for workflow_attempt in HistoryManager.get_submittable_workflow_attempts(
@@ -678,7 +678,7 @@ Decision = Union[Literal["all"], Literal["current"], Literal["no"], Literal["nev
 
 DIALOG_TITLE = "Publish Workflow Metrics on Dockstore.org?"
 
-# We need to fromat the default config path in to the message, but we can't get
+# We need to format the default config path in to the message, but we can't get
 # it until we can close the circular import loop. So it's a placeholder here.
 # We also leave this un-wrapped to let the dialog wrap it if needed.
 DIALOG_TEXT = """

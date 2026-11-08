@@ -465,7 +465,7 @@ class Requirer:
         Parse and save the given requirements.
 
         :param dict requirements: Dict from string to value
-            describing a set of resource requirments. 'cores', 'memory',
+            describing a set of resource requirements. 'cores', 'memory',
             'disk', 'preemptible', 'accelerators', and 'walltime' fields, if set, are
             parsed and broken out into properties. If unset, the relevant
             property will be unspecified, and will be pulled from the assigned
@@ -753,7 +753,7 @@ class Requirer:
         )
 
     @deprecated(new_function_name="preemptible")
-    def preemptable(self, val: ParseableFlag) -> None:
+    def preemptible(self, val: ParseableFlag) -> None:
         self._requirementOverrides["preemptible"] = Requirer._parseResource(
             "preemptible", val
         )
@@ -1271,7 +1271,7 @@ class JobDescription(Requirer):
         # We need first the job we are merging into if nothing has merged into
         # it yet, then anything that already merged into it (including it),
         # then us if nothing has yet merged into us, then anything that merged
-        # into us (inclusing us)
+        # into us (including us)
         _merged_job_names = []
         if len(other._merged_job_names) == 0:
             _merged_job_names.append(other.get_names())
@@ -1290,7 +1290,7 @@ class JobDescription(Requirer):
             )
         if len(self.filesToDelete) > 0:
             raise RuntimeError(
-                "Trying to take on the ID of anothe job while in the process of being committed!"
+                "Trying to take on the ID of another job while in the process of being committed!"
             )
 
         self._job_version = other._job_version
@@ -1774,7 +1774,7 @@ class Job:
         disk: ParseableIndivisibleResource | None = None,
         accelerators: ParseableAcceleratorRequirement | None = None,
         preemptible: ParseableFlag | None = None,
-        preemptable: ParseableFlag | None = None,
+        preemptible: ParseableFlag | None = None,
         walltime: ParseableIndivisibleResource | None = None,
         unitName: str | None = "",
         checkpoint: bool | None = False,
@@ -1793,7 +1793,7 @@ class Job:
         :param disk: the amount of local disk space required by the job, expressed in bytes.
         :param accelerators: the computational accelerators required by the job. If a string, can be a string of a number, or a string specifying a model, brand, or API (with optional colon-delimited count).
         :param preemptible: if the job can be run on a preemptible node.
-        :param preemptable: legacy preemptible parameter, for backwards compatibility with workflows not using the preemptible keyword
+        :param preemptible: legacy preemptible parameter, for backwards compatibility with workflows not using the preemptible keyword
         :param walltime: the maximum walltime in seconds that the job is allowed to run.
         :param unitName: Human-readable name for this instance of the job.
         :param checkpoint: if any of this job's successor jobs completely fails,
@@ -1820,12 +1820,12 @@ class Job:
         jobName = self.__class__.__name__
         displayName = displayName if displayName else jobName
 
-        # Some workflows use preemptable instead of preemptible
-        if preemptable and not preemptible:
+        # Some workflows use preemptible instead of preemptible
+        if preemptible and not preemptible:
             logger.warning(
-                "Preemptable as a keyword has been deprecated, please use preemptible."
+                "Preemptible as a keyword has been deprecated, please use preemptible."
             )
-            preemptible = preemptable
+            preemptible = preemptible
         # Build a requirements dict for the description
         requirements = {
             "memory": memory,
@@ -1989,7 +1989,7 @@ class Job:
     # Note that unless the two halves of a property are *immediately* adjacent,
     # MyPy throws an error. So the old version has to come later.
     @deprecated(new_function_name="preemptible")
-    def preemptable(self) -> bool:
+    def preemptible(self) -> bool:
         return self.description.preemptible
 
     @property
@@ -2352,7 +2352,7 @@ class Job:
                composite value, the second element of the path can be used to select an item from
                it, and so on. For example, if the return value is `[6,{'a':42}]`, `.rv(0)` would
                select `6` , `rv(1)` would select `{'a':3}` while `rv(1,'a')` would select `3`. To
-               select a slice from a return value that is slicable, e.g. tuple or list, the path
+               select a slice from a return value that is sliceable, e.g. tuple or list, the path
                element should be a `slice` object. For example, assuming that the return value is
                `[6, 7, 8, 9]` then `.rv(slice(1, 3))` would select `[7, 8]`. Note that slicing
                really only makes sense at the end of path.
@@ -2542,14 +2542,14 @@ class Job:
                 lower = phases[depth - 1]
 
                 # Find everything in the upper subtree
-                reacheable: set[Job] = set()
+                reachable: set[Job] = set()
                 for upperID in upper:
                     if upperID in job._registry:
                         # This is a locally added job, not an already-saved job
                         upperJob = job._registry[upperID]
-                        upperJob._collectAllSuccessors(reacheable)
+                        upperJob._collectAllSuccessors(reachable)
 
-                for inUpper in reacheable:
+                for inUpper in reachable:
                     # Add extra edges to the roots of all the lower subtrees
                     # But skip anything in the lower subtree not in the current _registry (i.e. not created hear)
                     extraEdges[inUpper] += [
@@ -2586,7 +2586,7 @@ class Job:
 
         # Check for each job for which checkpoint is true that it is a cut vertex or leaf
         for y in [x for x in jobs if x.checkpoint]:
-            if y not in roots:  # The roots are the prexisting jobs
+            if y not in roots:  # The roots are the preexisting jobs
                 if not Job._isLeafVertex(y):
                     raise JobGraphDeadlockException(
                         "New checkpoint job %s is not a leaf in the job graph" % y
@@ -3671,7 +3671,7 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
                 walltime=0,
                 accelerators=[],
                 preemptible=True,
-                preemptable=True,
+                preemptible=True,
             )
         )
         super().__init__(userFunction, *args, **kwargs)

@@ -899,7 +899,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 "workdir", self.host_path, self.worker_work_dir, create=True
             )
             # We also need to mount across /run/lock, where we will put
-            # per-node coordiantion info.
+            # per-node coordination info.
             # Don't create this; it really should always exist.
             mount_host_path("coordination", "/run/lock", "/run/lock")
         else:

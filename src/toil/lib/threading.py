@@ -634,7 +634,7 @@ def global_mutex(base_dir: StrPath, mutex: str) -> Iterator[None]:
     """
     Context manager that locks a mutex. The mutex is identified by the given
     name, and scoped to the given directory. Works across all containers that
-    have access to the given diectory. Mutexes held by dead processes are
+    have access to the given directory. Mutexes held by dead processes are
     automatically released.
 
     Only works between processes, NOT between threads.
@@ -699,7 +699,7 @@ def global_mutex(base_dir: StrPath, mutex: str) -> Iterator[None]:
         # under someone else who thinks they are holding it.
         logger.debug("PID %d releasing mutex %s", os.getpid(), lock_filename)
 
-        # We have had observations in the wild of the lock file not exisiting
+        # We have had observations in the wild of the lock file not existing
         # when we go to unlink it, causing a crash on mutex release. See
         # <https://github.com/DataBiosphere/toil/issues/4654>.
         #

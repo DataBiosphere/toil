@@ -91,7 +91,7 @@ def fetchFiles(symLink: bool, jobStoreDir: Path, outputDir: Path) -> None:
     Runs a workflow that imports 'B.txt' and 'mkFile.py' into the
     jobStore.  'A.txt', 'C.txt', 'ABC.txt' are then created.  This test then
     attempts to get a list of these files and copy them over into our
-    output diectory from the jobStore, confirm that they are present, and
+    output directory from the jobStore, confirm that they are present, and
     then delete them.
     """
     contents = ["A.txt", "B.txt", "C.txt", "ABC.txt", "mkFile.py"]

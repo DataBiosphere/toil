@@ -99,7 +99,7 @@ class AbstractFileStore(ABC):
                prevent this file store's startCommit and the previous job's
                startCommit methods from running at the same time and racing. If
                they did race, it might be possible for the later job to be fully
-               marked as completed in the job store before the eralier job was.
+               marked as completed in the job store before the earlier job was.
         """
         self.jobStore = jobStore
         self.jobDesc = jobDesc
@@ -403,7 +403,7 @@ class AbstractFileStore(ABC):
             for item in self._accessLog:
                 # For each access record
                 if len(item) == 2:
-                    # If it has a name, dump wit the name
+                    # If it has a name, dump with the name
                     file_id, dest_path = item
                     if os.path.exists(dest_path):
                         if os.path.islink(dest_path):
@@ -681,7 +681,7 @@ class AbstractFileStore(ABC):
         logged by the worker at the same level.
 
         Does not depend on the commit system, so this is safe to use during an
-        ansynchronous commit, or without a commit afterward.
+        asynchronous commit, or without a commit afterward.
 
         :param text: The string to log.
         :param level: The logging level.

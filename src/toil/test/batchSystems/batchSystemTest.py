@@ -971,7 +971,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                     os.close(fd)
 
             # Without the second argument, increment counter, sleep one second and decrement.
-            # Othwerise, adjust the counter by the given delta, which can be useful for services.
+            # Otherwise, adjust the counter by the given delta, which can be useful for services.
             if len(sys.argv) < 3:
                 count(1)
                 try:

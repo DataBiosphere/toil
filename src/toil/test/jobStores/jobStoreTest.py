@@ -1455,7 +1455,7 @@ class AbstractEncryptedJobStoreTest:
             try:
                 with self.jobstore_initialized.read_shared_file_stream(fileName) as f:
                     # If the read goes through, we should fail the assert because
-                    # we read the cyphertext
+                    # we read the ciphertext
                     assert (
                         f.read() != phrase
                     ), "Managed to read plaintext content with encryption off."

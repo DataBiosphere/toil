@@ -190,7 +190,7 @@ def run_conformance_tests(
                     output_lines.append(line_text)
                     log.info(line_text)
 
-            # Once it's done writing, amke sure it succeeded.
+            # Once it's done writing, make sure it succeeded.
             child.wait()
             log.info("CWL tests finished with exit code %s", child.returncode)
             if child.returncode != 0:
@@ -1945,7 +1945,7 @@ def test_workflow_echo_string_scatter_stderr_log_dir(tmp_path: Path) -> None:
         p = subprocess.run(cmd, capture_output=True, text=True)
         outputs = json.loads(p.stdout)
         out_list = outputs["list_out"]
-        assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"
+        assert len(out_list) == 2, f"outList should have two file elements {out_list}"
         out_base = outputs["list_out"][0]
         # This is a test on the scatter functionality and stdout.
         # Each value of scatter should generate a separate file in the output.
@@ -2240,7 +2240,7 @@ def test_workflow_echo_string_scatter_capture_stdout(tmp_path: Path) -> None:
         assert len(p.stdout) > 0
         outputs = json.loads(p.stdout)
         out_list = outputs["list_out"]
-        assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"
+        assert len(out_list) == 2, f"outList should have two file elements {out_list}"
         out_base = outputs["list_out"][0]
         # This is a test on the scatter functionality and stdout.
         # Each value of scatter should generate a separate file in the output.

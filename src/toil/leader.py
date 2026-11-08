@@ -204,7 +204,7 @@ class Leader:
                 raise RuntimeError(
                     f"Cannot use in-workflow autoscaling with the {type(self.provisioner)} "
                     f"provisioner when using a non-scalable {type(self.batchSystem)} "
-                    f"batch system; consider Kuberentes cluster-based autoscaling instead"
+                    f"batch system; consider Kubernetes cluster-based autoscaling instead"
                 )
             self.clusterScaler = ScalerThread(self.provisioner, self, self.config)
 

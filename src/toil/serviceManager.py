@@ -331,7 +331,7 @@ class ServiceManager:
                                 "Service %s has immediately failed before it could be used",
                                 service_job_desc,
                             )
-                            # It probably hasn't fileld in the promise that the
+                            # It probably hasn't field in the promise that the
                             # job that uses the service needs.
                             clients_with_failed_services.add(client_id)
 
