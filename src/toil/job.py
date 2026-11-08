@@ -753,7 +753,7 @@ class Requirer:
         )
 
     @deprecated(new_function_name="preemptible")
-    def preemptible(self, val: ParseableFlag) -> None:
+    def preemptable(self, val: ParseableFlag) -> None: # codespell:ignore preemptable
         self._requirementOverrides["preemptible"] = Requirer._parseResource(
             "preemptible", val
         )
@@ -1774,7 +1774,7 @@ class Job:
         disk: ParseableIndivisibleResource | None = None,
         accelerators: ParseableAcceleratorRequirement | None = None,
         preemptible: ParseableFlag | None = None,
-        preemptible: ParseableFlag | None = None,
+        preemptable: ParseableFlag | None = None,  # codespell:ignore preemptable
         walltime: ParseableIndivisibleResource | None = None,
         unitName: str | None = "",
         checkpoint: bool | None = False,
@@ -1788,44 +1788,49 @@ class Job:
 
         This method must be called by any overriding constructor.
 
-        :param memory: the maximum number of bytes of memory the job will require to run.
+        :param memory: the maximum number of bytes of memory the job will
+            require to run.
         :param cores: the number of CPU cores required.
-        :param disk: the amount of local disk space required by the job, expressed in bytes.
-        :param accelerators: the computational accelerators required by the job. If a string, can be a string of a number, or a string specifying a model, brand, or API (with optional colon-delimited count).
+        :param disk: the amount of local disk space required by the job,
+            expressed in bytes.
+        :param accelerators: the computational accelerators required by the job.
+            If a string, can be a string of a number, or a string specifying a
+            model, brand, or API (with optional colon-delimited count).
         :param preemptible: if the job can be run on a preemptible node.
-        :param preemptible: legacy preemptible parameter, for backwards compatibility with workflows not using the preemptible keyword
-        :param walltime: the maximum walltime in seconds that the job is allowed to run.
+        :param walltime: the maximum walltime in seconds that the job is allowed
+            to run.
         :param unitName: Human-readable name for this instance of the job.
         :param checkpoint: if any of this job's successor jobs completely fails,
-            exhausting all their retries, remove any successor jobs and rerun this job to restart the
-            subtree. Job must be a leaf vertex in the job graph when initially defined, see
+            exhausting all their retries, remove any successor jobs and rerun
+            this job to restart the subtree. Job must be a leaf vertex in the
+            job graph when initially defined, see
             :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
         :param displayName: Human-readable job type display name.
         :param descriptionClass: Override for the JobDescription class used to describe the job.
         :param local: if the job can be run on the leader.
         :param files: Set of Files that the job will want to use.
 
-        :type memory: int or string convertible by toil.lib.conversions.human2bytes to an int
-        :type cores: float, int, or string convertible by toil.lib.conversions.human2bytes to an int
-        :type disk: int or string convertible by toil.lib.conversions.human2bytes to an int
-        :type accelerators: int, string, dict, or list of those. Strings and dicts must be parseable by parse_accelerator.
-        :type preemptible: bool, int in {0, 1}, or string in {'false', 'true'} in any case
-        :type walltime: int
-        :type unitName: str
-        :type checkpoint: bool
-        :type displayName: str
-        :type descriptionClass: class
+        :type memory: int or string convertible by toil.lib.conversions.human2bytes
+            to an int
+        :type cores: float, int, or string convertible by toil.lib.conversions.human2bytes
+            to an int
+        :type disk: int or string convertible by toil.lib.conversions.human2bytes
+            to an int
+        :type accelerators: int, string, dict, or list of those. Strings and
+            dicts must be parseable by parse_accelerator.
+        :type preemptible: bool, int in {0, 1}, or string in {'false', 'true'}
+            in any case
         """
         # Fill in our various names
         jobName = self.__class__.__name__
         displayName = displayName if displayName else jobName
 
-        # Some workflows use preemptible instead of preemptible
-        if preemptible and not preemptible:
+        # Some workflows use preemptable instead of preemptible  # codespell:ignore preemptable
+        if preemptable and not preemptible:  # codespell:ignore preemptable
             logger.warning(
-                "Preemptible as a keyword has been deprecated, please use preemptible."
+                "Preemptable as a keyword has been deprecated, please use preemptible."  # codespell:ignore preemptable
             )
-            preemptible = preemptible
+            preemptible = preemptable  # codespell:ignore preemptable
         # Build a requirements dict for the description
         requirements = {
             "memory": memory,
@@ -1989,7 +1994,7 @@ class Job:
     # Note that unless the two halves of a property are *immediately* adjacent,
     # MyPy throws an error. So the old version has to come later.
     @deprecated(new_function_name="preemptible")
-    def preemptible(self) -> bool:
+    def preemptable(self) -> bool:  # codespell:ignore preemptable
         return self.description.preemptible
 
     @property
@@ -3671,7 +3676,7 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
                 walltime=0,
                 accelerators=[],
                 preemptible=True,
-                preemptible=True,
+                preemptable=True,  # codespell:ignore preemptable
             )
         )
         super().__init__(userFunction, *args, **kwargs)
