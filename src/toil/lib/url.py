@@ -127,7 +127,7 @@ class URLAccess:
     @abstractmethod
     def _url_exists(cls, url: ParseResult) -> bool:
         """
-        Return True if the item at the given URL exists, and Flase otherwise.
+        Return True if the item at the given URL exists, and False otherwise.
 
         May raise an error if file existence cannot be determined.
         """

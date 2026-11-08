@@ -867,7 +867,7 @@ class LastProcessStandingArena:
                 try:
                     fd = os.open(full_path, os.O_RDONLY)
                 except OSError:
-                    # suddenly file doesnt exist on network file system?
+                    # suddenly file doesn't exist on network file system?
                     continue
 
                 try:

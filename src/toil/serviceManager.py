@@ -133,7 +133,7 @@ class ServiceManager:
 
     def get_unservable_client(self, maxWait: float) -> str | None:
         """
-        Fetch a client whos services failed to start.
+        Fetch a client whose services failed to start.
 
         :param float maxWait: Time in seconds to wait to get a JobDescription before returning
         :return: the ID of a client whose services failed to start, or None if

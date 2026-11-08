@@ -2690,7 +2690,7 @@ class Job:
 
             Consider using :meth:`getDefaultArgumentParser` instead, which will
             produce a parser of the correct class to use Toil's config file and
-            environment variables. If ther parser passed here is just an
+            environment variables. If the parser passed here is just an
             :class:`argparse.ArgumentParser` and not a
             :class:`configargparse.ArgParser`, the Toil config file and
             environment variables will not be respected.

@@ -1242,12 +1242,12 @@ class AbstractJobStoreTest:
             # Write a large file.
             dirPath = self._createTempDir()
             filePath = os.path.join(dirPath, "large")
-            hashIn = hashlib.md5()
+            hash_in = hashlib.md5()
             with open(filePath, "wb") as f:
                 for i in range(0, 10):
                     buf = os.urandom(self._partSize())
                     f.write(buf)
-                    hashIn.update(buf)
+                    hash_in.update(buf)
 
             # Load the file into a jobstore.
             job = self.arbitraryJob()
@@ -1271,7 +1271,7 @@ class AbstractJobStoreTest:
                     if not buf:
                         break
                     hashOut.update(buf)
-            self.assertEqual(hashIn.digest(), hashOut.digest())
+            self.assertEqual(hash_in.digest(), hashOut.digest())
 
         @retry(errors=[ConnectionError])
         def fetch_url(self, url: str) -> None:

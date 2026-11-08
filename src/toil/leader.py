@@ -529,7 +529,7 @@ class Leader:
         # Grab the predecessor's JobDescription
         predecessor = self.toilState.get_job(predecessor_id)
 
-        # Grap the successors
+        # Grab the successors
         next_successors = predecessor.nextSuccessors()
 
         if next_successors is None or len(next_successors) == 0:

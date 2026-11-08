@@ -3045,7 +3045,7 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     """
     Based off of WDL.runtime.task_container.add_paths from miniwdl
 
-    Comes up with a container path for each host path and fils in input_path_map
+    Comes up with a container path for each host path and file in input_path_map
     and input_path_map_rev on the TaskContainer to map from host path to
     container path and visa versa.
 
@@ -6150,7 +6150,7 @@ def main() -> None:
                 )
 
                 # But we can assume that we need to preserve individual
-                # taks outputs since the point of CROO is fetching those
+                # task outputs since the point of CROO is fetching those
                 # from Cromwell's output directories.
                 #
                 # This isn't quite WDL spec compliant but it will rescue

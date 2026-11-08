@@ -394,7 +394,7 @@ class TestCWLWorkflow:
         """
         Run a generic download test with a tester function and check the result.
 
-        Ther test is the download.cwl workflow.
+        The test is the download.cwl workflow.
 
         The result has to match _expected_download_output on the output
         directory, so it must contain an empty "output.txt" file.
@@ -2572,8 +2572,8 @@ def test_download_structure(tmp_path: Path) -> None:
     """
 
     # Define what we would download
-    fid1 = FileID("afile", 10, False)
-    fid2 = FileID("adifferentfile", 1000, True)
+    fid1 = FileID("a_file", 10, False)
+    fid2 = FileID("a_different_file", 1000, True)
 
     # And what directory structure it would be in
     structure: DirectoryStructure = {

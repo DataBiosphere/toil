@@ -14,7 +14,7 @@
 """
 Batch system for running Toil workflows on Kubernetes.
 
-Ony useful with network-based job stores, like AWSJobStore.
+Only useful with network-based job stores, like AWSJobStore.
 
 Within non-privileged Kubernetes containers, additional Docker containers
 cannot yet be launched. That functionality will need to wait for user-mode

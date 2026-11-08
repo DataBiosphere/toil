@@ -115,7 +115,7 @@ class Submission:
         """
 
         # This collects everything by TRS ID and version, and keeps separate lists for workflows and for task sets.
-        # Each thing to be submitted comes along with the reference to what in the database to makr submitted when it goes in.
+        # Each thing to be submitted comes along with the reference to what in the database to mark submitted when it goes in.
         self.data: dict[
             tuple[str, str],
             tuple[
