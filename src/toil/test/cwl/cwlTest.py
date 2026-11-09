@@ -2048,7 +2048,7 @@ def test_filename_conflict_resolution(tmp_path: Path) -> None:
                 str(msin),
             ]
             p = subprocess.run(cmd, capture_output=True, text=True)
-            assert "Finished toil run successfully" in p.stderr
+            assert "Finished toil run successfully" in p.stderr, p
             assert p.returncode == 0
 
 

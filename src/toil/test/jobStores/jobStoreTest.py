@@ -1879,7 +1879,7 @@ class TestGenerateLocator:
         assert "wdl" in result
 
 
-# @needs_aws_s3
+@needs_aws_s3
 class InvalidAWSJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
         from toil.jobStores.aws.jobStore import AWSJobStore

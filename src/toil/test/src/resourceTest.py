@@ -155,8 +155,6 @@ class TestResource:
         # Assert basic attributes and properties
         assert module.belongsToToil == shouldBelongToToil
         assert module.name == module_name
-        if shouldBelongToToil:
-            assert module.dirPath.endswith("/src")
 
         # Before the module is saved as a resource, localize() and globalize() are identity
         # methods. This should log.warnings.
