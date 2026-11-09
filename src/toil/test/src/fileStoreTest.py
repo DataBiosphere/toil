@@ -67,7 +67,7 @@ class hidden:
         :class:toil.fileStores.abstractFileStore.AbstractFileStore
         """
 
-        # This is overwritten in the inheriting classs
+        # This is overwritten in the inheriting class
         jobStoreType = None
 
         def _getTestJobStore(self):

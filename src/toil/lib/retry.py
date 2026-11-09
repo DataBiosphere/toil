@@ -533,19 +533,18 @@ def old_retry(
     expires, waiting a given amount of time in between attempts. This function is a generator
     that yields contextmanagers. See doctests below for example usage.
 
-    :param Iterable[float] delays: an interable yielding the time in seconds to wait before each
+    :param delays: an iterable yielding the time in seconds to wait before each
            retried attempt, the last element of the iterable will be repeated.
 
-    :param float timeout: a overall timeout that should not be exceeded for all attempts together.
+    :param timeout: a overall timeout that should not be exceeded for all attempts together.
            This is a best-effort mechanism only and it won't abort an ongoing attempt, even if the
            timeout expires during that attempt.
 
-    :param Callable[[Exception],bool] predicate: a unary callable returning True if another
+    :param predicate: a unary callable returning True if another
            attempt should be made to recover from the given exception. The default value for this
            parameter will prevent any retries!
 
     :return: a generator yielding context managers, one per attempt
-    :rtype: Iterator
 
     Retry for a limited amount of time:
 

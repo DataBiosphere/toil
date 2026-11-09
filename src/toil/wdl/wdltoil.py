@@ -146,7 +146,7 @@ from toil.lib.interpreter import (
 
 logger = logging.getLogger(__name__)
 
-# To allwo working with WDL File and Directory values in a consistent way, we
+# To allow working with WDL File and Directory values in a consistent way, we
 # define a named union. We call both files and directories "inodes" by analogy
 # with Unix filesystems.
 WDLINode = Union[WDL.Value.File, WDL.Value.Directory]
@@ -758,7 +758,7 @@ def set_inode_nonexistent(inode: AnyINode, nonexistent: bool) -> AnyINode:
 
 def get_inode_nonexistent(inode: WDLINode) -> bool:
     """
-    Return the nonexistent flag for a File/Direcotry.
+    Return the nonexistent flag for a File/Directory.
     """
     return cast(bool, getattr(inode, "nonexistent", False))
 
@@ -910,7 +910,7 @@ def fill_execution_cache(
         miniwdl_cache._call_cache_dir, cache_key, str(uuid.uuid4())
     )
 
-    # Adjust all files and direcotries in the output bindings to have shared FS
+    # Adjust all files and directories in the output bindings to have shared FS
     # paths outside the job store.
     def assign_shared_fs_path(inode: AnyINode) -> AnyINode:
         """
@@ -1003,7 +1003,7 @@ def choose_human_readable_directory(
     if is_any_url(parent):
         # Parent might contain exciting things like "/../" or "///". The spec
         # says the parent is everything up to the last / so we just encode the
-        # URL. We alos make sure we can't collide with a task or workflow name.
+        # URL. We also make sure we can't collide with a task or workflow name.
         parent_component = os.path.join("@url", quote(parent, safe=""))
 
         # Don't include task name because it's from a URL and invariant across
@@ -1723,7 +1723,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # <https://github.com/openwdl/wdl/issues/495>.
                 # If we're planning to mount the file directly later, we can
                 # use a symlink. Otherwise (like if we're mounting a parent
-                # directroy only) we can't.
+                # directory only) we can't.
                 result = file_source.readGlobalFile(
                     file_id,
                     dest_path,
@@ -1774,7 +1774,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         Returns the local path to the file. If the file is already a local
         path, or if it already has an entry in virtualized_to_devirtualized,
-        that path will be re-used instead of creating a new copy in dest_dir.
+        that path will be reused instead of creating a new copy in dest_dir.
 
         The input filename could already be devirtualized. In this case, the filename
         should not be added to the cache.
@@ -2221,7 +2221,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # Note: this is a little duplicative with the local file path branch, but the keys are different
                 result = self._devirtualized_to_virtualized[normalized_uri]
                 logger.debug(
-                    "Re-using virtualized WDL %s for %s", result, normalized_uri
+                    "Reusing virtualized WDL %s for %s", result, normalized_uri
                 )
                 return result
 
@@ -2277,7 +2277,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # This is a previously devirtualized thing so we can just use the
                 # virtual version we remembered instead of reuploading it.
                 result = self._devirtualized_to_virtualized[abs_filename]
-                logger.debug("Re-using virtualized WDL %s for %s", result, filename)
+                logger.debug("Reusing virtualized WDL %s for %s", result, filename)
                 return result
 
             if not os.path.exists(abs_filename):
@@ -2783,7 +2783,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
 
         if filename in self._devirtualized_to_virtualized:
             result = self._devirtualized_to_virtualized[filename]
-            logger.debug("Re-using virtualized filename %s for %s", result, filename)
+            logger.debug("Reusing virtualized filename %s for %s", result, filename)
             return result
 
         if os.path.islink(filename):
@@ -2805,7 +2805,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
                     # all the way back to workflow inputs.
                     result = self._devirtualized_to_virtualized[here]
                     logger.debug(
-                        "Re-using virtualized filename %s for %s linked from %s",
+                        "Reusing virtualized filename %s for %s linked from %s",
                         result,
                         here,
                         filename,
@@ -3045,7 +3045,7 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     """
     Based off of WDL.runtime.task_container.add_paths from miniwdl
 
-    Comes up with a container path for each host path and fils in input_path_map
+    Comes up with a container path for each host path and file in input_path_map
     and input_path_map_rev on the TaskContainer to map from host path to
     container path and visa versa.
 
@@ -3643,7 +3643,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
             bindings will be deleted after the task call completes.
 
         :param namespace: The namespace that the task's *contents* exist in.
-               The caller has alredy added the task's own name.
+               The caller has already added the task's own name.
         """
         # task_path in wdl_options is like the namespace, but including subscript numbers for scatters
         super().__init__(
@@ -3907,7 +3907,7 @@ class WDLTaskJob(WDLBaseJob):
             files that should not be cleaned up at the end of the task.
 
         :param namespace: The namespace that the task's *contents* exist in.
-               The caller has alredy added the task's own name.
+               The caller has already added the task's own name.
         """
 
         # This job should not be local because it represents a real workflow task.
@@ -4177,7 +4177,7 @@ class WDLTaskJob(WDLBaseJob):
         miniwdl_logger = logging.getLogger("MiniWDL")
         miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
         if not getattr(TaskContainerImplementation, "toil_initialized__", False):
-            # Initialize the cointainer system
+            # Initialize the container system
             TaskContainerImplementation.global_init(miniwdl_config, miniwdl_logger)
 
             # TODO: We don't want to use MiniWDL's resource limit logic, but
@@ -4199,7 +4199,7 @@ class WDLTaskJob(WDLBaseJob):
 
         if self._task.command:
             # When the command string references a File, we need to get a path
-            # to the file on a local disk, which the commnad will be able to
+            # to the file on a local disk, which the command will be able to
             # actually use, accounting for e.g. containers.
             #
             # TODO: Figure out when the command template actually uses File
@@ -4393,7 +4393,7 @@ class WDLTaskJob(WDLBaseJob):
             # them all new paths in task_container.input_path_map which we can
             # read. We also get a task_container.host_path() to go the other way.
             add_paths(task_container, get_paths_in_bindings(bindings))
-            # This maps from oustide container to inside container
+            # This maps from outside container to inside container
             logger.debug("Using container path map: %s", task_container.input_path_map)
 
             # Replace everything with in-container paths for the command.
@@ -4448,7 +4448,7 @@ class WDLTaskJob(WDLBaseJob):
 
             # Grab the standard out and error paths. MyPy complains if we call
             # them because in the current MiniWDL version they are untyped.
-            # TODO: MyPy will complain if we accomodate this and they later
+            # TODO: MyPy will complain if we accommodate this and they later
             # become typed.
             host_stdout_txt: str = task_container.host_stdout_txt()  #  type: ignore
             host_stderr_txt: str = task_container.host_stderr_txt()  #  type: ignore
@@ -4739,7 +4739,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
                     self._node, "Cannot call a " + str(type(self._node.callee))
                 )
 
-            # We need to agregate outputs namespaced with our node name, and existing bindings
+            # We need to aggregate outputs namespaced with our node name, and existing bindings
             subjob.then_namespace(self._node.name)
             subjob.then_overlay(incoming_bindings)
             self.defer_postprocessing(subjob)
@@ -4968,7 +4968,7 @@ class WDLWorkflowGraph:
         queue = [node_id]
 
         while len(queue) > 0:
-            # Grab the enxt thing off the queue
+            # Grab the next thing off the queue
             here = queue[-1]
             queue.pop()
             if here in visited:
@@ -5172,7 +5172,7 @@ class WDLSectionJob(WDLBaseJob):
         for node_ids in creation_jobs:
             logger.debug("Make Toil job for %s", node_ids)
             # Collect the return values from previous jobs. Some nodes may have been inputs, without jobs.
-            # Don't inlude stuff in the current batch.
+            # Don't include stuff in the current batch.
             prev_node_ids = {
                 prev_node_id
                 for node_id in node_ids
@@ -5828,7 +5828,7 @@ class WDLOutputsJob(WDLBaseJob):
             output_bindings, standard_library=standard_library
         )
 
-        # TODO: Unify the rest of this with task output managment somehow
+        # TODO: Unify the rest of this with task output management somehow
 
         # Upload any files in the outputs if not uploaded already.
         # We need this because it's possible to create new files in a workflow
@@ -6150,7 +6150,7 @@ def main() -> None:
                 )
 
                 # But we can assume that we need to preserve individual
-                # taks outputs since the point of CROO is fetching those
+                # task outputs since the point of CROO is fetching those
                 # from Cromwell's output directories.
                 #
                 # This isn't quite WDL spec compliant but it will rescue

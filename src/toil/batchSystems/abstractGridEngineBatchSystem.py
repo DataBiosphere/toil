@@ -641,7 +641,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         if value and "," in value:
             raise ValueError(
                 type(self).__name__
-                + " does not support commata in environment variable values"
+                + " does not support commas in environment variable values"
             )
         return super().setEnv(name, value)
 

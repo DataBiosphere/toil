@@ -394,7 +394,7 @@ def add_logging_options(
     :param default_level: A logging level, like logging.INFO, to use as the default.
     """
     if default_level is None:
-        # Make sure we have a log levle to make the default
+        # Make sure we have a log level to make the default
         default_level = DEFAULT_LOGLEVEL
     default_level_name = logging.getLevelName(default_level)
 

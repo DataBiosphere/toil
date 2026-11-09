@@ -273,7 +273,7 @@ class NodeReservation:
         Check if a job shape's resource requirements will fit within this allocation.
 
         If the job does *not* fit, returns the failing constraints: the resources
-        that can't be accomodated, and the limits that were hit.
+        that can't be accommodated, and the limits that were hit.
 
         If the job *does* fit, returns an empty list.
 

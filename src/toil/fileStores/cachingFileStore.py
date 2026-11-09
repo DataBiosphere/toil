@@ -116,7 +116,7 @@ class CachingFileStore(AbstractFileStore):
     finish when the job's actual state after running is committed back to the
     job store.
 
-    Internaly, manages caching using a database. Each node has its own
+    Internally, manages caching using a database. Each node has its own
     database, shared between all the workers on the node. The database contains
     several tables:
 
@@ -2512,7 +2512,7 @@ class CachingFileStore(AbstractFileStore):
                 except OSError as e:
                     logger.warning("Caching database file %s could not be removed: %s", e)
 
-            # Delete all the files that the database refered to
+            # Delete all the files that the database referred to
             logger.debug("Deleting cache directory %s", cache_dir)
             robust_rmtree(cache_dir)
 

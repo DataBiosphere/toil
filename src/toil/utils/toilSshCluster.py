@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 def have_ipv6() -> bool:
     """
-    Return True if the IPv6 loopback interface is useable.
+    Return True if the IPv6 loopback interface is usable.
     """
 
     # We sniff for actual IPv6 like in

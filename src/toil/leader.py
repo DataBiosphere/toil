@@ -204,7 +204,7 @@ class Leader:
                 raise RuntimeError(
                     f"Cannot use in-workflow autoscaling with the {type(self.provisioner)} "
                     f"provisioner when using a non-scalable {type(self.batchSystem)} "
-                    f"batch system; consider Kuberentes cluster-based autoscaling instead"
+                    f"batch system; consider Kubernetes cluster-based autoscaling instead"
                 )
             self.clusterScaler = ScalerThread(self.provisioner, self, self.config)
 
@@ -529,7 +529,7 @@ class Leader:
         # Grab the predecessor's JobDescription
         predecessor = self.toilState.get_job(predecessor_id)
 
-        # Grap the successors
+        # Grab the successors
         next_successors = predecessor.nextSuccessors()
 
         if next_successors is None or len(next_successors) == 0:

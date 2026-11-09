@@ -212,7 +212,7 @@ class ToilStatus:
             properties.append(job_properties)
 
         jobStats = {
-            # These are lists of the mathcing jobs
+            # These are lists of the matching jobs
             "hasChildren": hasChildren,
             "readyToRun": readyToRun,
             "zombies": zombies,

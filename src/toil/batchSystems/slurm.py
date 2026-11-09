@@ -283,7 +283,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     winning_partition = partition
                     continue
                 if partition.gres and not winning_partition.gres:
-                    # Never use a partition witn GRES if you can avoid it
+                    # Never use a partition with GRES if you can avoid it
                     continue
                 elif not partition.gres and winning_partition.gres:
                     # Never keep a partition with GRES if we find one without
@@ -1003,7 +1003,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     i += 1
 
             if export_all:
-                # We don't have any export overrides so we ened to start with
+                # We don't have any export overrides so we need to start with
                 # an ALL
                 export_list.append("ALL")
 

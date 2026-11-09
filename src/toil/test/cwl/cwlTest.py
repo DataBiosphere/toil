@@ -190,7 +190,7 @@ def run_conformance_tests(
                     output_lines.append(line_text)
                     log.info(line_text)
 
-            # Once it's done writing, amke sure it succeeded.
+            # Once it's done writing, make sure it succeeded.
             child.wait()
             log.info("CWL tests finished with exit code %s", child.returncode)
             if child.returncode != 0:
@@ -394,7 +394,7 @@ class TestCWLWorkflow:
         """
         Run a generic download test with a tester function and check the result.
 
-        Ther test is the download.cwl workflow.
+        The test is the download.cwl workflow.
 
         The result has to match _expected_download_output on the output
         directory, so it must contain an empty "output.txt" file.
@@ -1945,7 +1945,7 @@ def test_workflow_echo_string_scatter_stderr_log_dir(tmp_path: Path) -> None:
         p = subprocess.run(cmd, capture_output=True, text=True)
         outputs = json.loads(p.stdout)
         out_list = outputs["list_out"]
-        assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"
+        assert len(out_list) == 2, f"outList should have two file elements {out_list}"
         out_base = outputs["list_out"][0]
         # This is a test on the scatter functionality and stdout.
         # Each value of scatter should generate a separate file in the output.
@@ -2240,7 +2240,7 @@ def test_workflow_echo_string_scatter_capture_stdout(tmp_path: Path) -> None:
         assert len(p.stdout) > 0
         outputs = json.loads(p.stdout)
         out_list = outputs["list_out"]
-        assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"
+        assert len(out_list) == 2, f"outList should have two file elements {out_list}"
         out_base = outputs["list_out"][0]
         # This is a test on the scatter functionality and stdout.
         # Each value of scatter should generate a separate file in the output.
@@ -2572,8 +2572,8 @@ def test_download_structure(tmp_path: Path) -> None:
     """
 
     # Define what we would download
-    fid1 = FileID("afile", 10, False)
-    fid2 = FileID("adifferentfile", 1000, True)
+    fid1 = FileID("a_file", 10, False)
+    fid2 = FileID("a_different_file", 1000, True)
 
     # And what directory structure it would be in
     structure: DirectoryStructure = {

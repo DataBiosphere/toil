@@ -77,7 +77,7 @@ def handle_walltime_signal(signal_number: int, frame: Any) -> None:
     Signal handler to stop the worker due to running out of time.
 
     Raises KeyboardInterrupt, because third-party code will probably shut down
-    cleanly when one happens in an arbirary location.
+    cleanly when one happens in an arbitrary location.
     """
     global _walltime_expired
     _walltime_expired = True

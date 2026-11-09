@@ -226,7 +226,7 @@ class AbstractStateStore:
         """
 
         # We maintain a local cache here.
-        # TODO: Upgrade to an LRU cache wehn we finally learn to paginate
+        # TODO: Upgrade to an LRU cache when we finally learn to paginate
         # workflow status
         self._cache = MemoryStateCache()
 

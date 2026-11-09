@@ -709,7 +709,7 @@ class TestJob:
             augmentedAdjacencyList = makeAugmentedAdjacencyList()
 
             # If the augmented adjacency doesn't contain a cycle then add the follow on edge to
-            # the list of follow ons else remove the follow on edge from the follow on adjacency
+            # the list of follow-ons else remove the follow on edge from the follow on adjacency
             # list.
             if self.isAcyclic(augmentedAdjacencyList):
                 followOnEdges.add((fNode, tNode))

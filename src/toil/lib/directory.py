@@ -123,7 +123,7 @@ def directory_item_exists(dir_path: str) -> bool:
     """
     Checks that a URL to a Toil directory or thing in it actually exists.
 
-    Assumes that all the pointed-to URLs exist; just checks tha tthe thing is
+    Assumes that all the pointed-to URLs exist; just checks that the thing is
     actually in the encoded directory structure.
     """
 

@@ -226,7 +226,7 @@ def policy_permissions_allow(
 
     if missing_perms:
         logger.warning(
-            "You appear to lack the folowing AWS permissions: %s",
+            "You appear to lack the following AWS permissions: %s",
             ", ".join(missing_perms),
         )
         return False

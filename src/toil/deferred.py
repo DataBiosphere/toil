@@ -104,7 +104,7 @@ class DeferredFunctionManager:
     be locked, and will take them over.
     """
 
-    # Define what directory the state directory should actaully be, under the base
+    # Define what directory the state directory should actually be, under the base
     STATE_DIR_STEM = "deferred"
     # Have a prefix to distinguish our deferred functions from e.g. NFS
     # "silly rename" files, or other garbage that people put in our
@@ -198,7 +198,7 @@ class DeferredFunctionManager:
 
             def defer(deferredFunction):
                 # Just serialize deferred functions one after the other.
-                # If serializing later ones fails, eariler ones will still be intact.
+                # If serializing later ones fails, earlier ones will still be intact.
                 # We trust dill to protect sufficiently against partial reads later.
                 logger.debug("Deferring function %s" % repr(deferredFunction))
                 dill.dump(deferredFunction, self.stateFileOut)

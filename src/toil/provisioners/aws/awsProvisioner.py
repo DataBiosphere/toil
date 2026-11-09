@@ -1379,7 +1379,7 @@ class AWSProvisioner(AbstractProvisioner):
     def _deleteRoles(self, names: list[str]) -> None:
         """
         Delete all the given named IAM roles.
-        Detatches but does not delete associated instance profiles.
+        Detaches but does not delete associated instance profiles.
         """
         boto3_iam = self.aws.client(region=self._region, service_name="iam")
         for role_name in names:
@@ -1417,7 +1417,7 @@ class AWSProvisioner(AbstractProvisioner):
                 with attempt:
                     boto3_iam.delete_instance_profile(InstanceProfileName=profile_name)
                     logger.debug(
-                        "... Succesfully deleted instance profile %s", profile_name
+                        "... Successfully deleted instance profile %s", profile_name
                     )
 
     @classmethod

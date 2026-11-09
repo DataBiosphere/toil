@@ -1362,7 +1362,7 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
             # need to be laid out under a directory for that job; we can't lay
             # them out in a way where people can find them with the hints. In
             # other cases, laying out based on the associated job ID, if any,
-            # is optional, and we cna use the hints instead oif we have them.
+            # is optional, and we can use the hints instead if we have them.
             hints_string = self.hints_to_string(hints)
             if hints_string:
                 # If we can use hints, pick a location based on hints under the directory.
@@ -1380,7 +1380,7 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
         Get a new empty directory path for a file to be stored at.
 
 
-        :param str jobStoreID: If the jobStoreID is not None, the file wil
+        :param str jobStoreID: If the jobStoreID is not None, the file will
                be associated with the job with that ID.
 
         :param bool cleanup: If cleanup is also True, this directory
