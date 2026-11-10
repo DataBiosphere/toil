@@ -21,6 +21,7 @@ from shlex import quote
 from toil.batchSystems.abstractGridEngineBatchSystem import (
     AbstractGridEngineBatchSystem,
 )
+from toil.job import AcceleratorRequirement
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
@@ -28,12 +29,12 @@ logger = logging.getLogger(__name__)
 
 class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
-    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
+    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread[list[str]]):
         """
         Grid Engine-specific AbstractGridEngineWorker methods
         """
 
-        def getRunningJobIDs(self):
+        def getRunningJobIDs(self) -> dict[int, float]:
             times = {}
             with self.runningJobsLock:
                 currentjobs = {str(self.batchJobIDs[x][0]): x for x in self.runningJobs}
@@ -43,27 +44,29 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                 items = currline.strip().split()
                 if items:
                     if items[0] in currentjobs and items[4] == "r":
-                        jobstart = " ".join(items[5:7])
-                        jobstart = time.mktime(
-                            time.strptime(jobstart, "%m/%d/%Y %H:%M:%S")
+                        jobstart_str = " ".join(items[5:7])
+                        jobstart_float = time.mktime(
+                            time.strptime(jobstart_str, "%m/%d/%Y %H:%M:%S")
                         )
-                        times[currentjobs[items[0]]] = time.time() - jobstart
+                        times[currentjobs[items[0]]] = time.time() - jobstart_float
 
             return times
 
-        def killJob(self, jobID):
+        def killJob(self, jobID: int) -> None:
             call_command(["qdel", self.getBatchSystemID(jobID)])
 
         def prepareSubmission(
             self,
-            cpu: int,
+            cpu: float,
             memory: int,
+            disk: int,
+            walltime: int,
             jobID: int,
             command: str,
             jobName: str,
             job_environment: dict[str, str] | None = None,
-            gpus: int | None = None,
-        ):
+            accelerators: list[AcceleratorRequirement] | None = None,
+        ) -> list[str]:
             # POSIX qsub
             # <https://pubs.opengroup.org/onlinepubs/9699919799.2008edition/utilities/qsub.html>
             # expects a single script argument, which is supposed to be a file.
@@ -76,13 +79,13 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                 command
             )
 
-        def submitJob(self, subLine):
+        def submitJob(self, subLine: list[str]) -> int:
             stdout = call_command(subLine)
             output = stdout.split("\n")[0].strip()
             result = int(output)
             return result
 
-        def getJobExitCode(self, sgeJobID):
+        def getJobExitCode(self, batchJobID: str) -> int | None:
             """
             Get job exist code, checking both qstat and qacct.  Return None if
             still running.  Higher level should retry on
@@ -90,9 +93,9 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             qacct result is stale.
             """
             # the task is set as part of the job ID if using getBatchSystemID()
-            job, task = (sgeJobID, None)
-            if "." in sgeJobID:
-                job, task = sgeJobID.split(".", 1)
+            job, task = (batchJobID, None)
+            if "." in batchJobID:
+                job, task = batchJobID.split(".", 1)
             assert task is None, "task ids not currently support by qstat logic below"
 
             # First try qstat to see if job is still running, if not get the
@@ -122,7 +125,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
         def prepareQsub(
             self,
-            cpu: int,
+            cpu: float,
             mem: int,
             jobID: int,
             job_environment: dict[str, str] | None = None,
@@ -170,23 +173,20 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             if len(reqline) > 0:
                 qsubline.extend(["-hard", "-l", ",".join(reqline)])
             if sgeArgs:
-                sgeArgs = sgeArgs.split()
-                for arg in sgeArgs:
+                parsedArgs = sgeArgs.split()
+                for arg in parsedArgs:
                     if arg.startswith(("vf=", "h_vmem=", "-pe")):
                         raise ValueError(
                             "Unexpected CPU, memory or pe specifications in TOIL_GRIDGENGINE_ARGs: %s"
                             % arg
                         )
-                qsubline.extend(sgeArgs)
+                qsubline.extend(parsedArgs)
             # If cpu == 1 (or None) then don't add PE env variable to the qsub command.
             #               This will allow for use of the serial queue for these jobs.
-            if (
-                (os.getenv("TOIL_GRIDENGINE_PE") is not None)
-                and (cpu is not None)
-                and (cpu > 1)
-            ):
+            pe = os.getenv("TOIL_GRIDENGINE_PE")
+            if (pe is not None) and (cpu is not None) and (cpu > 1):
                 peCpu = int(math.ceil(cpu))
-                qsubline.extend(["-pe", os.getenv("TOIL_GRIDENGINE_PE"), str(peCpu)])
+                qsubline.extend(["-pe", pe, str(peCpu)])
             elif (cpu is not None) and (cpu > 1):
                 raise RuntimeError(
                     "must specify PE in TOIL_GRIDENGINE_PE environment variable when using multiple CPUs. "
@@ -204,5 +204,5 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
     """
 
     @classmethod
-    def getWaitDuration(cls):
+    def getWaitDuration(cls) -> float:
         return 1

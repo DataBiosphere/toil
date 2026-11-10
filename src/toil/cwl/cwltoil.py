@@ -890,7 +890,7 @@ CallbackTypesT = TypeVar(
 class ProcessProtocol(Protocol, Generic[JobTypesT, CallbackTypesT]):
     """
     Protocol for the type of a cwltool Process that yields jobs of the given
-    union type and accepts output_callbacks of the givne union type on its
+    union type and accepts output_callbacks of the given union type on its
     run() method.
     """
 
@@ -1207,7 +1207,7 @@ class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
 
 # We need to know which cwltool container implementations run the container
 # under the calling process's child tree. Unlisted container implementations
-# are assumed to run it elsewhere through a deamon.
+# are assumed to run it elsewhere through a daemon.
 #
 # We have to list it this way around (and not list the implementations that use
 # a daemon) because some of these extend DockerCommandLineJob.
@@ -1475,7 +1475,7 @@ class ToilPathMapper(PathMapper):
             # If we've already mapped this, map it consistently.
             tgt = self._pathmap[location].target
             logger.debug(
-                "ToilPathMapper re-using target %s for path %s",
+                "ToilPathMapper reusing target %s for path %s",
                 tgt,
                 location,
             )

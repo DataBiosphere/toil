@@ -408,6 +408,12 @@ pyupgrade: $(PYSOURCES)
 flake8: $(PYSOURCES)
 	flake8 --ignore=E501,W293,W291,E265,E302,E722,E126,E303,E261,E201,E202,W503,W504,W391,E128,E301,E127,E502,E129,E262,E111,E117,E306,E203,E231,E226,E741,E122,E251,E305,E701,E222,E225,E241,E305,E123,E121,E703,E704,E125,E402 $^
 
+codespell-check: $(PYSOURCES)
+	@codespell $^ || (echo Probable typo found. Run \"make codespell-fix\" to accept suggested fixes, or add the word to the ignore list in setup.cfg ; exit 1)
+
+codespell-fix: $(PYSOURCES)
+	codespell -w $^
+
 preflight: mypy touched_pylint
 
 .PHONY: help \

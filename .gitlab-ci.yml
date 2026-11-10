@@ -84,6 +84,9 @@ lint:
     echo -e "\e[0Ksection_start:`date +%s`:pytest-markers\r\e[0KCheck pytest marker configuration"
     make check_markers
     echo -e "\e[0Ksection_end:`date +%s`:pytest-markers\r\e[0K"
+    echo -e "\e[0Ksection_start:`date +%s`:codespell\r\e[0KCheck for common typos with codespell"
+    make codespell-check
+    echo -e "\e[0Ksection_end:`date +%s`:codespell\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:docs\r\e[0KBuild the docs"
     make docs
     echo -e "\e[0Ksection_end:`date +%s`:docs\r\e[0K"

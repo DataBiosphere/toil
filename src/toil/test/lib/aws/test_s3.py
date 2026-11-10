@@ -17,7 +17,6 @@ import uuid
 from typing import TYPE_CHECKING, Optional
 
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.s3 import create_s3_bucket, delete_s3_bucket
 from toil.lib.aws.utils import get_bucket_region
 from toil.test import ToilTest, needs_aws_s3
 
@@ -43,6 +42,7 @@ class S3Test(ToilTest):
 
     def test_create_bucket(self) -> None:
         """Test bucket creation for us-east-1."""
+        from toil.lib.aws.s3 import create_s3_bucket, delete_s3_bucket
         bucket_name = f"toil-s3test-{uuid.uuid4()}"
         assert self.s3_resource
         bucket: Optional["Bucket"] = None

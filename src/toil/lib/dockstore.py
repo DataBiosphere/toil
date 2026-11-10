@@ -202,7 +202,7 @@ def pack_workflow_metrics(
     :param execution_id: Unique ID for the workflow execution. Must be in
         Dockstore format.
     :param start_time: Execution start time in seconds since the Unix epoch.
-    :param rutime: Execution duration in seconds.
+    :param runtime: Execution duration in seconds.
     :param jobstore_type: Kind of job store used, like "file" or "aws".
     :param batch_system: Python class name implementing the batch system used.
     :param caching: Whether Toil filestore-level caching was used.
@@ -270,7 +270,7 @@ def pack_single_task_metrics(
     :param execution_id: Unique ID for the workflow execution. Must be in
         Dockstore format.
     :param start_time: Execution start time in seconds since the Unix epoch.
-    :param rutime: Execution duration in seconds.
+    :param runtime: Execution duration in seconds.
     :param succeeded: Whether the execution succeeded.
     :param job_name: Name of the job within the workflow.
     :param cores: CPU cores allocated to the job.

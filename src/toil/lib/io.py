@@ -441,7 +441,6 @@ def path_union(first_path: str, second_path: str | None) -> str:
     return os.pathsep.join(result.keys())
 
 
-
 class WriteWatchingStream:
     """
     A stream wrapping class that calls any functions passed to onWrite() with the number of bytes written for every write.
@@ -479,13 +478,13 @@ class WriteWatchingStream:
             # Send out notifications
             listener(len(data))
 
-    def writelines(self, datas: Iterable[bytes]) -> None:
+    def writelines(self, data: Iterable[bytes]) -> None:
         """
         Write each string from the given iterable, without newlines.
         """
 
-        for data in datas:
-            self.write(data)
+        for datum in data:
+            self.write(datum)
 
     def flush(self) -> None:
         """

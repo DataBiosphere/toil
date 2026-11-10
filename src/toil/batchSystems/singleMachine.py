@@ -412,7 +412,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     # It just died. Assume the pgid was its PID.
                     pgid = popen.pid
             else:
-                # It is dead. Try it's PID as a PGID and hope we didn't re-use it.
+                # It is dead. Try it's PID as a PGID and hope we didn't reuse it.
                 pgid = popen.pid
 
             if pgid != os.getpgrp():
@@ -477,7 +477,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         be gone.
         """
         # TODO: this opens a PGID reuse risk; someone else might've reaped the
-        #  process and its PGID may have been re-used.
+        #  process and its PGID may have been reused.
 
         start = datetime.datetime.now()
         while (
@@ -797,7 +797,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         child_environment = dict(os.environ, **environment)
 
         # Communicate the accelerator resources, if any, to the child process
-        # by modifying the environemnt
+        # by modifying the environment
         accelerators_acquired: set[int] = (
             accelerators_needed if accelerators_needed is not None else set()
         )
@@ -888,7 +888,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # It isn't reaped yet, or we have to reap all children to see if thay're done.
             # Before we reap it (if possible), kill its PID as a PGID to make sure
             # it isn't leaving children behind.
-            # TODO: This is a PGID re-use risk on Mac because the process is
+            # TODO: This is a PGID reuse risk on Mac because the process is
             #  reaped already and the PGID may have been reused.
             try:
                 os.killpg(pid, signal.SIGKILL)

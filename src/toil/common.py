@@ -1692,8 +1692,8 @@ class Toil(ContextManager["Toil"]):
                 return None
         if imported is None and shared_file_name is None and check_existence:
             # We need to protect the caller from missing files.
-            # We think a file was missing, and we got None becasuse of it.
-            # We didn't get None instead because of usign a shared file name.
+            # We think a file was missing, and we got None because of it.
+            # We didn't get None instead because of using a shared file name.
             raise FileNotFoundError(f"Could not find file {src_uri}")
         return imported
 

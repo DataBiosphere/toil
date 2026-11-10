@@ -251,7 +251,7 @@ def fetch_workflow(trs_workflow_id: str, trs_version: str, language: str) -> str
     :raises FileNotFoundError: if the workflow or version doesn't exist.
     """
 
-    # TODO: We should probably use HATEOAS and pull this from the worflow
+    # TODO: We should probably use HATEOAS and pull this from the workflow
     # document we probably already fetched but aren't passing.
     trs_version_url = f"{TRS_ROOT}/api/ga4gh/trs/v2/tools/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}"
 
@@ -376,11 +376,11 @@ def fetch_workflow(trs_workflow_id: str, trs_version: str, language: str) -> str
                 # Collision. Someone else installed the workflow before we could.
                 robust_rmtree(workflow_temp_dir)
                 logger.debug(
-                    "Workflow cached at %s by someone else while we were donwloading it",
+                    "Workflow cached at %s by someone else while we were downloading it",
                     cache_workflow_dir,
                 )
 
-    # Hunt throught he directory for a file with the right basename and hash
+    # Hunt through the directory for a file with the right basename and hash
     found_path: str | None = None
     for containing_dir, subdirectories, files in os.walk(cache_workflow_dir):
         for filename in files:

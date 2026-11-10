@@ -341,7 +341,7 @@ class TestDocker:
     def testDockerLogs(
         self, tmp_path: Path, stream: bool = False, demux: bool = False
     ) -> None:
-        """Test for the different log outputs when deatch=False."""
+        """Test for the different log outputs when detach=False."""
 
         working_dir = tmp_path / "working"
         working_dir.mkdir()

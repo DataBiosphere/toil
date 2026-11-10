@@ -180,7 +180,7 @@ def add_injections(
     if platform.system() == "Darwin":
         # With gRPC FUSE file sharing, files immediately downloaded before
         # being mounted may appear as size 0 in the container due to a race
-        # condition. Check for this and produce an approperiate error.
+        # condition. Check for this and produce an appropriate error.
 
         # We can't guarantee that the container has a stat binary, and we can't
         # measure the size of a file with pure shell without reading it all, so

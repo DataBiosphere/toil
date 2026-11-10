@@ -44,7 +44,7 @@ class BatchJobExitReason(enum.IntEnum):
     FAILED = 2
     """Job finished, but failed."""
     LOST = 3
-    """Preemptable failure (job's executing host went away)."""
+    """Preemptible failure (job's executing host went away)."""
     KILLED = 4
     """Job killed before finishing."""
     ERROR = 5
@@ -127,7 +127,7 @@ class AbstractBatchSystem(ABC):
         If it does, the :meth:`setUserScript` can be invoked to set the resource
         object representing the user script.
 
-        Note to implementors: If your implementation returns True here, it should also override
+        Note to implementers: If your implementation returns True here, it should also override
         """
         raise NotImplementedError()
 
@@ -280,7 +280,7 @@ class AbstractBatchSystem(ABC):
         variables in that inherited environment before the worker is launched.
         Note that this mechanism is different to the one used by the worker
         internally to set up the environment of a job. A call to this method affects
-        all jobs issued after this method returns. Note to implementors: This
+        all jobs issued after this method returns. Note to implementers: This
         means that you would typically need to copy the variables before enqueuing a job.
 
         If no value is provided it will be looked up from the current environment.
@@ -409,7 +409,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         method makes it possible to override specific variables in that inherited environment
         before the worker is launched. Note that this mechanism is different to the one used by
         the worker internally to set up the environment of a job. A call to this method affects
-        all jobs issued after this method returns. Note to implementors: This means that you
+        all jobs issued after this method returns. Note to implementers: This means that you
         would typically need to copy the variables before enqueuing a job.
 
         If no value is provided it will be looked up from the current environment.

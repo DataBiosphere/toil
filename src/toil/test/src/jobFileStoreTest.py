@@ -218,7 +218,7 @@ def fileStoreChild(job, testID1, testID2):
         else:
             raise
     else:
-        raise RuntimeError("Deleting a non-existant file did not throw an exception")
+        raise RuntimeError("Deleting a non-existent file did not throw an exception")
 
     for fileID in (testID1, testID2):
         job.fileStore.deleteGlobalFile(fileID)

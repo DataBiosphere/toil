@@ -348,7 +348,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     winning_partition = partition
                     continue
                 if partition.gres and not winning_partition.gres:
-                    # Never use a partition witn GRES if you can avoid it
+                    # Never use a partition with GRES if you can avoid it
                     continue
                 elif not partition.gres and winning_partition.gres:
                     # Never keep a partition with GRES if we find one without
@@ -377,13 +377,13 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             else:
                 return winning_partition.partition_name
 
-    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
+    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread[list[str]]):
         # Our boss is always the enclosing class
         boss: SlurmBatchSystem
 
-        def getRunningJobIDs(self) -> dict[int, int]:
+        def getRunningJobIDs(self) -> dict[int, float]:
             # Should return a dictionary of Job IDs and number of seconds
-            times = {}
+            times: dict[int, float] = {}
             with self.runningJobsLock:
                 currentjobs: dict[str, int] = {
                     str(self.batchJobIDs[x][0]): x for x in self.runningJobs
@@ -416,8 +416,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
         def prepareSubmission(
             self,
-            cpu: int,
+            cpu: float,
             memory: int,
+            disk: int,
             walltime: int,
             jobID: int,
             command: str,
@@ -966,7 +967,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
         def prepareSbatch(
             self,
-            cpu: int,
+            cpu: float,
             mem: int,
             walltime: int,
             jobID: int,
@@ -1073,7 +1074,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     i += 1
 
             if export_all:
-                # We don't have any export overrides so we ened to start with
+                # We don't have any export overrides so we need to start with
                 # an ALL
                 export_list.append("ALL")
 
@@ -1192,7 +1193,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             return sbatch_line
 
     def __init__(
-        self, config: Config, maxCores: float, maxMemory: float, maxDisk: float
+        self, config: Config, maxCores: float, maxMemory: float, maxDisk: int
     ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         self.partitions = SlurmBatchSystem.PartitionSet()
@@ -1230,6 +1231,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     job_id,
                     job_desc.cores,
                     memory,
+                    job_desc.disk,
                     job_desc.walltime,
                     command,
                     get_job_kind(job_desc.get_names()),
