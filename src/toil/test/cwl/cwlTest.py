@@ -1287,6 +1287,30 @@ class TestCWLWorkflow:
         with open(out["output"]["location"][len("file://") :]) as f:
             assert f.read().strip() == "hello"
 
+    def test_accelerator_properties(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """
+        Tests that an AcceleratorRequirement's properties are evaluated for the job.
+        """
+        from toil.cwl import cwltoil
+
+        with get_data("test/cwl/accelerator_properties.cwl") as cwlfile:
+            args = [
+                "--outdir",
+                str(tmp_path / "outDir"),
+                "--jobStore",
+                str(tmp_path / "jobStore"),
+                str(cwlfile),
+                "--qubits",
+                "7",
+            ]
+            assert cwltoil.main(args, stdout=StringIO()) == 1
+        assert (
+            "is requesting [{'count': 1, 'kind': 'qpu', "
+            "'properties': {'backend': 'sim', 'qubits': '7'}}] accelerators"
+        ) in caplog.text
+
     def test_accelerator_needs_kind(self, tmp_path: Path) -> None:
         """
         Tests that the Toil AcceleratorRequirement extension is validated.

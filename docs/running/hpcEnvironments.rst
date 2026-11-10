@@ -44,7 +44,13 @@ Jobs can also need accelerators other than GPUs, such as FPGAs, which a Slurm cl
       --slurmAcceleratorArgs fpga=--partition=fpga-nodes \
       --slurmAcceleratorArgs 'qpu=--qpu=simulator' workflow.cwl inputs.yml
 
-In CWL, a step asks for such an accelerator with the ``toil:AcceleratorRequirement`` hint (see :ref:`cwlAccelerators`); in Toil's Python API, with ``accelerators=[{"kind": "fpga", "count": 1}]``.
+The arguments can also depend on what each job needs of its accelerator. A ``{name}`` field in them is filled with the job's accelerator property of that name, and a job whose accelerator lacks a property its arguments need is refused, naming the property. For example, if the site's ``--qpu`` option also takes the number of qubits a job will use::
+
+    $ toil-cwl-runner --batchSystem slurm --batchLogsDir ./logs \
+      --slurmAcceleratorArgs 'qpu=--qpu=simulator --max-qubits={qubits}' \
+      workflow.cwl inputs.yml
+
+In CWL, a step asks for such an accelerator with the ``toil:AcceleratorRequirement`` hint (see :ref:`cwlAccelerators`), with ``properties`` giving the fields; in Toil's Python API, with ``accelerators=[{"kind": "qpu", "count": 1, "properties": {"qubits": "5"}}]``.
 
 Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.)
 

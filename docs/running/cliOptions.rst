@@ -270,8 +270,11 @@ levels in toil are based on priority from the logging module:
                         kind, such as the partition that has it
                         (fpga=--partition=fpga-nodes) or a site's own option
                         for it. Give it once per kind. A partition among them
-                        is where the job must run. Jobs asking for an
-                        accelerator kind not given here are refused.
+                        is where the job must run. A {name} field in them
+                        is filled with the job's accelerator property of
+                        that name. Jobs asking for an accelerator kind not
+                        given here, or lacking a property it needs, are
+                        refused.
   --slurmPE SLURM_PE    Special partition to send Slurm jobs to if they ask
                         for more than 1 CPU. Useful for Slurm clusters that do
                         not offer a partition accepting both single-core and

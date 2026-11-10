@@ -839,6 +839,30 @@ class SlurmTest(ToilTest):
         with self.assertRaises(ValueError):
             self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, qpu)
 
+    def test_prepareSbatch_accelerator_properties(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.partitions = ps
+        self.worker.boss.config.slurm_accelerator_args = [
+            toil.batchSystems.slurm.parse_accelerator_args(
+                "qpu=--qpu={backend} --max-qubits={qubits} --comment={{literal}}"
+            )
+        ]
+
+        # Each job's accelerator properties fill the arguments for its kind
+        small = [{"kind": "qpu", "count": 1, "properties": {"backend": "sim", "qubits": "3"}}]
+        large = [{"kind": "qpu", "count": 1, "properties": {"backend": "sim", "qubits": "30"}}]
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, small)
+        assert "--qpu=sim" in command and "--max-qubits=3" in command
+        assert "--comment={literal}" in command
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job6", None, large)
+        assert "--max-qubits=30" in command
+
+        # A property the arguments need but the job doesn't give is refused by name
+        missing = [{"kind": "qpu", "count": 1, "properties": {"backend": "sim"}}]
+        with self.assertRaisesRegex(ValueError, "accelerator property qubits"):
+            self.worker.prepareSbatch(1, 100, 5, 0, "job7", None, missing)
+
     def test_check_accelerator_request(self):
         boss = FakeBatchSystem()
         boss.config.slurm_accelerator_args = [("fpga", ["--partition=fpgas"])]
@@ -857,6 +881,14 @@ class SlurmTest(ToilTest):
         # Unmapped kinds can't, and the error says how to map them
         with self.assertRaisesRegex(
             InsufficientSystemResources, "--slurmAcceleratorArgs qpu=ARGS"
+        ):
+            check([{"kind": "qpu", "count": 1}])
+
+        # Kinds whose arguments need properties can't be had without them
+        boss.config.slurm_accelerator_args = [("qpu", ["--qpu={backend}"])]
+        check([{"kind": "qpu", "count": 1, "properties": {"backend": "sim"}}])
+        with self.assertRaisesRegex(
+            InsufficientSystemResources, "accelerator property backend"
         ):
             check([{"kind": "qpu", "count": 1}])
 

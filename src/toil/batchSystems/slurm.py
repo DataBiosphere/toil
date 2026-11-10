@@ -18,6 +18,7 @@ import logging
 import math
 import os
 import shlex
+import string
 import sys
 from argparse import SUPPRESS, ArgumentParser, _ArgumentGroup
 from collections.abc import Callable
@@ -125,12 +126,16 @@ def parse_accelerator_args(spec: str) -> tuple[str, list[str]]:
     Parse the Slurm arguments that provide one kind of accelerator.
 
     The value is ``KIND=ARGS``, where ARGS are sbatch arguments, split as a
-    shell would split them.
+    shell would split them. A ``{name}`` field in them is filled, for each
+    job, with the property of that name of the job's accelerator; ``{{`` and
+    ``}}`` stand for braces.
 
     >>> parse_accelerator_args("fpga=--partition=fpgas")
     ('fpga', ['--partition=fpgas'])
     >>> parse_accelerator_args("qpu=--qpu=sim --comment='quantum job'")
     ('qpu', ['--qpu=sim', '--comment=quantum job'])
+    >>> parse_accelerator_args("qpu=--qpu={backend} --max-qubits={qubits}")
+    ('qpu', ['--qpu={backend}', '--max-qubits={qubits}'])
     >>> parse_accelerator_args("gpu=--partition=gpus")
     Traceback (most recent call last):
     ...
@@ -139,6 +144,10 @@ def parse_accelerator_args(spec: str) -> tuple[str, list[str]]:
     Traceback (most recent call last):
     ...
     ValueError: Expected KIND=ARGS but got: 'fpga'
+    >>> parse_accelerator_args("qpu=--qpu={0}")
+    Traceback (most recent call last):
+    ...
+    ValueError: Expected only {name} fields, each naming an accelerator property, in qpu arguments but got: '--qpu={0}'
 
     Raises ValueError if not parseable.
     """
@@ -149,7 +158,15 @@ def parse_accelerator_args(spec: str) -> tuple[str, list[str]]:
         raise ValueError(
             "Use --slurmGPUPartition to choose the partition for gpu accelerators"
         )
-    return kind, shlex.split(args)
+    split = shlex.split(args)
+    for arg in split:
+        for _, name, format_spec, conversion in string.Formatter().parse(arg):
+            if name is not None and (not name.isidentifier() or format_spec or conversion):
+                raise ValueError(
+                    f"Expected only {{name}} fields, each naming an accelerator "
+                    f"property, in {kind} arguments but got: {arg!r}"
+                )
+    return kind, split
 
 
 def get_accelerator_args(
@@ -161,23 +178,40 @@ def get_accelerator_args(
 
     GPUs are requested through Slurm GRES and need no arguments of their own.
     Every other kind of accelerator is provided by the sbatch arguments it is
-    mapped to, such as the partition that has it. The accelerator counts are
-    left to those arguments: a job submitted with them is assumed to get the
+    mapped to, such as the partition that has it, with their fields filled
+    from the accelerator's properties. The accelerator counts are left to
+    those arguments: a job submitted with them is assumed to get the
     accelerators they provide.
 
     >>> get_accelerator_args([{"kind": "gpu", "count": 1}], {})
     []
     >>> get_accelerator_args([{"kind": "fpga", "count": 1}], {"fpga": ["--partition=fpgas"]})
     ['--partition=fpgas']
+    >>> get_accelerator_args(
+    ...     [{"kind": "qpu", "count": 1, "properties": {"backend": "sim", "qubits": "3"}}],
+    ...     {"qpu": ["--qpu={backend}", "--max-qubits={qubits}"]},
+    ... )
+    ['--qpu=sim', '--max-qubits=3']
     >>> get_accelerator_args([{"kind": "fpga", "count": 1}], {})
     Traceback (most recent call last):
     ...
     ValueError: No Slurm arguments are configured to provide fpga accelerators; map them with --slurmAcceleratorArgs fpga=ARGS
+    >>> get_accelerator_args(
+    ...     [{"kind": "qpu", "count": 1, "properties": {"backend": "sim"}}],
+    ...     {"qpu": ["--qpu={backend}", "--max-qubits={qubits}"]},
+    ... )
+    Traceback (most recent call last):
+    ...
+    ValueError: The Slurm arguments for qpu accelerators need the accelerator property qubits, which the job's qpu accelerator does not have
 
-    Raises ValueError if a kind has no arguments.
+    Raises ValueError if a kind has no arguments, or the accelerator lacks a
+    property its arguments need.
     """
     args: list[str] = []
-    for kind in dict.fromkeys(accelerator["kind"] for accelerator in accelerators):
+    for kind, properties in dict.fromkeys(
+        (accelerator["kind"], tuple(sorted(accelerator.get("properties", {}).items())))
+        for accelerator in accelerators
+    ):
         if kind == "gpu":
             continue
         if kind not in accelerator_args:
@@ -185,7 +219,15 @@ def get_accelerator_args(
                 f"No Slurm arguments are configured to provide {kind} accelerators; "
                 f"map them with --slurmAcceleratorArgs {kind}=ARGS"
             )
-        args.extend(accelerator_args[kind])
+        for arg in accelerator_args[kind]:
+            try:
+                args.append(arg.format_map(dict(properties)))
+            except KeyError as e:
+                raise ValueError(
+                    f"The Slurm arguments for {kind} accelerators need the "
+                    f"accelerator property {e.args[0]}, which the job's {kind} "
+                    f"accelerator does not have"
+                ) from e
     return args
 
 
@@ -1384,8 +1426,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             "other than GPUs, for one accelerator kind, such as the partition "
             "that has it (fpga=--partition=fpga-nodes) or a site's own option "
             "for it. Give it once per kind. A partition among them is where the "
-            "job must run. Jobs asking for an accelerator kind not given here are "
-            "refused.",
+            "job must run. A {name} field in them is filled with the job's "
+            "accelerator property of that name. Jobs asking for an accelerator "
+            "kind not given here, or lacking a property it needs, are refused.",
         )
         parser.add_argument(
             "--slurmPE",

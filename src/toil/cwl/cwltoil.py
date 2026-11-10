@@ -5007,10 +5007,14 @@ def parse_accelerator_requirement(
           toil:AcceleratorRequirement:
             kind: fpga
             count: 1
+            properties:
+              bitstream: $(inputs.design.basename)
 
     ``kind`` is required; ``count`` defaults to 1 and may be an expression;
     ``model``, ``brand``, and ``api`` are optional, as in
-    :class:`toil.job.AcceleratorRequirement`.
+    :class:`toil.job.AcceleratorRequirement`. ``properties`` maps names to
+    strings or expressions, evaluated for the job like ``count``; numbers they
+    evaluate to are kept as strings.
 
     :raises ValidationException: if the hint is malformed.
     """
@@ -5036,7 +5040,37 @@ def parse_accelerator_requirement(
                     f"expected a string but got: {repr(value)}"
                 )
             accelerator[key] = value
+    if "properties" in requirement:
+        properties = requirement["properties"]
+        if not isinstance(properties, MutableMapping):
+            raise ValidationException(
+                f"Unacceptable value for properties in {TOIL_ACCELERATOR_REQUIREMENT}: "
+                f"expected a mapping of names to values but got: {repr(properties)}"
+            )
+        accelerator["properties"] = {
+            name: evaluate_accelerator_property(name, value, builder)
+            for name, value in properties.items()
+        }
     return accelerator
+
+
+def evaluate_accelerator_property(
+    name: str, value: CWLOutputType | None, builder: cwltool.builder.Builder
+) -> str:
+    """
+    Evaluate one property of a Toil AcceleratorRequirement CWL hint for a job.
+
+    :raises ValidationException: if it is not a string or a number.
+    """
+    evaluated = builder.do_eval(value)
+    if isinstance(evaluated, str):
+        return evaluated
+    if isinstance(evaluated, (int, float)) and not isinstance(evaluated, bool):
+        return str(evaluated)
+    raise ValidationException(
+        f"Unacceptable value for property {name} in {TOIL_ACCELERATOR_REQUIREMENT}: "
+        f"expected a string or a number but got: {repr(evaluated)}"
+    )
 
 
 def scan_for_unsupported_requirements(

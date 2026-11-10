@@ -214,6 +214,14 @@ class AcceleratorRequirement(TypedDict):
     "metal", etc. If the job does not need a particular API to talk to the
     accelerator, this should be absent.
     """
+    properties: NotRequired[dict[str, str]]
+    """
+    What else the job needs of the accelerator, by name, such as how large a
+    problem it will run on it. The names and values are the site's own: a
+    batch system configured to ask for the accelerator with them (for example,
+    with ``{name}`` fields in ``--slurmAcceleratorArgs`` on Slurm) passes them
+    on, and other batch systems ignore them.
+    """
 
     # TODO: support requesting any GPU with X amount of vram
 
