@@ -3584,12 +3584,10 @@ def makeJob(
         has_dynamic_resource_requirement = False
         for requirement_type in REQUIREMENT_TYPES:
             req, _ = tool.get_requirement(requirement_type)
-            if req:
-                for r in req.values():
-                    if isinstance(r, str) and ("$(" in r or "${" in r):
-                        # One of the keys in this requirement has a text substitution in it.
-                        # TODO: This is not a real lex!
-                        has_dynamic_resource_requirement = True
+            if req and has_substitution(list(req.values())):
+                # One of the values in this requirement, perhaps nested like
+                # an accelerator's properties, has a text substitution in it.
+                has_dynamic_resource_requirement = True
 
         if has_dynamic_resource_requirement or (
             conditional is not None and not conditional.is_empty()
@@ -4991,6 +4989,27 @@ def filtered_secondary_files(
                 "Secondary file %s is dropped because it is known to be missing", sf
             )
     return final_secondary_files
+
+
+def has_substitution(value: Any) -> bool:
+    """
+    Tell if a requirement's value, or any value nested in it, has a CWL text
+    substitution in it.
+
+    >>> has_substitution({"kind": "fpga", "properties": {"size": "$(inputs.n)"}})
+    True
+    >>> has_substitution(["fpga", 1, {"size": "large"}])
+    False
+
+    TODO: This is not a real lex!
+    """
+    if isinstance(value, str):
+        return "$(" in value or "${" in value
+    if isinstance(value, Mapping):
+        return any(has_substitution(item) for item in value.values())
+    if isinstance(value, list):
+        return any(has_substitution(item) for item in value)
+    return False
 
 
 def parse_accelerator_requirement(
