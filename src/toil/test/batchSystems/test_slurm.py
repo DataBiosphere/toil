@@ -858,6 +858,18 @@ class SlurmTest(ToilTest):
         command = self.worker.prepareSbatch(1, 100, 5, 0, "job6", None, large)
         assert "--max-qubits=30" in command
 
+        # A kind every node provides needs no arguments
+        self.worker.boss.config.slurm_accelerator_args = [
+            toil.batchSystems.slurm.parse_accelerator_args("qpu=")
+        ]
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job8", None, small)
+        assert not any(arg.startswith("--qpu") for arg in command)
+        self.worker.boss.config.slurm_accelerator_args = [
+            toil.batchSystems.slurm.parse_accelerator_args(
+                "qpu=--qpu={backend} --max-qubits={qubits} --comment={{literal}}"
+            )
+        ]
+
         # A property the arguments need but the job doesn't give is refused by name
         missing = [{"kind": "qpu", "count": 1, "properties": {"backend": "sim"}}]
         with self.assertRaisesRegex(ValueError, "accelerator property qubits"):

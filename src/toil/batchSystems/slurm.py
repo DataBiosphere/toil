@@ -128,7 +128,8 @@ def parse_accelerator_args(spec: str) -> tuple[str, list[str]]:
     The value is ``KIND=ARGS``, where ARGS are sbatch arguments, split as a
     shell would split them. A ``{name}`` field in them is filled, for each
     job, with the property of that name of the job's accelerator; ``{{`` and
-    ``}}`` stand for braces.
+    ``}}`` stand for braces. ``KIND=`` with no arguments says a job gets the
+    kind wherever it runs, such as when the job starts it itself.
 
     >>> parse_accelerator_args("fpga=--partition=fpgas")
     ('fpga', ['--partition=fpgas'])
@@ -140,6 +141,8 @@ def parse_accelerator_args(spec: str) -> tuple[str, list[str]]:
     Traceback (most recent call last):
     ...
     ValueError: Use --slurmGPUPartition to choose the partition for gpu accelerators
+    >>> parse_accelerator_args("qpu=")
+    ('qpu', [])
     >>> parse_accelerator_args("fpga")
     Traceback (most recent call last):
     ...
@@ -151,8 +154,8 @@ def parse_accelerator_args(spec: str) -> tuple[str, list[str]]:
 
     Raises ValueError if not parseable.
     """
-    kind, _, args = spec.partition("=")
-    if not kind or not args.strip():
+    kind, separator, args = spec.partition("=")
+    if not kind or not separator:
         raise ValueError(f"Expected KIND=ARGS but got: {spec!r}")
     if kind == "gpu":
         raise ValueError(
@@ -1428,7 +1431,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             "for it. Give it once per kind. A partition among them is where the "
             "job must run. A {name} field in them is filled with the job's "
             "accelerator property of that name. Jobs asking for an accelerator "
-            "kind not given here, or lacking a property it needs, are refused.",
+            "kind not given here, or lacking a property it needs, are refused. "
+            "KIND= with no arguments says a job gets the kind wherever it runs.",
         )
         parser.add_argument(
             "--slurmPE",

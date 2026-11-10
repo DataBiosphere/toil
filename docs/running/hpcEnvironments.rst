@@ -50,6 +50,8 @@ The arguments can also depend on what each job needs of its accelerator. A ``{na
       --slurmAcceleratorArgs 'qpu=--qpu=simulator --max-qubits={qubits}' \
       workflow.cwl inputs.yml
 
+A kind that every node provides, such as one a job starts for itself, is given with no arguments, as ``--slurmAcceleratorArgs qpu=``.
+
 In CWL, a step asks for such an accelerator with the ``toil:AcceleratorRequirement`` hint (see :ref:`cwlAccelerators`), with ``properties`` giving the fields; in Toil's Python API, with ``accelerators=[{"kind": "qpu", "count": 1, "properties": {"qubits": "5"}}]``.
 
 Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.)
