@@ -8,6 +8,8 @@ cwlVersion: v1.2
 inputs:
   - id: qubits
     type: int
+  - id: depth
+    type: int?
 
 outputs:
   output:
@@ -24,6 +26,7 @@ hints:
     properties:
       backend: sim
       qubits: $(inputs.qubits)
+      depth: $(inputs.depth)
 
 baseCommand: ["echo", "hello"]
 stdout: output.txt

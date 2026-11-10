@@ -5014,7 +5014,8 @@ def parse_accelerator_requirement(
     ``model``, ``brand``, and ``api`` are optional, as in
     :class:`toil.job.AcceleratorRequirement`. ``properties`` maps names to
     strings or expressions, evaluated for the job like ``count``; numbers they
-    evaluate to are kept as strings.
+    evaluate to are kept as strings, and a property evaluating to null is left
+    out, as the job does not give it.
 
     :raises ValidationException: if the hint is malformed.
     """
@@ -5047,29 +5048,33 @@ def parse_accelerator_requirement(
                 f"Unacceptable value for properties in {TOIL_ACCELERATOR_REQUIREMENT}: "
                 f"expected a mapping of names to values but got: {repr(properties)}"
             )
-        accelerator["properties"] = {
+        evaluated = {
             name: evaluate_accelerator_property(name, value, builder)
             for name, value in properties.items()
+        }
+        accelerator["properties"] = {
+            name: value for name, value in evaluated.items() if value is not None
         }
     return accelerator
 
 
 def evaluate_accelerator_property(
     name: str, value: CWLOutputType | None, builder: cwltool.builder.Builder
-) -> str:
+) -> str | None:
     """
     Evaluate one property of a Toil AcceleratorRequirement CWL hint for a job.
 
-    :raises ValidationException: if it is not a string or a number.
+    :returns: the property as a string, or None if the job does not give it.
+    :raises ValidationException: if it is not a string, a number or null.
     """
     evaluated = builder.do_eval(value)
-    if isinstance(evaluated, str):
+    if evaluated is None or isinstance(evaluated, str):
         return evaluated
     if isinstance(evaluated, (int, float)) and not isinstance(evaluated, bool):
         return str(evaluated)
     raise ValidationException(
         f"Unacceptable value for property {name} in {TOIL_ACCELERATOR_REQUIREMENT}: "
-        f"expected a string or a number but got: {repr(evaluated)}"
+        f"expected a string, a number or null but got: {repr(evaluated)}"
     )
 
 

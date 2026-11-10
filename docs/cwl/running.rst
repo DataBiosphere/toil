@@ -154,7 +154,7 @@ as for accelerators requested through Toil's Python API.
 
 ``properties`` says what else the step needs of the accelerator, by name, in
 strings or CWL expressions evaluated for each job like ``count``, such as how
-large a problem it will run there::
+large a problem it will run there; a property evaluating to null is left out::
 
     hints:
       toil:AcceleratorRequirement:

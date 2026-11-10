@@ -1292,6 +1292,8 @@ class TestCWLWorkflow:
     ) -> None:
         """
         Tests that an AcceleratorRequirement's properties are evaluated for the job.
+
+        The depth isn't given, so the job's accelerator has no depth property.
         """
         from toil.cwl import cwltoil
 
