@@ -763,7 +763,7 @@ class SlurmTest(ToilTest):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
         ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
         self.worker.boss.partitions = ps
-        self.worker.boss.config.slurm_accelerator_partitions = {"fpga": "fpgas"}
+        self.worker.boss.config.slurm_accelerator_args = [("fpga", ["--partition=fpgas"])]
         fpga = [{"kind": "fpga", "count": 1}]
 
         # A job needing a mapped accelerator goes to its partition
@@ -798,16 +798,50 @@ class SlurmTest(ToilTest):
         with self.assertRaises(ValueError):
             self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, fpga)
 
-        # And so would an accelerator kind without a partition
+        # And so would an accelerator kind without arguments
         self.worker.boss.config.slurm_args = ""
         with self.assertRaises(ValueError):
             self.worker.prepareSbatch(
                 1, 100, 5, 0, "job5", None, [{"kind": "qpu", "count": 1}]
             )
 
+        # Or two kinds in different partitions
+        self.worker.boss.config.slurm_accelerator_args = [
+            ("fpga", ["--partition=fpgas"]), ("qpu", ["-p", "qpus"])
+        ]
+        with self.assertRaisesRegex(ValueError, "only run in one"):
+            self.worker.prepareSbatch(
+                1, 100, 5, 0, "job5", None, fpga + [{"kind": "qpu", "count": 1}]
+            )
+
+    def test_prepareSbatch_accelerator_args(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.partitions = ps
+        self.worker.boss.config.slurm_partition = "foobar"
+        self.worker.boss.config.slurm_accelerator_args = [
+            ("qpu", ["--qpu=sim", "--comment=quantum"])
+        ]
+        qpu = [{"kind": "qpu", "count": 1}]
+
+        # A site's own options for an accelerator reach its jobs' sbatch, and
+        # without a partition among them the job keeps the default one
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, qpu)
+        assert "--qpu=sim" in command and "--comment=quantum" in command
+        assert "--partition=foobar" in command
+
+        # Jobs without that accelerator don't get them
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, None)
+        assert "--qpu=sim" not in command
+
+        # Options Toil sets itself can't be given for an accelerator
+        self.worker.boss.config.slurm_accelerator_args = [("qpu", ["--mem=10G"])]
+        with self.assertRaises(ValueError):
+            self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, qpu)
+
     def test_check_accelerator_request(self):
         boss = FakeBatchSystem()
-        boss.config.slurm_accelerator_partitions = {"fpga": "fpgas"}
+        boss.config.slurm_accelerator_args = [("fpga", ["--partition=fpgas"])]
 
         def check(accelerators):
             requirer = Requirer({"accelerators": accelerators})
@@ -822,14 +856,9 @@ class SlurmTest(ToilTest):
 
         # Unmapped kinds can't, and the error says how to map them
         with self.assertRaisesRegex(
-            InsufficientSystemResources, "--slurmAcceleratorPartitions qpu=PARTITION"
+            InsufficientSystemResources, "--slurmAcceleratorArgs qpu=ARGS"
         ):
             check([{"kind": "qpu", "count": 1}])
-
-        # Kinds in different partitions can't be had by one job
-        boss.config.slurm_accelerator_partitions = {"fpga": "fpgas", "qpu": "qpus"}
-        with self.assertRaisesRegex(InsufficientSystemResources, "only run in one"):
-            check([{"kind": "fpga", "count": 1}, {"kind": "qpu", "count": 1}])
 
     def test_prepareSbatch_export(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)

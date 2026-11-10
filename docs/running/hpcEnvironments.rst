@@ -38,10 +38,11 @@ For jobs that have a walltime requirement, a partition will be automatically sel
 
 If some of your jobs can take a lot longer than others, you can set ``--defaultWalltime`` to reserve enough time for the typical cases, and add ``--doubleTime=True`` to double the time limit for a job every time it fails with a timeout. This can let the short jobs run in a partition for short jobs, while jobs that take longer get retried in a partition for longer jobs.
 
-Jobs can also need accelerators other than GPUs, such as FPGAs, which a Slurm cluster usually keeps in partitions of their own. Toil can't tell from Slurm which partition has which kind of accelerator, so you tell it with the ``--slurmAcceleratorPartitions`` argument (or the ``TOIL_SLURM_ACCELERATOR_PARTITIONS`` environment variable), a comma-separated list of ``KIND=PARTITION`` pairs. A job needing a listed kind goes to that partition, ahead of ``--slurmPartition``, ``--slurmGPUPartition`` and ``--slurmPE``; a job needing a kind that isn't listed is refused, rather than sent to a partition without it. For example, if your FPGAs are in a partition named ``fpga-nodes``, you would run::
+Jobs can also need accelerators other than GPUs, such as FPGAs, which a Slurm cluster usually keeps in partitions of their own, or reaches through an option of its own. Toil can't tell from Slurm how a kind of accelerator is provided, so you tell it with the ``--slurmAcceleratorArgs`` argument, given once per kind as ``KIND=ARGS``, where ``ARGS`` are the ``sbatch`` arguments a job needing that kind is submitted with. A ``--partition`` among them is where such a job must run, ahead of ``--slurmPartition``, ``--slurmGPUPartition`` and ``--slurmPE``; a job needing a kind that isn't given is refused, rather than sent where the kind isn't. For example, if your FPGAs are in a partition named ``fpga-nodes``, and a site option ``--qpu`` reserves a quantum service, you would run::
 
     $ toil-cwl-runner --batchSystem slurm --batchLogsDir ./logs \
-      --slurmAcceleratorPartitions fpga=fpga-nodes workflow.cwl inputs.yml
+      --slurmAcceleratorArgs fpga=--partition=fpga-nodes \
+      --slurmAcceleratorArgs 'qpu=--qpu=simulator' workflow.cwl inputs.yml
 
 In CWL, a step asks for such an accelerator with the ``toil:AcceleratorRequirement`` hint (see :ref:`cwlAccelerators`); in Toil's Python API, with ``accelerators=[{"kind": "fpga", "count": 1}]``.
 
