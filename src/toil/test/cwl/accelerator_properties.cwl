@@ -8,6 +8,7 @@ cwlVersion: v1.2
 inputs:
   - id: qubits
     type: int
+    default: 7
   - id: depth
     type: int?
 

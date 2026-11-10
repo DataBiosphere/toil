@@ -1304,8 +1304,6 @@ class TestCWLWorkflow:
                 "--jobStore",
                 str(tmp_path / "jobStore"),
                 str(cwlfile),
-                "--qubits",
-                "7",
             ]
             assert cwltoil.main(args, stdout=StringIO()) == 1
         assert (
