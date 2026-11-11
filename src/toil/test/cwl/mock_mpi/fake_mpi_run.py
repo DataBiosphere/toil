@@ -3,7 +3,7 @@ import argparse
 import subprocess
 import sys
 
-from configargparse import ArgumentParser
+from argparse import ArgumentParser
 
 
 def make_parser() -> ArgumentParser:
