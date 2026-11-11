@@ -130,6 +130,36 @@ all CWL intermediate files on disk and share them between jobs using file
 paths, instead of storing them in the file store and downloading them when jobs
 need them.
 
+.. _cwlAccelerators:
+
+Running CWL steps that need special hardware
+--------------------------------------------
+
+CWL's ``cwltool:CUDARequirement`` asks for NVIDIA GPUs. To send a step to other
+hardware, such as FPGAs, a step can use Toil's own ``AcceleratorRequirement``
+hint, which names an abstract kind of accelerator and leaves it to each site to
+say where that kind can be found::
+
+    $namespaces:
+      toil: "http://toil.ucsc-cgl.org/cwl#"
+
+    hints:
+      toil:AcceleratorRequirement:
+        kind: fpga
+        count: 1
+
+``kind`` is required. ``count`` defaults to 1 and may be a CWL expression.
+``model``, ``brand``, and ``api`` may also be given, and have the same meanings
+as for accelerators requested through Toil's Python API.
+
+The step's Toil job then requires that accelerator, and the batch system must
+know how to provide it. On Slurm, map each kind to the partition that has it
+with ``--slurmAcceleratorPartitions`` (see :ref:`runningSlurm`). With the
+single machine batch system, say how many of each kind the machine has with
+``--localAccelerators``, for example ``--localAccelerators fpga=1``. A batch system
+that does not know how to provide a kind refuses the job with an error naming
+the accelerator, rather than running the step somewhere without it.
+
 Toil & CWL Tips
 ---------------
 

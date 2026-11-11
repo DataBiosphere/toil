@@ -13,8 +13,10 @@ from toil.batchSystems.abstractBatchSystem import (
     EXIT_STATUS_UNAVAILABLE_VALUE,
     BatchJobExitReason,
     BatchSystemSupport,
+    InsufficientSystemResources,
 )
 from toil.common import Config
+from toil.job import Requirer
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.worker import WALLTIME_SIGNAL, WALLTIME_EXIT_CODE
 
@@ -756,6 +758,78 @@ class SlurmTest(ToilTest):
         logger.debug("Command: %s", command)
         assert "--partition=medium" in command
         assert "--time=0:36000" in command
+
+    def test_prepareSbatch_accelerator_partition(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.partitions = ps
+        self.worker.boss.config.slurm_accelerator_partitions = {"fpga": "fpgas"}
+        fpga = [{"kind": "fpga", "count": 1}]
+
+        # A job needing a mapped accelerator goes to its partition
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, fpga)
+        assert "--partition=fpgas" in command
+        assert not any(arg.startswith("--gres") for arg in command)
+
+        # Even over the configured default partitions
+        self.worker.boss.config.slurm_partition = "foobar"
+        self.worker.boss.config.slurm_gpu_partition = "gpu"
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, fpga)
+        assert "--partition=fpgas" in command
+
+        # GPUs alongside still get requested through GRES
+        command = self.worker.prepareSbatch(
+            1, 100, 5, 0, "job5", None, fpga + [{"kind": "gpu", "count": 2}]
+        )
+        assert "--partition=fpgas" in command
+        assert "--gres=gpu:2" in command
+
+        # Jobs without that accelerator are unaffected
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, None)
+        assert "--partition=foobar" in command
+
+        # A matching partition in the argument overrides is fine
+        self.worker.boss.config.slurm_args = "--partition=fpgas"
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, fpga)
+        assert "--partition=fpgas" in command
+
+        # But a different one would send the job where its accelerator isn't
+        self.worker.boss.config.slurm_args = "-p baz"
+        with self.assertRaises(ValueError):
+            self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, fpga)
+
+        # And so would an accelerator kind without a partition
+        self.worker.boss.config.slurm_args = ""
+        with self.assertRaises(ValueError):
+            self.worker.prepareSbatch(
+                1, 100, 5, 0, "job5", None, [{"kind": "qpu", "count": 1}]
+            )
+
+    def test_check_accelerator_request(self):
+        boss = FakeBatchSystem()
+        boss.config.slurm_accelerator_partitions = {"fpga": "fpgas"}
+
+        def check(accelerators):
+            requirer = Requirer({"accelerators": accelerators})
+            toil.batchSystems.slurm.SlurmBatchSystem._check_accelerator_request(
+                boss, requirer
+            )
+
+        # GPUs and mapped kinds can be provided
+        check([{"kind": "gpu", "count": 1}])
+        check([{"kind": "fpga", "count": 1}])
+        check([{"kind": "fpga", "count": 1}, {"kind": "gpu", "count": 1}])
+
+        # Unmapped kinds can't, and the error says how to map them
+        with self.assertRaisesRegex(
+            InsufficientSystemResources, "--slurmAcceleratorPartitions qpu=PARTITION"
+        ):
+            check([{"kind": "qpu", "count": 1}])
+
+        # Kinds in different partitions can't be had by one job
+        boss.config.slurm_accelerator_partitions = {"fpga": "fpgas", "qpu": "qpus"}
+        with self.assertRaisesRegex(InsufficientSystemResources, "only run in one"):
+            check([{"kind": "fpga", "count": 1}, {"kind": "qpu", "count": 1}])
 
     def test_prepareSbatch_export(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)

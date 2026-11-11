@@ -186,8 +186,10 @@ class AcceleratorRequirement(TypedDict):
     """
     kind: str
     """
-    What kind of accelerator is required. Can be "gpu". Other kinds defined in
-    the future might be "fpga", etc.
+    What kind of accelerator is required. Can be "gpu", which batch systems
+    know how to provide. Any other kind, like "fpga", is provided only by a
+    batch system configured with where to find it (for example, with
+    ``--slurmAcceleratorPartitions`` on Slurm); other batch systems refuse it.
     """
     model: NotRequired[str]
     """
@@ -247,6 +249,9 @@ def parse_accelerator(
 
     >>> parse_accelerator({"brand": "nvidia", "count": 5})
     {'count': 5, 'kind': 'gpu', 'brand': 'nvidia'}
+
+    >>> parse_accelerator({"kind": "fpga"})
+    {'count': 1, 'kind': 'fpga'}
 
     Assumes that if not specified, we are talking about GPUs, and about one
     of them. Knows that "gpu" is a kind, and "cuda" is an API, and "nvidia"

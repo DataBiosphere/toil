@@ -199,6 +199,13 @@ DEFAULT_TMPDIR_PREFIX = os.path.join(DEFAULT_TMPDIR, "tmp")
 INTERPRETER_JOB_MEMORY = "1GiB"
 INTERPRETER_JOB_DISK = "1MiB"
 
+# Toil's own CWL extension for asking for an accelerator of any kind, which a
+# batch system must be configured to provide (for example, on Slurm, with
+# --slurmAcceleratorPartitions). Unlike cwltool:CUDARequirement, the kind is
+# not limited to GPUs, so a site can route steps to special hardware without
+# the workflow naming any site-specific queue.
+TOIL_ACCELERATOR_REQUIREMENT = "http://toil.ucsc-cgl.org/cwl#AcceleratorRequirement"
+
 
 def cwltoil_was_removed() -> None:
     """Complain about deprecated entrypoint."""
@@ -3085,6 +3092,14 @@ class CWLJob(CWLNamedJob):
                 }
             ]
 
+        accelerator_req, _ = tool.get_requirement(TOIL_ACCELERATOR_REQUIREMENT)
+        if accelerator_req:
+            # cwltool doesn't know about Toil's own accelerator extension, so
+            # we have to evaluate it ourselves.
+            accelerators = (accelerators or []) + [
+                parse_accelerator_requirement(accelerator_req, self.builder)
+            ]
+
         # cwltool doesn't handle http://arvados.org/cwl#UsePreemptible as part
         # of its resource logic so we have to do it manually.
         #
@@ -3564,6 +3579,7 @@ def makeJob(
         REQUIREMENT_TYPES = [
             "ResourceRequirement",
             "http://commonwl.org/cwltool#CUDARequirement",
+            TOIL_ACCELERATOR_REQUIREMENT,
         ]
         has_dynamic_resource_requirement = False
         for requirement_type in REQUIREMENT_TYPES:
@@ -4975,6 +4991,52 @@ def filtered_secondary_files(
                 "Secondary file %s is dropped because it is known to be missing", sf
             )
     return final_secondary_files
+
+
+def parse_accelerator_requirement(
+    requirement: CWLObjectType, builder: cwltool.builder.Builder
+) -> AcceleratorRequirement:
+    """
+    Turn a Toil AcceleratorRequirement CWL hint into a Toil accelerator request.
+
+    The hint looks like::
+
+        $namespaces:
+          toil: http://toil.ucsc-cgl.org/cwl#
+        hints:
+          toil:AcceleratorRequirement:
+            kind: fpga
+            count: 1
+
+    ``kind`` is required; ``count`` defaults to 1 and may be an expression;
+    ``model``, ``brand``, and ``api`` are optional, as in
+    :class:`toil.job.AcceleratorRequirement`.
+
+    :raises ValidationException: if the hint is malformed.
+    """
+    kind = requirement.get("kind")
+    if not isinstance(kind, str) or kind == "":
+        raise ValidationException(
+            f"Unacceptable syntax for {TOIL_ACCELERATOR_REQUIREMENT}: "
+            f"expected a string kind but got: {requirement}"
+        )
+    count = builder.do_eval(requirement.get("count", 1))
+    if not isinstance(count, int) or isinstance(count, bool) or count < 1:
+        raise ValidationException(
+            f"Unacceptable value for count in {TOIL_ACCELERATOR_REQUIREMENT}: "
+            f"expected a positive integer but got: {repr(count)}"
+        )
+    accelerator: AcceleratorRequirement = {"kind": kind, "count": count}
+    for key in cast(list[Literal["model", "brand", "api"]], ["model", "brand", "api"]):
+        if key in requirement:
+            value = requirement[key]
+            if not isinstance(value, str):
+                raise ValidationException(
+                    f"Unacceptable value for {key} in {TOIL_ACCELERATOR_REQUIREMENT}: "
+                    f"expected a string but got: {repr(value)}"
+                )
+            accelerator[key] = value
+    return accelerator
 
 
 def scan_for_unsupported_requirements(

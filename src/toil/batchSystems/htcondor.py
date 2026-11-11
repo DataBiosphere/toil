@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 from toil.batchSystems.abstractGridEngineBatchSystem import (
     AbstractGridEngineBatchSystem,
 ) 
+from toil.job import AcceleratorRequirement
 from toil.lib.retry import retry
 
 logger = logging.getLogger(__name__)
@@ -52,9 +53,9 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             command: str,
             jobName: str,
             job_environment: dict[str, str] | None = None,
-            gpus: int | None = None,
+            accelerators: list[AcceleratorRequirement] | None = None,
         ) -> htcondor.Submit:
-            if gpus:
+            if accelerators:
                 logger.warning(
                     "Scheduling job %s without enforcing accelerator requirement",
                     jobID,

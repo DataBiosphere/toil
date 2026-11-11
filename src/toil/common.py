@@ -189,6 +189,7 @@ class Config:
     aws_batch_queue: str | None
     aws_batch_job_role_arn: str | None
     scale: float
+    local_accelerators: dict[str, int]
     batchSystem: str
     batch_logs_dir: str | None
     """The backing scheduler will be instructed, if possible, to save logs
