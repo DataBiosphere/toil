@@ -163,11 +163,11 @@ def main():
     with Toil(options) as toil:
         sort_file_url = 'file://' + os.path.abspath('file_to_sort.txt')
         if not toil.options.restart:
-            sort_file_id = toil.importFile(sort_file_url)
+            sort_file_id = toil.import_file(sort_file_url)
             sorted_file_id = toil.start(Job.wrapJobFn(setup, sort_file_id, int(options.N), False, memory='600M'))
         else:
             sorted_file_id = toil.restart()
-        toil.exportFile(sorted_file_id, sort_file_url)
+        toil.export_file(sorted_file_id, sort_file_url)
 
 if __name__ == '__main__':
     main()

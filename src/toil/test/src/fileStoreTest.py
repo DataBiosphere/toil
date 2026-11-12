@@ -354,7 +354,7 @@ class hidden:
                 with Toil(self.options()) as toil:
                     initialPermissions, fileID = toil.start(export_file_job)
                     dstFile = os.path.join(self._createTempDir(), str(uuid4()))
-                    toil.exportFile(fileID, "file://" + dstFile)
+                    toil.export_file(fileID, "file://" + dstFile)
                     currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
                     assert (
@@ -387,7 +387,7 @@ class hidden:
                             f"Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}"
                         ):
                             with Toil(self.options()) as toil:
-                                file_id = toil.importFile(f"file://{file_path}")
+                                file_id = toil.import_file(f"file://{file_path}")
                                 A = Job.wrapJobFn(
                                     self._testImportReadFileCompatibility,
                                     fileID=file_id,

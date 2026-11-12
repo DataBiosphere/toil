@@ -698,7 +698,7 @@ class CachingFileStore(AbstractFileStore):
             # Caching may be free since we are using a file job store.
 
             # Create an empty file.
-            emptyID = self.jobStore.getEmptyFileStoreID()
+            emptyID = self.jobStore.get_empty_file_store_id()
 
             # Read it out to a generated name.
             destDir = mkdtemp(dir=self.localCacheDir)
