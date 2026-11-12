@@ -1516,6 +1516,30 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         finally:
             os.unlink(path)
 
+    def test_read_logs_tolerates_missing_stats_dirs(self):
+        """
+        Check that reading logs doesn't crash if the stats directories have
+        been deleted out from under the job store, and that writing logs
+        brings them back.
+        """
+        jobstore1 = self.jobstore_initialized
+        jobstore2 = self.jobstore_resumed_noconfig
+        assert isinstance(jobstore1, FileJobStore)  # type hint
+
+        stats = set()
+
+        def callback(f):
+            stats.add(f.read())
+
+        shutil.rmtree(jobstore1.stats_inbox)
+        shutil.rmtree(jobstore1.stats_archive)
+        self.assertEqual(0, jobstore1.read_logs(callback))
+        self.assertEqual(0, jobstore1.read_logs(callback, read_all=True))
+
+        jobstore2.write_logs(b"one")
+        self.assertEqual(1, jobstore1.read_logs(callback))
+        self.assertEqual({b"one"}, stats)
+
     def test_jobstore_init_preserves_symlink_path(self):
         """Test that if we provide a fileJobStore with a symlink to a directory, it doesn't de-reference it."""
         dir_symlinked_to_original_filestore = None

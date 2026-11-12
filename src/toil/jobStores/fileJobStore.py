@@ -926,7 +926,16 @@ class FileJobStore(AbstractJobStore, HintedJobStore, URLAccess):
 
         for to_call, should_archive in queries:
             for log_dir in to_call():
-                for log_file in os.listdir(log_dir):
+                try:
+                    log_files = os.listdir(log_dir)
+                except FileNotFoundError:
+                    # The walk always yields the root, even if it has gone
+                    # away. Something outside Toil (like a scratch purge that
+                    # removes empty directories) can delete the usually-empty
+                    # inbox. There are no logs in a directory that isn't
+                    # there, and write_logs() will remake it when needed.
+                    continue
+                for log_file in log_files:
                     if not log_file.startswith(self.LOG_PREFIX):
                         # Skip anything not a log file (like the other spray
                         # directories)
