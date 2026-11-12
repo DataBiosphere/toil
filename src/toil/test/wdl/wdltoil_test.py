@@ -13,8 +13,6 @@ from urllib.parse import quote
 from uuid import uuid4
 
 import pytest
-import WDL.Error
-import WDL.Expr
 from pytest_httpserver import HTTPServer
 
 from toil.fileStores import FileID
@@ -29,7 +27,7 @@ from toil.test import (
     slow,
 )
 from toil.version import exactPython
-from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph, parse_disks
+
 
 logger = logging.getLogger(__name__)
 
@@ -1366,6 +1364,7 @@ class TestWDLToilBench(unittest.TestCase):
 
         White box test; will need to be changed or removed if the WDL interpreter changes.
         """
+        from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph
 
         # Set up data structures for our fake workflow graph to pull from.
         # This has all decl-type nodes
@@ -1466,21 +1465,6 @@ class TestWDLToilBench(unittest.TestCase):
                     assert "decl2" in result[0]
                     assert "successor" in result[1]
 
-    def make_string_expr(
-        self, to_parse: str, expr_type: type[WDL.Expr.String] = WDL.Expr.String
-    ) -> WDL.Expr.String:
-        """
-        Parse pseudo-WDL for testing whitespace removal.
-        """
-
-        pos = WDL.Error.SourcePosition("nowhere", "nowhere", 0, 0, 0, 0)
-
-        parts: list[str | WDL.Expr.Placeholder] = re.split("(~{[^}]*})", to_parse)
-        for i in range(1, len(parts), 2):
-            parts[i] = WDL.Expr.Placeholder(pos, {}, WDL.Expr.Null(pos))
-
-        return expr_type(pos, parts)
-
     def test_choose_human_readable_directory(self) -> None:
         """
         Test to make sure that we pick sensible but non-colliding directories to put files in.
@@ -1570,6 +1554,7 @@ class TestWDLToilBench(unittest.TestCase):
         """
         Test to make sure the disk parsing is correct
         """
+        from toil.wdl.wdltoil import parse_disks
         # Test cromwell compatibility
         spec = "local-disk 5 SSD"
         specified_mount_point, part_size, part_suffix = parse_disks(spec, spec)
