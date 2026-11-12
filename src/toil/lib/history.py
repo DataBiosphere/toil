@@ -233,7 +233,7 @@ class HistoryManager:
             con.autocommit = True
         yield
         if hasattr(con, "autocommit"):
-            # For Python 3.12+ we cna just turn autocpmmit off
+            # For Python 3.12+ we can just turn autocpmmit off
             con.autocommit = False
         else:
             # Before Python 3.12 isolation_level DEFERRED is supposed to

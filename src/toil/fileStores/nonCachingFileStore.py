@@ -307,7 +307,7 @@ class NonCachingFileStore(AbstractFileStore):
                     if not batchSystemShutdown:
                         logger.debug("Deleting the stale working directory.")
                         # Delete the old work directory if it still exists.  Do this only during
-                        # the life of the program and dont' do it during the batch system
+                        # the life of the program and don't do it during the batch system
                         # cleanup. Leave that to the batch system cleanup code.
                         robust_rmtree(jobState["jobDir"])
                 finally:

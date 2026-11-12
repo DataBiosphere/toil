@@ -50,7 +50,7 @@ WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
 WDL_11_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     "test_object",  # Objects are not supported
     "test_gpu_task",  # needs gpu to run, else warning
-    "input_ref_call",  # Inputs refering into workflow body not yet implemented: see https://github.com/DataBiosphere/toil/issues/4993
+    "input_ref_call",  # Inputs referring into workflow body not yet implemented: see https://github.com/DataBiosphere/toil/issues/4993
     "call_imported",  # Same as input_ref_call since it imports it
     "write_json_fail",  # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
     "read_object_task",  # object not supported

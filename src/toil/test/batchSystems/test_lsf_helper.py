@@ -11,13 +11,13 @@ class LSFHelperTest(ToilTest):
             "\nJob <2924748>, Job Name <toil_job_64>, User <thiagogenez>, Project <default>, S"
             "\n                     tatus <RUN>, Queue <research-rh74>, Job Priority <50>, Com"
             "\n                     mand <_toil_worker CactusBarRecursion file:/hps/nobackup/p"
-            "\n                     roduction/ensembl/thiagogenez/pairwises/arabidopsis/run/jo"
+            "\n                     roduction/ensembl/thiagogenez/pairwises/arabidopsis/run/jo"  # codespell:ignore
             "\n                     bstore/3 kind-CactusBarRecursion/instance-iu6wo56x --conte"
             "\n                     xt gAShortenedh32xqlE51Yi4=>, Share group charged </thiago"
             "\n                     genez>, Esub <esub>"
             "\nThu Mar 18 02:06:32: Submitted from host <noah-login-01>, CWD </hps/nobackup/pr"
             "\n                     oduction/ensembl/thiagogenez/pairwises/arabidopsis/run>, S"
-            "\n                     pecified CWD </hps/nobackup/production/ensembl/thiagogenez"
+            "\n                     pecified CWD </hps/nobackup/production/ensembl/thiagogenez"  # codespell:ignore
             "\n                     /pairwises/arabidopsis/run/.>, Output File </tmp/toil_work"
             "\n                     flow_10e83102-2e4b-4093-9128-2a52f4bbc65a_job_64_batch_lsf"
             "\n                     _2924748_std_output.log>, Error File </tmp/toil_workflow_1"
@@ -25,7 +25,7 @@ class LSFHelperTest(ToilTest):
             "\n                     48_std_error.log>, Requested Resources <select[(mem>4000)]"
             "\n                      rusage[mem=4000:duration=480, numcpus=1:duration=480]>;"
             "\nThu Mar 18 02:06:33: Started on <hx-noah-31-02>, Execution Home </homes/thiagog"
-            "\n                     enez>, Execution CWD </hps/nobackup/production/ensembl/thi"
+            "\n                     enez>, Execution CWD </hps/nobackup/production/ensembl/thi"  # codespell:ignore
             "\n                     agogenez/pairwises/arabidopsis/run/.>;"
             "\nThu Mar 18 17:07:47: Resource usage collected."
             "\n                     The CPU time used is 53936 seconds."

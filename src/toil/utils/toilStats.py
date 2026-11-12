@@ -402,19 +402,19 @@ def sort_jobs(jobTypes: list[Any], options: Namespace) -> list[Any]:
         return sorted(
             jobTypes,
             key=lambda tag: getattr(tag, f"{sortField}_{options.sortCategory}"),
-            reverse=options.sort == "decending",
+            reverse=options.sort == "descending",
         )
     elif options.sortCategory == "alpha":
         return sorted(
             jobTypes,
             key=lambda tag: tag.name,  # type: ignore
-            reverse=options.sort == "decending",
+            reverse=options.sort == "descending",
         )
     elif options.sortCategory == "count":
         return sorted(
             jobTypes,
             key=lambda tag: tag.total_number,  # type: ignore
-            reverse=options.sort == "decending",
+            reverse=options.sort == "descending",
         )
 
     # due to https://stackoverflow.com/questions/47149154
@@ -512,7 +512,7 @@ def build_element(
         # Compute wait time (allocated CPU time wasted).
         # Note that if any item uses *more* CPU cores than requested, at any
         # time, that decreases the amount of wait we're able to see from that
-        # item. If it hapens a lot, our computed wait could go negative, so we
+        # item. If it happens a lot, our computed wait could go negative, so we
         # bound it below at 0.
         wait_value = (
             item_values["time"][index] * item_values["cores"][index]
@@ -697,8 +697,8 @@ def add_stats_options(parser: ArgumentParser) -> None:
     )
     parser.add_argument(
         "--sort",
-        default="decending",
-        choices=["ascending", "decending"],
+        default="descending",
+        choices=["ascending", "descending"],
         help="Sort direction.",
     )
     parser.add_argument(

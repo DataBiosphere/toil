@@ -971,7 +971,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                     os.close(fd)
 
             # Without the second argument, increment counter, sleep one second and decrement.
-            # Othwerise, adjust the counter by the given delta, which can be useful for services.
+            # Otherwise, adjust the counter by the given delta, which can be useful for services.
             if len(sys.argv) < 3:
                 count(1)
                 try:
@@ -1130,7 +1130,7 @@ class GridEngineBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         from toil.batchSystems.gridengine import GridEngineBatchSystem
 
         return GridEngineBatchSystem(
-            config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=1e9
+            config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=int(1e9)
         )
 
     def tearDown(self) -> None:
@@ -1153,7 +1153,7 @@ class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         from toil.batchSystems.slurm import SlurmBatchSystem
 
         return SlurmBatchSystem(
-            config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=1e9
+            config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=int(1e9)
         )
 
     def tearDown(self) -> None:
@@ -1176,7 +1176,7 @@ class LSFBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         from toil.batchSystems.lsf import LSFBatchSystem
 
         return LSFBatchSystem(
-            config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=1e9
+            config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=int(1e9)
         )
 
 
@@ -1197,7 +1197,7 @@ class TorqueBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         from toil.batchSystems.torque import TorqueBatchSystem
 
         return TorqueBatchSystem(
-            config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=1e9
+            config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=int(1e9)
         )
 
     def tearDown(self) -> None:
@@ -1220,7 +1220,7 @@ class HTCondorBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         from toil.batchSystems.htcondor import HTCondorBatchSystem
 
         return HTCondorBatchSystem(
-            config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=1e9
+            config=self.config, maxCores=numCores, maxMemory=1000e9, maxDisk=int(1e9)
         )
 
     def tearDown(self) -> None:

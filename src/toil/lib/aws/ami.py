@@ -113,7 +113,7 @@ def flatcar_release_feed_ami(
 
     Retries if the release feed cannot be fetched. If the release feed has a
     permanent error, yields nothing. If some entries in the release feed are
-    unparseable, yields the others.
+    unparsable, yields the others.
     """
 
     # If we get non-JSON content we want to retry.

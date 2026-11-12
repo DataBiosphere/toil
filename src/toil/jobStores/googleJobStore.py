@@ -500,7 +500,7 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
 
         caution: makes no api request. blob may not ACTUALLY exist
 
-        :param client: The Google Sotrage client to use to connect with.
+        :param client: The Google Storage client to use to connect with.
 
         :param url: the URL
 

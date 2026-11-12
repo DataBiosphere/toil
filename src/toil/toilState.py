@@ -126,7 +126,7 @@ class ToilState:
 
     def job_exists(self, job_id: str) -> bool:
         """
-        Test if the givin job exists now.
+        Test if the given job exists now.
 
         Returns True if the given job exists right now, and false if it hasn't
         been created or it has been deleted elsewhere.

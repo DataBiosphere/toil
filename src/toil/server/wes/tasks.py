@@ -228,7 +228,7 @@ class ToilWorkflowRunner:
             workflow_url
         ):
             # We've been sent a zip file. We should interpret this as an Amazon Genomics CLI-style zip file.
-            # Extract everything next to the zip and find and open relvant files.
+            # Extract everything next to the zip and find and open relevant files.
             logger.info("Extracting and parsing Amazon-style workflow bundle...")
             zip_info = amazon_wes_utils.parse_workflow_zip_file(
                 workflow_url, self.wf_type

@@ -165,7 +165,7 @@ class Node:
 
     def injectFile(self, fromFile, toFile, role):
         """
-        rysnc a file to the container with the given role
+        rsync a file to the container with the given role
         """
         maxRetries = 10
         for retry in range(maxRetries):
@@ -183,7 +183,7 @@ class Node:
 
     def extractFile(self, fromFile, toFile, role):
         """
-        rysnc a file from the container with the given role
+        rsync a file from the container with the given role
         """
         maxRetries = 10
         for retry in range(maxRetries):

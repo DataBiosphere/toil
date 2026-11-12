@@ -198,7 +198,7 @@ def main() -> None:
             # We need to make a place that looks like the job paths half of these.
 
             # Sort by job-side path so we do children before parents, to
-            # stop us from accidentally making children inside moutned
+            # stop us from accidentally making children inside mounted
             # parents.
             sorted_mounts = sorted(host_and_job_paths, key=lambda t: t[1], reverse=True)
 

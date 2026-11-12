@@ -30,6 +30,7 @@ import subprocess
 from packaging import version
 
 from toil.lib.conversions import convert_units
+from typing import IO, Iterable, Iterator, TypeVar, Callable
 
 LSB_PARAMS_FILENAME = "lsb.params"
 LSF_CONF_FILENAME = "lsf.conf"
@@ -41,7 +42,7 @@ LSF_JSON_OUTPUT_MIN_VERSION = "10.1.0.2"
 logger = logging.getLogger(__name__)
 
 
-def find(basedir, string):
+def find(basedir: str, string: str) -> list[str]:
     """
     walk basedir and return all files matching string
     """
@@ -52,23 +53,24 @@ def find(basedir, string):
     return matches
 
 
-def find_first_match(basedir, string):
+def find_first_match(basedir: str, string: str) -> str | None:
     """
     return the first file that matches string starting from basedir
     """
     matches = find(basedir, string)
-    return matches[0] if matches else matches
+    return matches[0] if matches else None
 
 
-def get_conf_file(filename, env):
+def get_conf_file(filename: str, env: str) -> str | None:
     conf_path = os.environ.get(env)
     if not conf_path:
         return None
     conf_file = find_first_match(conf_path, filename)
     return conf_file
 
+T = TypeVar("T")
 
-def apply_conf_file(fn, conf_filename):
+def apply_conf_file(fn: Callable[[Iterable[str]], T], conf_filename: str) -> T | None:
     for env in LSF_CONF_ENV:
         conf_file = get_conf_file(conf_filename, env)
         if conf_file:
@@ -79,21 +81,21 @@ def apply_conf_file(fn, conf_filename):
     return None
 
 
-def per_core_reserve_from_stream(stream):
+def per_core_reserve_from_stream(stream: Iterable[str]) -> str | None:
     for k, v in tokenize_conf_stream(stream):
         if k in {"RESOURCE_RESERVE_PER_SLOT", "RESOURCE_RESERVE_PER_TASK"}:
             return v.upper()
     return None
 
 
-def get_lsf_units_from_stream(stream):
+def get_lsf_units_from_stream(stream: Iterable[str]) -> str | None:
     for k, v in tokenize_conf_stream(stream):
         if k == "LSF_UNIT_FOR_LIMITS":
             return v
     return None
 
 
-def tokenize_conf_stream(conf_handle):
+def tokenize_conf_stream(conf_handle: Iterable[str]) -> Iterator[tuple[str, str]]:
     """
     convert the key=val pairs in a LSF config stream to tuples of tokens
     """
@@ -106,7 +108,7 @@ def tokenize_conf_stream(conf_handle):
         yield (tokens[0].strip(), tokens[1].strip())
 
 
-def apply_bparams(fn):
+def apply_bparams(fn: Callable[[list[str]], T]) -> T | None:
     """
     apply fn to each line of bparams, returning the result
     """
@@ -119,7 +121,7 @@ def apply_bparams(fn):
     return fn(output.split("\n"))
 
 
-def apply_lsadmin(fn):
+def apply_lsadmin(fn: Callable[[list[str]], T]) -> T | None:
     """
     apply fn to each line of lsadmin, returning the result
     """
@@ -156,7 +158,7 @@ def get_lsf_units(resource: bool = False) -> str:
         return DEFAULT_LSF_UNITS
 
 
-def parse_mem_and_cmd_from_output(output: str):
+def parse_mem_and_cmd_from_output(output: str) -> tuple[re.Match[str] | None, re.Match[str] | None]:
     """Use regex to find "MAX MEM" and "Command" inside of an output."""
     # Handle hard wrapping in the middle of words and arbitrary
     # indents. May drop spaces at the starts of lines that aren't
@@ -167,7 +169,7 @@ def parse_mem_and_cmd_from_output(output: str):
     return max_mem, command
 
 
-def get_lsf_version():
+def get_lsf_version() -> str | None:
     """
     Get current LSF version
     """
@@ -184,7 +186,7 @@ def get_lsf_version():
         return None
 
 
-def check_lsf_json_output_supported():
+def check_lsf_json_output_supported() -> bool:
     """Check if the current LSF system supports bjobs json output."""
     try:
         lsf_version = get_lsf_version()
@@ -206,7 +208,7 @@ def parse_memory(mem: float) -> str:
     return f"{megabytes_of_mem:.0f}MB"
 
 
-def per_core_reservation():
+def per_core_reservation() -> bool:
     """
     returns True if the cluster is configured for reservations to be per core,
     False if it is per job

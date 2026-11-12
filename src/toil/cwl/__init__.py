@@ -33,7 +33,7 @@ def check_cwltool_version() -> None:
         # See https://github.com/pypa/setuptools/issues/3772
         from setuptools.extern.packaging.version import InvalidVersion  # type: ignore
     except ImportError:
-        # It's not clear that this exception is really part fo the public API, so fake it.
+        # It's not clear that this exception is really part of the public API, so fake it.
         class InvalidVersion(Exception):  # type: ignore
             pass
 

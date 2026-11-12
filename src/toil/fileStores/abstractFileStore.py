@@ -16,6 +16,7 @@ import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator, Iterator
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from tempfile import mkstemp
 from threading import Event, Semaphore
 from typing import (
@@ -38,13 +39,13 @@ from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human
 from toil.lib.io import WriteWatchingStream, mkdtemp
+from toil.statsAndLogging import LeaderLogMessage
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from toil.fileStores.cachingFileStore import CachingFileStore
     from toil.fileStores.nonCachingFileStore import NonCachingFileStore
-
 
 class AbstractFileStore(ABC):
     """
@@ -99,7 +100,7 @@ class AbstractFileStore(ABC):
                prevent this file store's startCommit and the previous job's
                startCommit methods from running at the same time and racing. If
                they did race, it might be possible for the later job to be fully
-               marked as completed in the job store before the eralier job was.
+               marked as completed in the job store before the earlier job was.
         """
         self.jobStore = jobStore
         self.jobDesc = jobDesc
@@ -116,7 +117,7 @@ class AbstractFileStore(ABC):
         )
         self.jobName: str = str(self.jobDesc)
         self.waitForPreviousCommit = waitForPreviousCommit
-        self.logging_messages: list[dict[str, int | str]] = []
+        self.logging_messages: list[LeaderLogMessage] = []
         self.logging_user_streams: list[dict[str, str]] = []
         # Records file IDs of files deleted during the current job. Doesn't get
         # committed back until the job is completely successful, because if the
@@ -403,7 +404,7 @@ class AbstractFileStore(ABC):
             for item in self._accessLog:
                 # For each access record
                 if len(item) == 2:
-                    # If it has a name, dump wit the name
+                    # If it has a name, dump with the name
                     file_id, dest_path = item
                     if os.path.exists(dest_path):
                         if os.path.islink(dest_path):
@@ -681,13 +682,19 @@ class AbstractFileStore(ABC):
         logged by the worker at the same level.
 
         Does not depend on the commit system, so this is safe to use during an
-        ansynchronous commit, or without a commit afterward.
+        asynchronous commit, or without a commit afterward.
 
         :param text: The string to log.
         :param level: The logging level.
         """
+        # To ensure that the leader can put the messages from different jobs in
+        # a sensible order, we timestamp our messages. This is not much help if
+        # the nodes' clocks are off, but it beats just printing them on the
+        # leader in iteration order.
+        # See: <https://stackoverflow.com/questions/66393752/get-unix-time-in-python#comment140423302_75417916>
+        timestamp = datetime.now(timezone.utc).timestamp()
         logger.log(level=level, msg=("LOG-TO-LEADER: " + text))
-        self.logging_messages.append(dict(text=text, level=level))
+        self.logging_messages.append(LeaderLogMessage(text=text, level=level, timestamp=timestamp))
 
     @deprecated(new_function_name="log_to_leader")
     def logToMaster(self, text: str, level: int = logging.INFO) -> None:

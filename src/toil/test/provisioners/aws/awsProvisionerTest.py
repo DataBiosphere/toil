@@ -32,7 +32,6 @@ from toil.provisioners.aws import (
     get_aws_zone_from_spot_market,
     get_best_aws_zone,
 )
-from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.test import (
     get_data,
     integrative,
@@ -95,6 +94,7 @@ class TestAWSProvisionerBenchTest:
 
     # Needs to talk to EC2 for image discovery
     def test_AMI_finding(self):
+        from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         for zone in ["us-west-2a", "eu-central-1a", "sa-east-1b"]:
             provisioner = AWSProvisioner(
                 "fakename", "mesos", zone, 10000, None, None, enable_fuse=False
@@ -109,6 +109,7 @@ class TestAWSProvisionerBenchTest:
         Make sure the `_write_file_to_cloud()` and `_read_file_from_cloud()`
         functions of the AWS provisioner work as intended.
         """
+        from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         provisioner = AWSProvisioner(
             f"aws-provisioner-test-{uuid4()}",
             "mesos",
