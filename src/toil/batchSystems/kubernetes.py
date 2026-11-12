@@ -120,7 +120,7 @@ if TYPE_CHECKING:
     from kubernetes.watch.watch import _Event, _ObjectEvent, _ListResponse
 
 logger = logging.getLogger(__name__)
-retryable_kubernetes_errors: list[type[Exception] | ErrorCondition] = [
+retryable_kubernetes_errors: list[type[Exception]] = [
     urllib3.exceptions.MaxRetryError,
     urllib3.exceptions.ProtocolError,
     ApiException,
@@ -133,7 +133,7 @@ def is_retryable_kubernetes_error(e: Exception) -> bool:
     exceptions thrown by Kubernetes.
     """
     for error in retryable_kubernetes_errors:
-        if isinstance(error, type) and isinstance(e, error):
+        if isinstance(e, error):
             return True
     return False
 
@@ -463,7 +463,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     return api_object
                 else:
                     # We need to wrap it up so that all calls that raise errors are retried.
-                    error_list = list(retryable_kubernetes_errors)
+                    error_list: list[type[Exception] | ErrorCondition] = list(retryable_kubernetes_errors)
                     if len(errors) > 0:
                         # Say don't retry on these particular errors
                         error_list.append(
@@ -1332,7 +1332,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # retry, but we also don't want to just ignore all errors. We only
             # want to ignore errors we expect to see if the problem is that the
             # metrics service is not working.
-            if type(e) in retryable_kubernetes_errors:
+            if is_retryable_kubernetes_error(e):
                 # This is the sort of error we would expect from an overloaded
                 # Kubernetes or a dead metrics service.
                 # We can't tell that the pod is stuck, so say that it isn't.
