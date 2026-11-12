@@ -350,7 +350,7 @@ class Leader:
             try:
                 self.create_status_sentinel_file(self.toilState.totalFailedJobs)
             except OSError as e:
-                logger.debug(f"Error from importFile with hardlink=True: {e}")
+                logger.debug(f"Error from import_file with hardlink=True: {e}")
 
             logger.info(
                 "Finished toil run %s"

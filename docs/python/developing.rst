@@ -345,7 +345,7 @@ FileID
 
 The :class:`toil.fileStore.FileID` class is a small wrapper around Python's builtin string class. It is used to
 represent a file's ID in the file store, and has a ``size`` attribute that is the
-file's size in bytes. This object is returned by ``importFile`` and ``writeGlobalFile``.
+file's size in bytes. This object is returned by ``import_file`` and ``writeGlobalFile``.
 
 
 .. _managingFiles:
@@ -401,7 +401,7 @@ Staging of Files into the Job Store
 External files can be imported into or exported out of the job store prior to
 running a workflow when the :class:`toil.common.Toil` context manager is used
 on the leader. The context manager provides methods
-:func:`toil.common.Toil.importFile`, and :func:`toil.common.Toil.exportFile`
+:func:`toil.common.Toil.import_file`, and :func:`toil.common.Toil.export_file`
 for this purpose. The destination and source locations of such files are
 described with URLs passed to the two methods.  Local files can be imported and
 exported as relative paths, and should be relative to the directory where the
@@ -412,7 +412,7 @@ Using absolute paths and appropriate schema where possible (prefixing with
 and is recommended.
 
 A list of the currently supported URLs can be found at
-:func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile`. To import
+:func:`toil.jobStores.abstractJobStore.AbstractJobStore.import_file`. To import
 an external file into the job store as a shared file, pass the optional
 ``sharedFileName`` parameter to that method.
 
