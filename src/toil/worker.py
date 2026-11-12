@@ -389,7 +389,14 @@ def workerScript(
         "XDG_RUNTIME_DIR",
         "XDG_DATA_DIRS",
         "DBUS_SESSION_BUS_ADDRESS",
+        "JOB_ID",
+        "JOB_NAME",
+        "NHOSTS",
+        "NQUEUES",
+        "NSLOTS",
+        "PE_HOSTFILE",
     }
+    scheduler_job_prefixes = ("SLURM_", "SLURMD_", "PBS_", "LSB_", "SGE_", "_CONDOR_")
     for k, v in environment.items():
         if k == "PATH":
             # Handle path specially. Sometimes e.g. leader may not include
@@ -397,7 +404,7 @@ def workerScript(
 
             # Use the provided PATH and then the local system's PATH if any
             os.environ[k] = path_union(v, os.environ.get(k))
-        elif k not in env_reject:
+        elif k not in env_reject and not k.startswith(scheduler_job_prefixes):
             os.environ[k] = v
     # sys.path is used by __import__ to find modules
     if "PYTHONPATH" in environment:
