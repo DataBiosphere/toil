@@ -152,6 +152,11 @@ def nextChainable(
     if successor.disk > predecessor.disk:
         logger.debug("We need more disk for the next job, so finishing")
         return None
+    if successor.accelerators != predecessor.accelerators:
+        logger.debug(
+            "Accelerators are different for the next job, returning to the leader"
+        )
+        return None
     if successor.preemptible != predecessor.preemptible:
         logger.debug(
             "Preemptibility is different for the next job, returning to the leader"
