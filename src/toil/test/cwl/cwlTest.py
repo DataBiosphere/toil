@@ -15,7 +15,6 @@
 import json
 import logging
 import os
-import platform
 import re
 import shutil
 import stat
@@ -2281,80 +2280,60 @@ def test_timelimit_expression(tmp_path: Path) -> None:
 @needs_docker
 @pytest.mark.cwl
 @pytest.mark.cwl_small
-@pytest.mark.xfail(
-    platform.system() == "Darwin",
-    reason="On Mac, Toil adds a file size check to the container command for each file",
-)
-def test_container_command_size_independent_of_file_count(tmp_path: Path) -> None:
+def test_container_mounts_independent_of_file_count(tmp_path: Path) -> None:
     """
-    Make sure that a containerized tool's command stays under the command
-    size limit no matter how many input files it mounts.
+    Make sure that the number of mounts, and so the length of the container
+    command, doesn't grow with the number of input files when it is limited.
 
     See <https://github.com/DataBiosphere/toil/issues/3358>.
     """
-    # Long names make each file's mount add a lot to the command.
+    # Spread the inputs over two directories, as if on two file systems.
     input_paths = []
     for i in range(10):
-        input_path = tmp_path / "inputs" / f"{i:02d}_{'x' * 100}.txt"
+        input_path = tmp_path / f"inputs_{i % 2}" / f"{i:02d}.txt"
         input_path.parent.mkdir(exist_ok=True)
         input_path.write_text(f"file {i}\n")
         input_paths.append(input_path)
+    job_file = tmp_path / "job.json"
+    job_file.write_text(
+        json.dumps({"files": [{"class": "File", "path": str(p)} for p in input_paths]})
+    )
 
-    def run_cat(file_count: int, extra_env: dict[str, str]) -> tuple[str, list[int]]:
+    def run_cat(max_mounts: int) -> tuple[str, int]:
         """
-        Run the tool on some of the input files.
+        Run the tool on the input files with a limit on input mounts.
 
-        :returns: the concatenated files, and the sizes in bytes that cwltool
-            reported for the container command, in order.
+        :returns: the concatenated files, and how many mounts the inputs used.
         """
-        run_dir = tmp_path / f"run_{file_count}"
-        job_file = run_dir / "job.json"
+        run_dir = tmp_path / f"run_{max_mounts}"
         run_dir.mkdir()
-        job_file.write_text(
-            json.dumps(
-                {
-                    "files": [
-                        {"class": "File", "path": str(p)}
-                        for p in input_paths[:file_count]
-                    ]
-                }
-            )
-        )
         with get_data("test/cwl/cat_file_array.cwl") as cwl_file:
             cmd = [
                 "toil-cwl-runner",
                 f"--jobStore=file:{run_dir / 'jobStore'}",
                 f"--outdir={run_dir / 'out'}",
                 "--logDebug",
-                f"--writeLogs={run_dir / 'logs'}",
-                "--writeLogsFromAllJobs=true",
                 str(cwl_file),
                 str(job_file),
             ]
             p = subprocess.run(
-                cmd, capture_output=True, text=True, env={**os.environ, **extra_env}
+                cmd,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "CWLTOOL_MAX_INPUT_MOUNTS": str(max_mounts)},
             )
         assert p.returncode == 0, p.stderr
-        sizes = [
-            int(s)
-            for s in re.findall(r"Command (?:is|was) ([0-9]+) bytes", p.stderr)
-        ]
+        mounts = set(re.findall(r"--mount=\S*target=/var/lib/cwl/[^,\s]*", p.stderr))
         concatenated = json.loads(p.stdout)["concatenated"]["path"]
-        return Path(concatenated).read_text(), sizes
+        return Path(concatenated).read_text(), len(mounts)
 
-    _, sizes = run_cat(1, {})
-    assert sizes, "cwltool did not report the container command size"
-    one_file_size = sizes[0]
-
-    # The tool still gets the files when the command's size is limited to
-    # about what it is with one file.
-    limit = one_file_size + 256
-    output, sizes = run_cat(10, {"CWLTOOL_MAX_COMMAND_BYTES": str(limit)})
-    assert output == "".join(f"file {i}\n" for i in range(10))
-    assert sizes and sizes[0] > limit, (
-        f"Command with 10 files was {sizes[0] if sizes else None} bytes, "
-        f"which doesn't exceed the limit of {limit} bytes"
-    )
+    expected = "".join(f"file {i}\n" for i in range(10))
+    output, mounts = run_cat(100)
+    assert output == expected
+    assert mounts == 10
+    output, mounts = run_cat(2)
+    assert output == expected
+    assert mounts == 2
 
 
 @needs_cwl
