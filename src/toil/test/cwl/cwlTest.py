@@ -15,6 +15,7 @@
 import json
 import logging
 import os
+import platform
 import re
 import shutil
 import stat
@@ -2274,6 +2275,86 @@ def test_timelimit_expression(tmp_path: Path) -> None:
         assert len(p.stdout) > 0
         assert "Finished toil run successfully" in p.stderr
         assert p.returncode == 0
+
+
+@needs_cwl
+@needs_docker
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+@pytest.mark.xfail(
+    platform.system() == "Darwin",
+    reason="On Mac, Toil adds a file size check to the container command for each file",
+)
+def test_container_command_size_independent_of_file_count(tmp_path: Path) -> None:
+    """
+    Make sure that a containerized tool's command stays under the command
+    size limit no matter how many input files it mounts.
+
+    See <https://github.com/DataBiosphere/toil/issues/3358>.
+    """
+    # Long names make each file's mount add a lot to the command.
+    input_paths = []
+    for i in range(10):
+        input_path = tmp_path / "inputs" / f"{i:02d}_{'x' * 100}.txt"
+        input_path.parent.mkdir(exist_ok=True)
+        input_path.write_text(f"file {i}\n")
+        input_paths.append(input_path)
+
+    def run_cat(file_count: int, extra_env: dict[str, str]) -> tuple[str, list[int]]:
+        """
+        Run the tool on some of the input files.
+
+        :returns: the concatenated files, and the sizes in bytes that cwltool
+            reported for the container command, in order.
+        """
+        run_dir = tmp_path / f"run_{file_count}"
+        job_file = run_dir / "job.json"
+        run_dir.mkdir()
+        job_file.write_text(
+            json.dumps(
+                {
+                    "files": [
+                        {"class": "File", "path": str(p)}
+                        for p in input_paths[:file_count]
+                    ]
+                }
+            )
+        )
+        with get_data("test/cwl/cat_file_array.cwl") as cwl_file:
+            cmd = [
+                "toil-cwl-runner",
+                f"--jobStore=file:{run_dir / 'jobStore'}",
+                f"--outdir={run_dir / 'out'}",
+                "--logDebug",
+                f"--writeLogs={run_dir / 'logs'}",
+                "--writeLogsFromAllJobs=true",
+                str(cwl_file),
+                str(job_file),
+            ]
+            p = subprocess.run(
+                cmd, capture_output=True, text=True, env={**os.environ, **extra_env}
+            )
+        assert p.returncode == 0, p.stderr
+        sizes = [
+            int(s)
+            for s in re.findall(r"Command (?:is|was) ([0-9]+) bytes", p.stderr)
+        ]
+        concatenated = json.loads(p.stdout)["concatenated"]["path"]
+        return Path(concatenated).read_text(), sizes
+
+    _, sizes = run_cat(1, {})
+    assert sizes, "cwltool did not report the container command size"
+    one_file_size = sizes[0]
+
+    # The tool still gets the files when the command's size is limited to
+    # about what it is with one file.
+    limit = one_file_size + 256
+    output, sizes = run_cat(10, {"CWLTOOL_MAX_COMMAND_BYTES": str(limit)})
+    assert output == "".join(f"file {i}\n" for i in range(10))
+    assert sizes and sizes[0] > limit, (
+        f"Command with 10 files was {sizes[0] if sizes else None} bytes, "
+        f"which doesn't exceed the limit of {limit} bytes"
+    )
 
 
 @needs_cwl
