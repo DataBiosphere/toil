@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import errno
+import getpass
 import logging
 import math
 import os
@@ -232,6 +233,59 @@ def get_accelerator_args(
                     f"accelerator does not have"
                 ) from e
     return args
+
+
+def qos_submit_limit(user: str, qos: str | None, partition: str | None) -> int | None:
+    """
+    Get the most jobs that Slurm lets the user have submitted at once, under
+    the given QOS (or the QOSes of the user's associations) and the QOS of the
+    given partition (or the default one), and the user's association limits.
+
+    :returns: The smallest such limit, or None if none is set.
+    :raises CalledProcessErrorStderr: if sacctmgr or scontrol cannot say.
+    """
+    limits: list[int] = []
+    qos_names: set[str] = set()
+    associations = call_command(
+        [
+            "sacctmgr",
+            "-nP",
+            "show",
+            "assoc",
+            "where",
+            f"user={user}",
+            "format=DefaultQOS,QOS,MaxSubmit",
+        ]
+    )
+    for association in associations.splitlines():
+        default_qos, allowed_qos, max_submit = association.split("|")
+        if max_submit:
+            limits.append(int(max_submit))
+        qos_names.update(
+            [qos] if qos else [default_qos] if default_qos else allowed_qos.split(",")
+        )
+    partitions = call_command(
+        ["scontrol", "-o", "show", "partition", *([partition] if partition else [])]
+    )
+    for line in partitions.splitlines():
+        fields = dict(field.split("=", 1) for field in line.split() if "=" in field)
+        if partition or fields.get("Default") == "YES":
+            qos_names.add(fields.get("QoS", "N/A"))
+    qos_names -= {"", "N/A"}
+    if qos_names:
+        qos_limits = call_command(
+            [
+                "sacctmgr",
+                "-nP",
+                "show",
+                "qos",
+                "where",
+                f"name={','.join(sorted(qos_names))}",
+                "format=MaxSubmitPU",
+            ]
+        )
+        limits.extend(int(limit) for limit in qos_limits.split())
+    return min(limits, default=None)
 
 
 # For parsing user-provided option overrides (or self-generated
@@ -1271,9 +1325,57 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         self.partitions = SlurmBatchSystem.PartitionSet()
+        self._limit_jobs_to_qos()
         # Record when the workflow started, so we know when to stop looking for
         # jobs we ran.
         self.start_time = datetime.now().astimezone(None)
+
+    def _limit_jobs_to_qos(self) -> None:
+        """
+        Submit no more jobs at once than Slurm lets the user have submitted,
+        less the user's jobs already queued, so that no submission is refused.
+        """
+        user = getpass.getuser()
+        try:
+            limit = qos_submit_limit(
+                user,
+                self.config.slurm_qos,  # type: ignore[attr-defined]
+                self.config.slurm_partition,  # type: ignore[attr-defined]
+            )
+            queued = len(
+                call_command(["squeue", "-h", "-u", user, "-o", "%i"]).split()
+            )
+        except (CalledProcessErrorStderr, OSError) as e:
+            logger.info(
+                "Not limiting Slurm jobs to the QOS, whose limits could not be read: %s",
+                e,
+            )
+            return
+        if limit is None or limit - queued >= self.max_jobs:
+            logger.debug(
+                "Slurm lets %s have %s jobs submitted and %d are queued already",
+                user,
+                "any number of" if limit is None else limit,
+                queued,
+            )
+            return
+        if limit - queued < 1:
+            logger.warning(
+                "Slurm lets %s have %d jobs submitted and %d are queued already; "
+                "submitting one at a time",
+                user,
+                limit,
+                queued,
+            )
+        self.max_jobs = max(limit - queued, 1)
+        logger.info(
+            "Submitting at most %d Slurm jobs at once: Slurm lets %s have %d "
+            "submitted and %d are queued already",
+            self.max_jobs,
+            user,
+            limit,
+            queued,
+        )
 
     # Override issuing jobs so we can check if we need to use Slurm's magic
     # whole-node-memory feature.

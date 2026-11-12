@@ -1069,3 +1069,42 @@ class SlurmTest(ToilTest):
 
         result = toil.batchSystems.slurm.parse_slurm_time("365-00:00:00")
         self.assertEqual(result, 365 * 86400)
+
+    def _fake_qos(self, associations: str, partitions: str, qos_limits: dict[str, str]):
+        def call(args, **_) -> str:
+            if args[:4] == ["sacctmgr", "-nP", "show", "assoc"]:
+                return associations
+            if args[:4] == ["scontrol", "-o", "show", "partition"]:
+                return partitions
+            if args[:4] == ["sacctmgr", "-nP", "show", "qos"]:
+                names = args[5].removeprefix("name=").split(",")
+                return "".join(qos_limits[name] + "\n" for name in names)
+            raise RuntimeError(f"Cannot fake command call: {args}")
+
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call)
+
+    def test_qos_submit_limit_takes_the_smallest_limit(self):
+        self._fake_qos(
+            "normal|normal,long|20\n",
+            "PartitionName=small QoS=small_qos Default=YES\n",
+            {"normal": "", "small_qos": "9"},
+        )
+        self.assertEqual(toil.batchSystems.slurm.qos_submit_limit("u", None, None), 9)
+
+    def test_qos_submit_limit_uses_the_given_qos_and_partition(self):
+        self._fake_qos(
+            "normal|normal,big|\n",
+            "PartitionName=large QoS=N/A Default=NO\n",
+            {"big": "50", "normal": "4"},
+        )
+        self.assertEqual(
+            toil.batchSystems.slurm.qos_submit_limit("u", "big", "large"), 50
+        )
+
+    def test_qos_submit_limit_without_limits(self):
+        self._fake_qos(
+            "||\n",
+            "PartitionName=standard QoS=N/A Default=YES\n",
+            {"normal": ""},
+        )
+        self.assertIsNone(toil.batchSystems.slurm.qos_submit_limit("u", None, None))

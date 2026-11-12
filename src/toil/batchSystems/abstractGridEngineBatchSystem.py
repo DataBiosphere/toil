@@ -160,8 +160,9 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             if newJob is not None:
                 self.waitingJobs.append(newJob)
             # Launch jobs as necessary:
-            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(
-                self.boss.config.max_jobs
+            while (
+                len(self.waitingJobs) > 0
+                and len(self.runningJobs) < self.boss.max_jobs
             ):
                 activity = True
                 (
@@ -482,6 +483,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         self.config = config
+        self.max_jobs = int(config.max_jobs)
 
         self.currentJobs: set[int] = set()
 

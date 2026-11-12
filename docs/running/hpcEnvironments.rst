@@ -54,6 +54,8 @@ A kind that every node provides, such as one a job starts for itself, is given w
 
 In CWL, a step asks for such an accelerator with the ``toil:AcceleratorRequirement`` hint (see :ref:`cwlAccelerators`), with ``properties`` giving the fields; in Toil's Python API, with ``accelerators=[{"kind": "qpu", "count": 1, "properties": {"qubits": "5"}}]``.
 
+If Slurm's accounting limits how many jobs each user may have submitted at once, through a QOS (``MaxSubmitJobsPerUser``) or an association (``MaxSubmitJobs``), Toil submits no more jobs at once than that limit, less the jobs the user already has queued when the workflow starts, or than ``--maxJobs`` if that is smaller. It reads the limits of the ``--slurmQOS`` QOS, or else of the QOSes of the user's associations, and of the QOS of the ``--slurmPartition`` partition, or else of the default partition, with ``sacctmgr`` and ``scontrol``; if it cannot read them, it uses ``--maxJobs`` alone.
+
 Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.)
 
 .. _runningSlurmAllocation:
