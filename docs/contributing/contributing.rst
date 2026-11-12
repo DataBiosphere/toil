@@ -5,8 +5,9 @@
 Running Tests
 -------------
 
-Test make targets, invoked as ``$ make <target>``, subject to which
-environment variables are set (see :ref:`test_env_vars`).
+You can run Toil's tests through Makefile targets. These targets are controlled
+by environment variables (see :ref:`test_env_vars`), and by Makefile variables
+(such as ``cov`` and ``tests``) that you pass on the command line.
 
 +-------------------------+---------------------------------------------------+
 |     TARGET              |        DESCRIPTION                                |
@@ -23,9 +24,45 @@ environment variables are set (see :ref:`test_env_vars`).
 |                         | doesn't redirect output. This makes it appears on |
 |                         | the terminal as expected.                         |
 +-------------------------+---------------------------------------------------+
+| mypy                    | Runs type checking lint step.                     |
++-------------------------+---------------------------------------------------+
+| codespell-check         | Runs spelling mistake/typo finding lint step.     |
++-------------------------+---------------------------------------------------+
+| codespell-fix           | Tries to automatically fix spelling mistakes.     |
++-------------------------+---------------------------------------------------+
 
 Before running tests for the first time, initialize your virtual environment
 following the steps in :ref:`buildFromSource`.
+
+Testing Your Changes
+~~~~~~~~~~~~~~~~~~~~
+
+Usually, when working on Toil, you will want to run the tests for the feature
+you are working on until they work, and then run the linting checks before
+making your pull request. To run tests in a single test class::
+
+    $ make test cov='' tests=src/toil/test/sort/sortTest.py::SortTest
+
+
+Run an individual test with::
+
+    $ make test cov='' tests=src/toil/test/sort/sortTest.py::SortTest::testSort
+
+
+The ``cov=''`` part here suppresses generating a code coverage report.
+
+To run linting::
+
+    $ make mypy codespell-check
+
+
+CI will fail if there are type errors or spelling mistakes, so make sure to fix
+them all!
+
+Running the Test Suite
+~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes, you want to run the test suite as a whole.
 
 Run all tests (including slow tests)::
 
@@ -36,9 +73,7 @@ Run only quick tests (as of Jul 25, 2018, this was ~ 20 minutes)::
 
     $ export TOIL_TEST_QUICK=True; make test
 
-Run an individual test with::
 
-    $ make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
 
 The default value for ``tests`` is ``"src"`` which includes all tests in the
 ``src/`` subdirectory of the project root. Tests that require a particular
