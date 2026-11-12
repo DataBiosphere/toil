@@ -42,6 +42,7 @@ class WorkerTests(ToilTest):
             preemptible: bool = True,
             checkpoint: bool = False,
             local: bool | None = None,
+            accelerators: list[dict] | None = None,
         ):
             """
             Create a JobDescription with no command (representing a Job that
@@ -57,6 +58,7 @@ class WorkerTests(ToilTest):
                     "cores": cores,
                     "disk": disk,
                     "preemptible": preemptible,
+                    "accelerators": accelerators or [],
                 },
                 jobName=name,
                 local=local,
@@ -126,6 +128,23 @@ class WorkerTests(ToilTest):
             jobDesc2 = createTestJobDesc(1, 2, 3, preemptible=False)
             getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
             self.assertEqual(nextChainable(jobDesc1, self.jobStore, self.config), None)
+
+            gpu = [{"count": 1, "kind": "gpu"}]
+            fpga = [{"count": 1, "kind": "fpga"}]
+            for before, after in ((None, gpu), (gpu, None), (gpu, fpga)):
+                jobDesc1 = createTestJobDesc(1, 2, 3, accelerators=before)
+                jobDesc2 = createTestJobDesc(1, 2, 3, accelerators=after)
+                getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
+                self.assertEqual(
+                    nextChainable(jobDesc1, self.jobStore, self.config), None
+                )
+
+            jobDesc1 = createTestJobDesc(1, 2, 3, accelerators=gpu)
+            jobDesc2 = createTestJobDesc(1, 2, 3, accelerators=gpu)
+            getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
+            chainable = nextChainable(jobDesc1, self.jobStore, self.config)
+            self.assertNotEqual(chainable, None)
+            self.assertEqual(chainable.jobStoreID, jobDesc2.jobStoreID)
 
             # A change in local-ness from True to False should be disallowed.
             jobDesc1 = createTestJobDesc(1, 2, 3, local=True)

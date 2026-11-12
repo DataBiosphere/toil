@@ -140,7 +140,7 @@ Finally, there is the breakdown of resource usage by jobs. This starts with a ta
      Worker Jobs  |     min    med    ave    max
                   |       1      1 1.3333      2
 
-In this example, most of the workers ran one job each, but one worker managed to run two jobs, via chaining. (Jobs will chain when a job has only one dependant job, which in turn depends on only that first job, and the second job needs no more resources than the first job did.)
+In this example, most of the workers ran one job each, but one worker managed to run two jobs, via chaining. (Jobs will chain when a job has only one dependant job, which in turn depends on only that first job, and the second job needs no more resources than the first job did and the same accelerators.)
 
 Next, we have statistics for resource usage over all jobs together::
 
