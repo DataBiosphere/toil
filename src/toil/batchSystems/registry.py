@@ -100,9 +100,9 @@ def slurm_batch_system_factory():
 
 
 def slurm_allocation_batch_system_factory():
-    from toil.batchSystems.slurm_allocation import SlurmStepBatchSystem
+    from toil.batchSystems.slurm_allocation import SlurmAllocationBatchSystem
 
-    return SlurmStepBatchSystem
+    return SlurmAllocationBatchSystem
 
 
 def torque_batch_system_factory():

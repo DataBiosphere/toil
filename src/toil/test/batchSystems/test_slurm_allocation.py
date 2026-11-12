@@ -5,9 +5,12 @@ import pytest
 
 import toil.batchSystems.slurm_allocation
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
-from toil.batchSystems.slurm_allocation import SlurmStepBatchSystem
+from toil.batchSystems.slurm_allocation import (
+    SlurmAllocationBatchSystem,
+    SlurmStepBatchSystem,
+)
 from toil.common import Config
-from toil.job import Requirer
+from toil.job import Job, JobDescription, Requirer
 
 GiB = 2**30
 
@@ -154,3 +157,40 @@ def test_cancels_only_the_named_steps(
     slurm.steps = "100.0 toil_job_1\n100.1 toil_job_2\n100.batch batch\n"
     batch_system._cancel_steps({"toil_job_2"})
     assert slurm.cancelled == ["100.1"]
+
+
+def test_mixed_placement_runs_steps_and_submits_the_rest(
+    batch_system: SlurmStepBatchSystem, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    issued: list[str] = []
+    monkeypatch.setattr(
+        batch_system,
+        "issueBatchJob",
+        lambda command, job_desc, job_environment=None: issued.append(command) or 1,
+    )
+    mixed = SlurmAllocationBatchSystem.__new__(SlurmAllocationBatchSystem)
+    mixed.localBatch = batch_system
+
+    def job(accelerators: list[dict]) -> JobDescription:
+        return JobDescription(
+            requirements={
+                "cores": 1,
+                "memory": GiB,
+                "disk": 1,
+                "accelerators": accelerators,
+            },
+            jobName="job",
+        )
+
+    assert mixed.handleLocalJob("in allocation", job([])) == 1
+    assert mixed.handleLocalJob("on a GPU", job([{"kind": "gpu", "count": 1}])) == 1
+    assert (
+        mixed.handleLocalJob("on a QPU", job([{"kind": "quantum", "count": 1}])) is None
+    )
+    assert mixed.handleLocalJob("on 3 GPUs", job([{"kind": "gpu", "count": 3}])) is None
+    assert issued == ["in allocation", "on a GPU"]
+
+
+def test_options_are_added_once() -> None:
+    options = Job.Runner.getDefaultOptions("file:store")
+    assert options.slurm_step_args == []

@@ -1284,7 +1284,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         job_environment: dict[str, str] | None = None,
     ) -> int:
         # Avoid submitting internal jobs to the batch queue, handle locally
-        local_id = self.handleLocalJob(command, job_desc)
+        local_id = self.handleLocalJob(command, job_desc, job_environment)
         if local_id is not None:
             return local_id
         else:

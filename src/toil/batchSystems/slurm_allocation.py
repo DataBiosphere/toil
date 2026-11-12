@@ -30,8 +30,9 @@ from toil.batchSystems.abstractBatchSystem import (
 )
 from toil.batchSystems.options import OptionSetter
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
+from toil.batchSystems.slurm import SlurmBatchSystem
 from toil.common import Config
-from toil.job import AcceleratorRequirement, Requirer
+from toil.job import AcceleratorRequirement, JobDescription, Requirer
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
@@ -348,3 +349,44 @@ class SlurmStepBatchSystem(SingleMachineBatchSystem):
     def setOptions(cls, setOption: OptionSetter) -> None:
         super().setOptions(setOption)
         setOption("slurm_step_args")
+
+
+class SlurmAllocationBatchSystem(SlurmBatchSystem):
+    """
+    Runs each job as a step of the Slurm allocation that the leader runs in,
+    as :class:`SlurmStepBatchSystem` does, unless the allocation cannot hold
+    it, such as a job asking for an accelerator kind or more GPUs, memory or
+    cores than any one node of the allocation has. Such a job is submitted as
+    a Slurm job of its own, as :class:`toil.batchSystems.slurm.SlurmBatchSystem`
+    does.
+    """
+
+    localBatch: SlurmStepBatchSystem
+
+    def _create_local_batch(
+        self, config: Config, maxCores: float, maxMemory: float, maxDisk: int
+    ) -> SlurmStepBatchSystem:
+        return SlurmStepBatchSystem(config, maxCores, maxMemory, maxDisk)
+
+    def handleLocalJob(
+        self,
+        command: str,
+        jobDesc: JobDescription,
+        job_environment: dict[str, str] | None = None,
+    ) -> int | None:
+        try:
+            self.localBatch.check_resource_request(jobDesc)
+        except InsufficientSystemResources as e:
+            logger.info("Submitting %s as a Slurm job of its own: %s", jobDesc, e)
+            return None
+        step_id: int = self.localBatch.issueBatchJob(command, jobDesc, job_environment)
+        return step_id
+
+    @classmethod
+    def add_options(cls, parser: ArgumentParser | _ArgumentGroup) -> None:
+        SlurmStepBatchSystem.add_options(parser)
+
+    @classmethod
+    def setOptions(cls, setOption: OptionSetter) -> None:
+        super().setOptions(setOption)
+        SlurmStepBatchSystem.setOptions(setOption)
