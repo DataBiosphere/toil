@@ -15,10 +15,6 @@ import json
 import logging
 from uuid import uuid4
 
-import boto3
-from moto import mock_aws
-
-from toil.lib.aws import iam
 from toil.test import ToilTest, needs_aws_s3
 
 logger = logging.getLogger(__name__)
@@ -29,6 +25,7 @@ class IAMTest(ToilTest):
     """Check that given permissions and associated functions perform correctly"""
 
     def test_permissions_iam(self) -> None:
+        from toil.lib.aws import iam
         granted_perms = {"*": {"Action": ["ec2:*", "iam:*", "s3:*"], "NotAction": []}}
         assert (
             iam.policy_permissions_allow(
@@ -45,6 +42,7 @@ class IAMTest(ToilTest):
         )
 
     def test_negative_permissions_iam(self) -> None:
+        from toil.lib.aws import iam
         granted_perms = {"*": {"Action": ["ec2:*", "s3:*"], "NotAction": []}}
         assert (
             iam.policy_permissions_allow(
@@ -61,15 +59,21 @@ class IAMTest(ToilTest):
         )
 
     def test_wildcard_handling(self) -> None:
+        from toil.lib.aws import iam
         assert iam.permission_matches_any("iam:CreateRole", ["iam:Create**"]) is True
         assert iam.permission_matches_any("iam:GetUser", ["iam:???????"]) is True
         assert iam.permission_matches_any("iam:ListRoleTags", ["iam:*?*Tags"]) is True
         assert iam.permission_matches_any("iam:*", ["*"]) is True
         assert iam.permission_matches_any("ec2:*", ["iam:*"]) is False
 
-    @mock_aws
     @needs_aws_s3  # mock is incomplete, this avoid 'botocore.exceptions.NoCredentialsError: Unable to locate credentials'
     def test_get_policy_permissions(self) -> None:
+        from moto import mock_aws
+        mock = mock_aws()
+        mock.start()
+        import boto3
+        from toil.lib.aws import iam
+
         mock_iam = boto3.client("iam")
 
         # username that moto pretends we have from client.get_user()
@@ -161,11 +165,13 @@ class IAMTest(ToilTest):
             "iam:TagInstanceProfile",
             "iam:DeleteRole",
         }
+        mock.stop()
         assert actions_set == expected_actions
         assert notactions_set == set()
 
     @needs_aws_s3
     def test_create_delete_iam_role(self) -> None:
+        from toil.lib.aws import iam
         region = "us-west-2"
         role_name = f'test{str(uuid4()).replace("-", "")}'
         with self.subTest("Create role w/policies."):
