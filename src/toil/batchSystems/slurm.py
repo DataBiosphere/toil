@@ -14,10 +14,12 @@
 from __future__ import annotations
 
 import errno
+import getpass
 import logging
 import math
 import os
 import shlex
+import string
 import sys
 from argparse import SUPPRESS, ArgumentParser, _ArgumentGroup
 from collections.abc import Callable
@@ -35,7 +37,7 @@ from toil.batchSystems.abstractGridEngineBatchSystem import (
 from toil.batchSystems.options import OptionSetter
 from toil.bus import get_job_kind
 from toil.common import Config
-from toil.job import JobDescription, Requirer
+from toil.job import AcceleratorRequirement, JobDescription, Requirer
 from toil.lib.conversions import strtobool
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 from toil.statsAndLogging import TRACE
@@ -118,6 +120,172 @@ def parse_slurm_time(slurm_time: str) -> int:
         result = result * 60 + component
 
     return days * 86400 + result
+
+
+def parse_accelerator_args(spec: str) -> tuple[str, list[str]]:
+    """
+    Parse the Slurm arguments that provide one kind of accelerator.
+
+    The value is ``KIND=ARGS``, where ARGS are sbatch arguments, split as a
+    shell would split them. A ``{name}`` field in them is filled, for each
+    job, with the property of that name of the job's accelerator; ``{{`` and
+    ``}}`` stand for braces. ``KIND=`` with no arguments says a job gets the
+    kind wherever it runs, such as when the job starts it itself.
+
+    >>> parse_accelerator_args("fpga=--partition=fpgas")
+    ('fpga', ['--partition=fpgas'])
+    >>> parse_accelerator_args("qpu=--qpu=sim --comment='quantum job'")
+    ('qpu', ['--qpu=sim', '--comment=quantum job'])
+    >>> parse_accelerator_args("qpu=--qpu={backend} --max-qubits={qubits}")
+    ('qpu', ['--qpu={backend}', '--max-qubits={qubits}'])
+    >>> parse_accelerator_args("gpu=--partition=gpus")
+    Traceback (most recent call last):
+    ...
+    ValueError: Use --slurmGPUPartition to choose the partition for gpu accelerators
+    >>> parse_accelerator_args("qpu=")
+    ('qpu', [])
+    >>> parse_accelerator_args("fpga")
+    Traceback (most recent call last):
+    ...
+    ValueError: Expected KIND=ARGS but got: 'fpga'
+    >>> parse_accelerator_args("qpu=--qpu={0}")
+    Traceback (most recent call last):
+    ...
+    ValueError: Expected only {name} fields, each naming an accelerator property, in qpu arguments but got: '--qpu={0}'
+
+    Raises ValueError if not parseable.
+    """
+    kind, separator, args = spec.partition("=")
+    if not kind or not separator:
+        raise ValueError(f"Expected KIND=ARGS but got: {spec!r}")
+    if kind == "gpu":
+        raise ValueError(
+            "Use --slurmGPUPartition to choose the partition for gpu accelerators"
+        )
+    split = shlex.split(args)
+    for arg in split:
+        for _, name, format_spec, conversion in string.Formatter().parse(arg):
+            if name is not None and (not name.isidentifier() or format_spec or conversion):
+                raise ValueError(
+                    f"Expected only {{name}} fields, each naming an accelerator "
+                    f"property, in {kind} arguments but got: {arg!r}"
+                )
+    return kind, split
+
+
+def get_accelerator_args(
+    accelerators: list[AcceleratorRequirement],
+    accelerator_args: dict[str, list[str]],
+) -> list[str]:
+    """
+    Get the Slurm arguments that provide the given accelerators.
+
+    GPUs are requested through Slurm GRES and need no arguments of their own.
+    Every other kind of accelerator is provided by the sbatch arguments it is
+    mapped to, such as the partition that has it, with their fields filled
+    from the accelerator's properties. The accelerator counts are left to
+    those arguments: a job submitted with them is assumed to get the
+    accelerators they provide.
+
+    >>> get_accelerator_args([{"kind": "gpu", "count": 1}], {})
+    []
+    >>> get_accelerator_args([{"kind": "fpga", "count": 1}], {"fpga": ["--partition=fpgas"]})
+    ['--partition=fpgas']
+    >>> get_accelerator_args(
+    ...     [{"kind": "qpu", "count": 1, "properties": {"backend": "sim", "qubits": "3"}}],
+    ...     {"qpu": ["--qpu={backend}", "--max-qubits={qubits}"]},
+    ... )
+    ['--qpu=sim', '--max-qubits=3']
+    >>> get_accelerator_args([{"kind": "fpga", "count": 1}], {})
+    Traceback (most recent call last):
+    ...
+    ValueError: No Slurm arguments are configured to provide fpga accelerators; map them with --slurmAcceleratorArgs fpga=ARGS
+    >>> get_accelerator_args(
+    ...     [{"kind": "qpu", "count": 1, "properties": {"backend": "sim"}}],
+    ...     {"qpu": ["--qpu={backend}", "--max-qubits={qubits}"]},
+    ... )
+    Traceback (most recent call last):
+    ...
+    ValueError: The Slurm arguments for qpu accelerators need the accelerator property qubits, which the job's qpu accelerator does not have
+
+    Raises ValueError if a kind has no arguments, or the accelerator lacks a
+    property its arguments need.
+    """
+    args: list[str] = []
+    for kind, properties in dict.fromkeys(
+        (accelerator["kind"], tuple(sorted(accelerator.get("properties", {}).items())))
+        for accelerator in accelerators
+    ):
+        if kind == "gpu":
+            continue
+        if kind not in accelerator_args:
+            raise ValueError(
+                f"No Slurm arguments are configured to provide {kind} accelerators; "
+                f"map them with --slurmAcceleratorArgs {kind}=ARGS"
+            )
+        for arg in accelerator_args[kind]:
+            try:
+                args.append(arg.format_map(dict(properties)))
+            except KeyError as e:
+                raise ValueError(
+                    f"The Slurm arguments for {kind} accelerators need the "
+                    f"accelerator property {e.args[0]}, which the job's {kind} "
+                    f"accelerator does not have"
+                ) from e
+    return args
+
+
+def qos_submit_limit(user: str, qos: str | None, partition: str | None) -> int | None:
+    """
+    Get the most jobs that Slurm lets the user have submitted at once, under
+    the given QOS (or the QOSes of the user's associations) and the QOS of the
+    given partition (or the default one), and the user's association limits.
+
+    :returns: The smallest such limit, or None if none is set.
+    :raises CalledProcessErrorStderr: if sacctmgr or scontrol cannot say.
+    """
+    limits: list[int] = []
+    qos_names: set[str] = set()
+    associations = call_command(
+        [
+            "sacctmgr",
+            "-nP",
+            "show",
+            "assoc",
+            "where",
+            f"user={user}",
+            "format=DefaultQOS,QOS,MaxSubmit",
+        ]
+    )
+    for association in associations.splitlines():
+        default_qos, allowed_qos, max_submit = association.split("|")
+        if max_submit:
+            limits.append(int(max_submit))
+        qos_names.update(
+            [qos] if qos else [default_qos] if default_qos else allowed_qos.split(",")
+        )
+    partitions = call_command(
+        ["scontrol", "-o", "show", "partition", *([partition] if partition else [])]
+    )
+    for line in partitions.splitlines():
+        fields = dict(field.split("=", 1) for field in line.split() if "=" in field)
+        if partition or fields.get("Default") == "YES":
+            qos_names.add(fields.get("QoS", "N/A"))
+    qos_names -= {"", "N/A"}
+    if qos_names:
+        qos_limits = call_command(
+            [
+                "sacctmgr",
+                "-nP",
+                "show",
+                "qos",
+                "where",
+                f"name={','.join(sorted(qos_names))}",
+                "format=MaxSubmitPU",
+            ]
+        )
+        limits.extend(int(limit) for limit in qos_limits.split())
+    return min(limits, default=None)
 
 
 # For parsing user-provided option overrides (or self-generated
@@ -359,12 +527,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             command: str,
             jobName: str,
             job_environment: dict[str, str] | None = None,
-            gpus: int | None = None,
+            accelerators: list[AcceleratorRequirement] | None = None,
         ) -> list[str]:
             # Make sure to use exec so we can get Slurm's signals in the Toil
             # worker instead of having an intervening Bash
             return self.prepareSbatch(
-                cpu, memory, walltime, jobID, jobName, job_environment, gpus
+                cpu, memory, walltime, jobID, jobName, job_environment, accelerators
             ) + [f"--wrap=exec {command}"]
 
         def submitJob(self, subLine: list[str]) -> int:
@@ -908,11 +1076,17 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             jobID: int,
             jobName: str,
             job_environment: dict[str, str] | None,
-            gpus: int | None,
+            accelerators: list[AcceleratorRequirement] | None,
         ) -> list[str]:
             """
             Returns the sbatch command line to run to queue the job.
             """
+
+            accelerators = accelerators or []
+            gpus = sum(a["count"] for a in accelerators if a["kind"] == "gpu")
+            accelerator_args = get_accelerator_args(
+                accelerators, dict(self.boss.config.slurm_accelerator_args or [])  # type: ignore[attr-defined]
+            )
 
             # Start by naming the job
             sbatch_line = ["sbatch", "-J", f"toil_job_{jobID}_{jobName}"]
@@ -959,6 +1133,31 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             time_limit: int | None = self.boss.config.slurm_time or walltime # type: ignore[attr-defined]
             partition: str | None = None
             qos: str | None = None
+
+            # The arguments providing the job's accelerators are requirements
+            # of the job: a partition among them is the partition it must run
+            # in, and the rest pass through.
+            accelerator_partition: str | None = None
+            i = 0
+            while i < len(accelerator_args):
+                arg = accelerator_args[i]
+                if is_any_mem_option(arg) or is_any_cpus_option(arg):
+                    raise ValueError(
+                        f"Cannot use Slurm argument {arg} to provide accelerators, "
+                        f"which conflicts with Toil's own arguments to Slurm"
+                    )
+                elif is_partition_option(arg):
+                    needed, i = parse_slurm_option_value(accelerator_args, i)
+                    if accelerator_partition not in (None, needed):
+                        raise ValueError(
+                            f"The accelerators {accelerators} are provided by different "
+                            f"Slurm partitions {sorted({accelerator_partition, needed})}, "
+                            f"but a job can only run in one"
+                        )
+                    accelerator_partition = needed
+                else:
+                    sbatch_line.append(arg)
+                i += 1
 
             if nativeConfig is not None:
                 logger.debug(
@@ -1019,6 +1218,18 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     argList.append(f"{k}={quoted_value}")
 
                 export_list.extend(argList)
+
+            # The partition providing the job's accelerators is a requirement
+            # of the job, so it beats every partition override that is just a
+            # default.
+            if accelerator_partition is not None:
+                if partition is not None and partition != accelerator_partition:
+                    raise ValueError(
+                        f"Cannot use Slurm argument --partition={partition} for "
+                        f"job {jobName}, which needs the accelerators provided by "
+                        f"partition {accelerator_partition}"
+                    )
+                partition = accelerator_partition
 
             # If partition isn't set and we have a GPU partition override
             # that applies, apply it
@@ -1114,9 +1325,57 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         self.partitions = SlurmBatchSystem.PartitionSet()
+        self._limit_jobs_to_qos()
         # Record when the workflow started, so we know when to stop looking for
         # jobs we ran.
         self.start_time = datetime.now().astimezone(None)
+
+    def _limit_jobs_to_qos(self) -> None:
+        """
+        Submit no more jobs at once than Slurm lets the user have submitted,
+        less the user's jobs already queued, so that no submission is refused.
+        """
+        user = getpass.getuser()
+        try:
+            limit = qos_submit_limit(
+                user,
+                self.config.slurm_qos,  # type: ignore[attr-defined]
+                self.config.slurm_partition,  # type: ignore[attr-defined]
+            )
+            queued = len(
+                call_command(["squeue", "-h", "-u", user, "-o", "%i"]).split()
+            )
+        except (CalledProcessErrorStderr, OSError) as e:
+            logger.info(
+                "Not limiting Slurm jobs to the QOS, whose limits could not be read: %s",
+                e,
+            )
+            return
+        if limit is None or limit - queued >= self.max_jobs:
+            logger.debug(
+                "Slurm lets %s have %s jobs submitted and %d are queued already",
+                user,
+                "any number of" if limit is None else limit,
+                queued,
+            )
+            return
+        if limit - queued < 1:
+            logger.warning(
+                "Slurm lets %s have %d jobs submitted and %d are queued already; "
+                "submitting one at a time",
+                user,
+                limit,
+                queued,
+            )
+        self.max_jobs = max(limit - queued, 1)
+        logger.info(
+            "Submitting at most %d Slurm jobs at once: Slurm lets %s have %d "
+            "submitted and %d are queued already",
+            self.max_jobs,
+            user,
+            limit,
+            queued,
+        )
 
     # Override issuing jobs so we can check if we need to use Slurm's magic
     # whole-node-memory feature.
@@ -1127,12 +1386,11 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         job_environment: dict[str, str] | None = None,
     ) -> int:
         # Avoid submitting internal jobs to the batch queue, handle locally
-        local_id = self.handleLocalJob(command, job_desc)
+        local_id = self.handleLocalJob(command, job_desc, job_environment)
         if local_id is not None:
             return local_id
         else:
             self.check_resource_request(job_desc)
-            gpus = self.count_needed_gpus(job_desc)
             job_id = self.getNextJobID()
             self.currentJobs.add(job_id)
 
@@ -1154,7 +1412,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     command,
                     get_job_kind(job_desc.get_names()),
                     job_environment,
-                    gpus,
+                    job_desc.accelerators,
                 )
             )
             logger.debug(
@@ -1166,16 +1424,19 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         return job_id
 
     def _check_accelerator_request(self, requirer: Requirer) -> None:
-        for accelerator in requirer.accelerators:
-            if accelerator["kind"] != "gpu":
-                raise InsufficientSystemResources(
-                    requirer,
-                    "accelerators",
-                    details=[
-                        f"The accelerator {accelerator} could not be provided"
-                        "The Toil Slurm batch system only supports gpu accelerators at the moment."
-                    ],
-                )
+        try:
+            get_accelerator_args(
+                requirer.accelerators, dict(self.config.slurm_accelerator_args or [])  # type: ignore[attr-defined]
+            )
+        except ValueError as e:
+            raise InsufficientSystemResources(
+                requirer,
+                "accelerators",
+                details=[
+                    f"The accelerators {requirer.accelerators} could not be provided.",
+                    str(e),
+                ],
+            ) from e
 
     ###
     ### The interface for SLURM
@@ -1260,6 +1521,22 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             help="Quality Of Service to request for Slurm jobs if they ask for GPUs.",
         )
         parser.add_argument(
+            "--slurmAcceleratorArgs",
+            dest="slurm_accelerator_args",
+            type=parse_accelerator_args,
+            action="append",
+            default=[],
+            metavar="KIND=ARGS",
+            help="sbatch arguments for Slurm jobs that ask for an accelerator "
+            "other than GPUs, for one accelerator kind, such as the partition "
+            "that has it (fpga=--partition=fpga-nodes) or a site's own option "
+            "for it. Give it once per kind. A partition among them is where the "
+            "job must run. A {name} field in them is filled with the job's "
+            "accelerator property of that name. Jobs asking for an accelerator "
+            "kind not given here, or lacking a property it needs, are refused. "
+            "KIND= with no arguments says a job gets the kind wherever it runs.",
+        )
+        parser.add_argument(
             "--slurmPE",
             dest="slurm_pe",
             default=None,
@@ -1285,5 +1562,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         setOption("slurm_qos")
         setOption("slurm_gpu_partition")
         setOption("slurm_gpu_qos")
+        setOption("slurm_accelerator_args")
         setOption("slurm_pe")
         setOption("slurm_args")

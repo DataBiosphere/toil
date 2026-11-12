@@ -23,6 +23,7 @@ from argparse import ArgumentParser, _ArgumentGroup
 from collections.abc import Sequence
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
+from typing import Any
 
 import toil
 from toil import worker as toil_worker
@@ -48,9 +49,42 @@ from toil.lib.accelerators import (
     get_restrictive_environment_for_local_accelerators,
 )
 from toil.lib.threading import cpu_count
-from toil.options.common import SYS_MAX_SIZE, make_open_interval_action
+from toil.options.common import (
+    SYS_MAX_SIZE,
+    make_open_interval_action,
+    parse_accelerator_kind_mapping,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def parse_local_accelerators(spec: str) -> dict[str, int]:
+    """
+    Parse how many accelerators of each kind other than GPUs a machine has.
+
+    >>> parse_local_accelerators("fpga=2,tpu=1")
+    {'fpga': 2, 'tpu': 1}
+    >>> parse_local_accelerators("fpga=0")
+    Traceback (most recent call last):
+    ...
+    ValueError: Expected a positive count of fpga accelerators but got: '0'
+    >>> parse_local_accelerators("gpu=1")
+    Traceback (most recent call last):
+    ...
+    ValueError: GPUs are detected, not configured
+
+    :raises ValueError: if not parseable.
+    """
+    counts: dict[str, int] = {}
+    for kind, count in parse_accelerator_kind_mapping(spec).items():
+        if kind == "gpu":
+            raise ValueError("GPUs are detected, not configured")
+        if not count.isdigit() or int(count) < 1:
+            raise ValueError(
+                f"Expected a positive count of {kind} accelerators but got: {count!r}"
+            )
+        counts[kind] = int(count)
+    return counts
 
 
 class SingleMachineBatchSystem(BatchSystemSupport):
@@ -192,7 +226,12 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.childToJob: dict[int, str] = {}
 
         # For accelerators, we need a collection of what each accelerator is, and an acquirable set of them.
-        self.accelerator_identities = get_individual_local_accelerators()
+        # The GPUs we can detect come first, so their numbers are the ones the GPU drivers use.
+        self.accelerator_identities = get_individual_local_accelerators() + [
+            {"kind": kind, "count": 1}
+            for kind, count in config.local_accelerators.items()
+            for _ in range(count)
+        ]
 
         # Put them all organized by resource type
         self.resource_sources = [
@@ -583,7 +622,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # Implement the abstractBatchSystem's scheduling status message API
         return self.schedulingStatusMessage
 
-    def _setSchedulingStatusMessage(self, message):
+    def _setSchedulingStatusMessage(self, message: str) -> None:
         """
         If we can't run a job, we record a short message about why not. If the
         leader wants to know what is up with us (for example, to diagnose a
@@ -613,7 +652,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 details=[f"The accelerator {problem} could not be provided."],
             )
 
-    def _release_acquired_resources(self, resources: list[int | set[int]]) -> None:
+    def _release_acquired_resources(self, resources: Any) -> None:
         """
         Release all resources acquired for a job.
         Assumes resources are in the order: core fractions, memory, disk, accelerators.
@@ -678,32 +717,20 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # If we get here we satisfied everything
         return accelerators_needed, None
 
-    def _startChild(
+    def _acquire_resources(
         self,
-        jobCommand,
-        jobID,
-        coreFractions,
-        jobMemory,
-        jobDisk,
+        jobID: int,
+        coreFractions: int,
+        jobMemory: int,
+        jobDisk: int,
         job_accelerators: list[AcceleratorRequirement],
-        environment,
-    ):
+    ) -> Any | None:
         """
-        Start a child process for the given job.
+        Take the resources a job needs from those free, if they all are.
 
-        Allocate its required resources and save it and save it in our bookkeeping structures.
-
-        If the job is started, returns its PID.
-        If the job fails to start, reports it as failed and returns False.
-        If the job cannot get the resources it needs to start, returns None.
+        :returns: What was taken, to give to _release_acquired_resources(), or
+            None if the job cannot have its resources now.
         """
-
-        # We fill this in if we manage to actually start the child.
-        popen = None
-
-        # This is when we started working on the job.
-        startTime = time.time()
-
         # And what do we want from each resource in self.resource_sources?
         # We know they go job slot, cores, memory, disk, accelerators.
         resource_requests: list[int | set[int]] = [
@@ -737,7 +764,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 )
                 return None
 
-        acquired = []
+        acquired: list[int | set[int]] = []
         for source, request in zip(self.resource_sources, resource_requests):
             # For each kind of resource we want, go get it
             assert (isinstance(source, ResourcePool) and isinstance(request, int)) or (
@@ -752,20 +779,59 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 )
                 self._release_acquired_resources(acquired)
                 return None
+        return acquired
 
-        # Now we have all the resources!
+    def _accelerator_environment(self, acquired: Any) -> dict[str, str]:
+        """Get the environment that confines a job to the accelerators it took."""
+        accelerators_acquired = acquired[4] if len(acquired) > 4 else set()
+        assert isinstance(accelerators_acquired, set)
+        return get_restrictive_environment_for_local_accelerators(
+            {
+                i
+                for i in accelerators_acquired
+                if self.accelerator_identities[i]["kind"] == "gpu"
+            }
+        )
+
+    def _child_command(self, jobCommand: str, jobID: int, acquired: Any) -> str:
+        """Get the shell command that runs a job on the resources it took."""
+        return jobCommand
+
+    def _startChild(
+        self,
+        jobCommand,
+        jobID,
+        coreFractions,
+        jobMemory,
+        jobDisk,
+        job_accelerators: list[AcceleratorRequirement],
+        environment,
+    ):
+        """
+        Start a child process for the given job.
+
+        Allocate its required resources and save it and save it in our bookkeeping structures.
+
+        If the job is started, returns its PID.
+        If the job fails to start, reports it as failed and returns False.
+        If the job cannot get the resources it needs to start, returns None.
+        """
+
+        # We fill this in if we manage to actually start the child.
+        popen = None
+
+        # This is when we started working on the job.
+        startTime = time.time()
+
+        acquired = self._acquire_resources(
+            jobID, coreFractions, jobMemory, jobDisk, job_accelerators
+        )
+        if acquired is None:
+            return None
 
         # Prepare the environment
         child_environment = dict(os.environ, **environment)
-
-        # Communicate the accelerator resources, if any, to the child process
-        # by modifying the environment
-        accelerators_acquired: set[int] = (
-            accelerators_needed if accelerators_needed is not None else set()
-        )
-        child_environment.update(
-            get_restrictive_environment_for_local_accelerators(accelerators_acquired)
-        )
+        child_environment.update(self._accelerator_environment(acquired))
 
         # Actually run the job.
         # When it finishes we will release what it was using.
@@ -780,9 +846,13 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # and all its children together. We assume that the
             # process group ID will equal the PID of the process we
             # are starting.
-            logger.debug("Attempting to run job command: %s", jobCommand)
+            child_command = self._child_command(jobCommand, jobID, acquired)
+            logger.debug("Attempting to run job command: %s", child_command)
             popen = subprocess.Popen(
-                jobCommand, shell=True, env=child_environment, start_new_session=True
+                child_command,
+                shell=True,
+                env=child_environment,
+                start_new_session=True,
             )
         except Exception:
             # If the job can't start, make sure we release resources now
@@ -1019,9 +1089,22 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             "(default: %(default)s)",
         )
 
+        parser.add_argument(
+            "--localAccelerators",
+            dest="local_accelerators",
+            type=parse_local_accelerators,
+            default={},
+            metavar="KIND=COUNT[,KIND=COUNT...]",
+            help="Accelerators other than GPUs that this machine has, by kind, for "
+            "jobs that ask for them. Used in the single_machine batch system, which "
+            "detects GPUs itself and refuses jobs asking for an accelerator kind it "
+            "does not have.",
+        )
+
     @classmethod
     def setOptions(cls, setOption: OptionSetter):
         setOption("scale")
+        setOption("local_accelerators")
 
 
 class Info:

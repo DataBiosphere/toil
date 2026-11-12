@@ -1243,6 +1243,91 @@ class TestCWLWorkflow:
                 ):
                     cwltoil.main(args, stdout=st)
 
+    def test_accelerator(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """
+        Tests that the Toil AcceleratorRequirement extension reaches the job.
+
+        The single machine batch system has no FPGAs, so it should refuse the
+        job, naming the accelerator the hint asked for.
+        """
+        from toil.cwl import cwltoil
+
+        with get_data("test/cwl/accelerator.cwl") as cwlfile:
+            args = [
+                "--outdir",
+                str(tmp_path / "outDir"),
+                "--jobStore",
+                str(tmp_path / "jobStore"),
+                str(cwlfile),
+            ]
+            assert cwltoil.main(args, stdout=StringIO()) == 1
+        assert "is requesting [{'count': 2, 'kind': 'fpga'}] accelerators" in caplog.text
+
+    def test_local_accelerator(self, tmp_path: Path) -> None:
+        """
+        Tests that a step needing an accelerator runs where there is one.
+        """
+        from toil.cwl import cwltoil
+
+        with get_data("test/cwl/accelerator.cwl") as cwlfile:
+            args = [
+                "--outdir",
+                str(tmp_path / "outDir"),
+                "--jobStore",
+                str(tmp_path / "jobStore"),
+                "--localAccelerators",
+                "fpga=2",
+                str(cwlfile),
+            ]
+            st = StringIO()
+            assert cwltoil.main(args, stdout=st) == 0
+        out = json.loads(st.getvalue())
+        with open(out["output"]["location"][len("file://") :]) as f:
+            assert f.read().strip() == "hello"
+
+    def test_accelerator_properties(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """
+        Tests that an AcceleratorRequirement's properties are evaluated for the job.
+
+        The depth isn't given, so the job's accelerator has no depth property.
+        """
+        from toil.cwl import cwltoil
+
+        with get_data("test/cwl/accelerator_properties.cwl") as cwlfile:
+            args = [
+                "--outdir",
+                str(tmp_path / "outDir"),
+                "--jobStore",
+                str(tmp_path / "jobStore"),
+                str(cwlfile),
+            ]
+            assert cwltoil.main(args, stdout=StringIO()) == 1
+        assert (
+            "is requesting [{'count': 1, 'kind': 'qpu', "
+            "'properties': {'backend': 'sim', 'qubits': '7'}}] accelerators"
+        ) in caplog.text
+
+    def test_accelerator_needs_kind(self, tmp_path: Path) -> None:
+        """
+        Tests that the Toil AcceleratorRequirement extension is validated.
+        """
+        from toil.cwl import cwltoil
+
+        with get_data("test/cwl/accelerator_no_kind.cwl") as cwlfile:
+            args = [
+                "--outdir",
+                str(tmp_path / "outDir"),
+                "--jobStore",
+                str(tmp_path / "jobStore"),
+                str(cwlfile),
+            ]
+            with pytest.raises(ValidationException, match="expected a string kind"):
+                cwltoil.main(args, stdout=StringIO())
+
     @staticmethod
     def _expected_seqtk_output(outDir: Path) -> "CWLObjectType":
         path = outDir / "out"

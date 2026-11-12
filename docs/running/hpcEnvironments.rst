@@ -11,6 +11,7 @@ To use one of these batch systems specify the ``--batchSystem`` argument to the 
 Due to the cost and complexity of maintaining support for these schedulers we currently consider all but Slurm to be "community supported", that is the core development team does not regularly test or develop support for these systems. However, there are members of the Toil community currently deploying Toil in a wide variety of HPC environments and we welcome external contributions.
 
 Developing the support of a new or existing batch system involves extending the abstract batch system class :class:`toil.batchSystems.abstractBatchSystem.AbstractBatchSystem`.
+A batch system that can provide accelerators, of any kind, says so by overriding ``_check_accelerator_request()``; batch systems built on :class:`toil.batchSystems.abstractGridEngineBatchSystem.AbstractGridEngineBatchSystem` also get each job's accelerators in ``prepareSubmission()``, so they can turn them into their own submission arguments, such as a queue for each kind configured by the user.
 
 .. _runningSlurm:
 
@@ -37,7 +38,39 @@ For jobs that have a walltime requirement, a partition will be automatically sel
 
 If some of your jobs can take a lot longer than others, you can set ``--defaultWalltime`` to reserve enough time for the typical cases, and add ``--doubleTime=True`` to double the time limit for a job every time it fails with a timeout. This can let the short jobs run in a partition for short jobs, while jobs that take longer get retried in a partition for longer jobs.
 
+Jobs can also need accelerators other than GPUs, such as FPGAs, which a Slurm cluster usually keeps in partitions of their own, or reaches through an option of its own. Toil can't tell from Slurm how a kind of accelerator is provided, so you tell it with the ``--slurmAcceleratorArgs`` argument, given once per kind as ``KIND=ARGS``, where ``ARGS`` are the ``sbatch`` arguments a job needing that kind is submitted with. A ``--partition`` among them is where such a job must run, ahead of ``--slurmPartition``, ``--slurmGPUPartition`` and ``--slurmPE``; a job needing a kind that isn't given is refused, rather than sent where the kind isn't. For example, if your FPGAs are in a partition named ``fpga-nodes``, and a site option ``--qpu`` reserves a quantum service, you would run::
+
+    $ toil-cwl-runner --batchSystem slurm --batchLogsDir ./logs \
+      --slurmAcceleratorArgs fpga=--partition=fpga-nodes \
+      --slurmAcceleratorArgs 'qpu=--qpu=simulator' workflow.cwl inputs.yml
+
+The arguments can also depend on what each job needs of its accelerator. A ``{name}`` field in them is filled with the job's accelerator property of that name, and a job whose accelerator lacks a property its arguments need is refused, naming the property. For example, if the site's ``--qpu`` option also takes the number of qubits a job will use::
+
+    $ toil-cwl-runner --batchSystem slurm --batchLogsDir ./logs \
+      --slurmAcceleratorArgs 'qpu=--qpu=simulator --max-qubits={qubits}' \
+      workflow.cwl inputs.yml
+
+A kind that every node provides, such as one a job starts for itself, is given with no arguments, as ``--slurmAcceleratorArgs qpu=``.
+
+In CWL, a step asks for such an accelerator with the ``toil:AcceleratorRequirement`` hint (see :ref:`cwlAccelerators`), with ``properties`` giving the fields; in Toil's Python API, with ``accelerators=[{"kind": "qpu", "count": 1, "properties": {"qubits": "5"}}]``.
+
+If Slurm's accounting limits how many jobs each user may have submitted at once, through a QOS (``MaxSubmitJobsPerUser``) or an association (``MaxSubmitJobs``), Toil submits no more jobs at once than that limit, less the jobs the user already has queued when the workflow starts, or than ``--maxJobs`` if that is smaller. It reads the limits of the ``--slurmQOS`` QOS, or else of the QOSes of the user's associations, and of the QOS of the ``--slurmPartition`` partition, or else of the default partition, with ``sacctmgr`` and ``scontrol``; if it cannot read them, it uses ``--maxJobs`` alone.
+
 Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.)
+
+.. _runningSlurmAllocation:
+
+Running inside one Slurm allocation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some Slurm clusters limit how many jobs each user may have queued or running, through a QOS, or give each job a large minimum number of cores. Submitting one ``sbatch`` job for every Toil job then runs into those limits. Instead, you can get one allocation with ``sbatch`` or ``salloc``, run the Toil leader inside it, and use ``--batchSystem slurm_allocation``. Each Toil job then runs as a job step of the allocation, with ``srun``, on a node of the allocation that has room for its cores, memory and GPUs. The nodes and their CPUs are read from ``SLURM_JOB_NODELIST`` and ``SLURM_JOB_CPUS_PER_NODE``, and their memory and GPUs from ``scontrol show job -d``. On the node the leader runs on, one default job's cores and memory (``--defaultCores`` and ``--defaultMemory``) are kept for the leader. A job that the allocation cannot hold, because it asks for more cores, memory or GPUs than any one node of the allocation has, or for an accelerator kind other than GPUs, is instead submitted as a Slurm job of its own, as with ``--batchSystem slurm`` and the same ``--slurm...`` options, such as ``--slurmAcceleratorArgs``.
+
+For example, to run a CWL workflow on two nodes for up to a day::
+
+    $ sbatch --nodes=2 --time=1-00:00:00 --wrap \
+      "toil-cwl-runner --batchSystem slurm_allocation --jobStore ./store workflow.cwl inputs.yml"
+
+Each step is started with ``srun --exact`` and its own ``--cpus-per-task`` and ``--mem``, so steps on the same node do not share cores. Any additional ``srun`` arguments your cluster needs can be passed with ``--slurmStepArgs``.
 
 Slurm Tips
 ~~~~~~~~~~

@@ -42,6 +42,7 @@ from toil.batchSystems.lsfHelper import (
     parse_memory,
     per_core_reservation,
 )
+from toil.job import AcceleratorRequirement
 from toil.lib.misc import call_command
 
 logger = logging.getLogger(__name__)
@@ -107,7 +108,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             command: str,
             jobName: str,
             job_environment: dict[str, str] | None = None,
-            gpus: int | None = None,
+            accelerators: list[AcceleratorRequirement] | None = None,
         ) -> tuple[list[str], dict[str, str] | None]:
             return (
                 self.prepareBsub(cpu, memory, jobID) + [command],

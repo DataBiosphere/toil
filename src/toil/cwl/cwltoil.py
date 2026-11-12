@@ -199,6 +199,13 @@ DEFAULT_TMPDIR_PREFIX = os.path.join(DEFAULT_TMPDIR, "tmp")
 INTERPRETER_JOB_MEMORY = "1GiB"
 INTERPRETER_JOB_DISK = "1MiB"
 
+# Toil's own CWL extension for asking for an accelerator of any kind, which a
+# batch system must be configured to provide (for example, on Slurm, with
+# --slurmAcceleratorArgs). Unlike cwltool:CUDARequirement, the kind is
+# not limited to GPUs, so a site can route steps to special hardware without
+# the workflow naming any site-specific queue.
+TOIL_ACCELERATOR_REQUIREMENT = "http://toil.ucsc-cgl.org/cwl#AcceleratorRequirement"
+
 
 def cwltoil_was_removed() -> None:
     """Complain about deprecated entrypoint."""
@@ -3085,6 +3092,14 @@ class CWLJob(CWLNamedJob):
                 }
             ]
 
+        accelerator_req, _ = tool.get_requirement(TOIL_ACCELERATOR_REQUIREMENT)
+        if accelerator_req:
+            # cwltool doesn't know about Toil's own accelerator extension, so
+            # we have to evaluate it ourselves.
+            accelerators = (accelerators or []) + [
+                parse_accelerator_requirement(accelerator_req, self.builder)
+            ]
+
         # cwltool doesn't handle http://arvados.org/cwl#UsePreemptible as part
         # of its resource logic so we have to do it manually.
         #
@@ -3564,16 +3579,15 @@ def makeJob(
         REQUIREMENT_TYPES = [
             "ResourceRequirement",
             "http://commonwl.org/cwltool#CUDARequirement",
+            TOIL_ACCELERATOR_REQUIREMENT,
         ]
         has_dynamic_resource_requirement = False
         for requirement_type in REQUIREMENT_TYPES:
             req, _ = tool.get_requirement(requirement_type)
-            if req:
-                for r in req.values():
-                    if isinstance(r, str) and ("$(" in r or "${" in r):
-                        # One of the keys in this requirement has a text substitution in it.
-                        # TODO: This is not a real lex!
-                        has_dynamic_resource_requirement = True
+            if req and has_substitution(list(req.values())):
+                # One of the values in this requirement, perhaps nested like
+                # an accelerator's properties, has a text substitution in it.
+                has_dynamic_resource_requirement = True
 
         if has_dynamic_resource_requirement or (
             conditional is not None and not conditional.is_empty()
@@ -4975,6 +4989,112 @@ def filtered_secondary_files(
                 "Secondary file %s is dropped because it is known to be missing", sf
             )
     return final_secondary_files
+
+
+def has_substitution(value: Any) -> bool:
+    """
+    Tell if a requirement's value, or any value nested in it, has a CWL text
+    substitution in it.
+
+    >>> has_substitution({"kind": "fpga", "properties": {"size": "$(inputs.n)"}})
+    True
+    >>> has_substitution(["fpga", 1, {"size": "large"}])
+    False
+
+    TODO: This is not a real lex!
+    """
+    if isinstance(value, str):
+        return "$(" in value or "${" in value
+    if isinstance(value, Mapping):
+        return any(has_substitution(item) for item in value.values())
+    if isinstance(value, list):
+        return any(has_substitution(item) for item in value)
+    return False
+
+
+def parse_accelerator_requirement(
+    requirement: CWLObjectType, builder: cwltool.builder.Builder
+) -> AcceleratorRequirement:
+    """
+    Turn a Toil AcceleratorRequirement CWL hint into a Toil accelerator request.
+
+    The hint looks like::
+
+        $namespaces:
+          toil: http://toil.ucsc-cgl.org/cwl#
+        hints:
+          toil:AcceleratorRequirement:
+            kind: fpga
+            count: 1
+            properties:
+              bitstream: $(inputs.design.basename)
+
+    ``kind`` is required; ``count`` defaults to 1 and may be an expression;
+    ``model``, ``brand``, and ``api`` are optional, as in
+    :class:`toil.job.AcceleratorRequirement`. ``properties`` maps names to
+    strings or expressions, evaluated for the job like ``count``; numbers they
+    evaluate to are kept as strings, and a property evaluating to null is left
+    out, as the job does not give it.
+
+    :raises ValidationException: if the hint is malformed.
+    """
+    kind = requirement.get("kind")
+    if not isinstance(kind, str) or kind == "":
+        raise ValidationException(
+            f"Unacceptable syntax for {TOIL_ACCELERATOR_REQUIREMENT}: "
+            f"expected a string kind but got: {requirement}"
+        )
+    count = builder.do_eval(requirement.get("count", 1))
+    if not isinstance(count, int) or isinstance(count, bool) or count < 1:
+        raise ValidationException(
+            f"Unacceptable value for count in {TOIL_ACCELERATOR_REQUIREMENT}: "
+            f"expected a positive integer but got: {repr(count)}"
+        )
+    accelerator: AcceleratorRequirement = {"kind": kind, "count": count}
+    for key in cast(list[Literal["model", "brand", "api"]], ["model", "brand", "api"]):
+        if key in requirement:
+            value = requirement[key]
+            if not isinstance(value, str):
+                raise ValidationException(
+                    f"Unacceptable value for {key} in {TOIL_ACCELERATOR_REQUIREMENT}: "
+                    f"expected a string but got: {repr(value)}"
+                )
+            accelerator[key] = value
+    if "properties" in requirement:
+        properties = requirement["properties"]
+        if not isinstance(properties, MutableMapping):
+            raise ValidationException(
+                f"Unacceptable value for properties in {TOIL_ACCELERATOR_REQUIREMENT}: "
+                f"expected a mapping of names to values but got: {repr(properties)}"
+            )
+        evaluated = {
+            name: evaluate_accelerator_property(name, value, builder)
+            for name, value in properties.items()
+        }
+        accelerator["properties"] = {
+            name: value for name, value in evaluated.items() if value is not None
+        }
+    return accelerator
+
+
+def evaluate_accelerator_property(
+    name: str, value: CWLOutputType | None, builder: cwltool.builder.Builder
+) -> str | None:
+    """
+    Evaluate one property of a Toil AcceleratorRequirement CWL hint for a job.
+
+    :returns: the property as a string, or None if the job does not give it.
+    :raises ValidationException: if it is not a string, a number or null.
+    """
+    evaluated = builder.do_eval(value)
+    if evaluated is None or isinstance(evaluated, str):
+        return evaluated
+    if isinstance(evaluated, (int, float)) and not isinstance(evaluated, bool):
+        return str(evaluated)
+    raise ValidationException(
+        f"Unacceptable value for property {name} in {TOIL_ACCELERATOR_REQUIREMENT}: "
+        f"expected a string, a number or null but got: {repr(evaluated)}"
+    )
 
 
 def scan_for_unsupported_requirements(

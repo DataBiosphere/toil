@@ -244,6 +244,12 @@ levels in toil are based on priority from the logging module:
                         system. Useful for running workflows on smaller
                         machines than they were designed for, by setting a
                         value less than 1. (default: 1)
+  --localAccelerators KIND=COUNT[,KIND=COUNT...]
+                        Accelerators other than GPUs that this machine has,
+                        by kind, for jobs that ask for them. Used in the
+                        single_machine batch system, which detects GPUs itself
+                        and refuses jobs asking for an accelerator kind it does
+                        not have.
   --slurmAllocateMem SLURM_ALLOCATE_MEM
                         If False, do not use --mem. Used as a workaround for
                         Slurm clusters that reject jobs with memory
@@ -258,12 +264,27 @@ levels in toil are based on priority from the logging module:
                         Partition to send Slurm jobs to if they ask for GPUs.
   --slurmGPUQOS SLURM_GPU_QOS
                         Quality Of Service to request for Slurm jobs if they ask for GPUs.
+  --slurmAcceleratorArgs KIND=ARGS
+                        sbatch arguments for Slurm jobs that ask for an
+                        accelerator other than GPUs, for one accelerator
+                        kind, such as the partition that has it
+                        (fpga=--partition=fpga-nodes) or a site's own option
+                        for it. Give it once per kind. A partition among them
+                        is where the job must run. A {name} field in them
+                        is filled with the job's accelerator property of
+                        that name. Jobs asking for an accelerator kind not
+                        given here, or lacking a property it needs, are
+                        refused.
   --slurmPE SLURM_PE    Special partition to send Slurm jobs to if they ask
                         for more than 1 CPU. Useful for Slurm clusters that do
                         not offer a partition accepting both single-core and
                         multi-core jobs.
   --slurmArgs SLURM_ARGS
                         Extra arguments to pass to Slurm.
+  --slurmStepArgs ARGS  Extra srun arguments for each job step in the Slurm
+                        allocation, such as --overlap on Slurm versions that
+                        need it to run steps beside the batch script. Used in
+                        the slurm_allocation batch system.
   --kubernetesHostPath KUBERNETES_HOST_PATH
                         Path on Kubernetes hosts to use as shared inter-pod temp
                         directory.

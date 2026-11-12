@@ -13,8 +13,10 @@ from toil.batchSystems.abstractBatchSystem import (
     EXIT_STATUS_UNAVAILABLE_VALUE,
     BatchJobExitReason,
     BatchSystemSupport,
+    InsufficientSystemResources,
 )
 from toil.common import Config
+from toil.job import Requirer
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.worker import WALLTIME_SIGNAL, WALLTIME_EXIT_CODE
 
@@ -757,6 +759,151 @@ class SlurmTest(ToilTest):
         assert "--partition=medium" in command
         assert "--time=0:36000" in command
 
+    def test_prepareSbatch_accelerator_partition(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.partitions = ps
+        self.worker.boss.config.slurm_accelerator_args = [("fpga", ["--partition=fpgas"])]
+        fpga = [{"kind": "fpga", "count": 1}]
+
+        # A job needing a mapped accelerator goes to its partition
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, fpga)
+        assert "--partition=fpgas" in command
+        assert not any(arg.startswith("--gres") for arg in command)
+
+        # Even over the configured default partitions
+        self.worker.boss.config.slurm_partition = "foobar"
+        self.worker.boss.config.slurm_gpu_partition = "gpu"
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, fpga)
+        assert "--partition=fpgas" in command
+
+        # GPUs alongside still get requested through GRES
+        command = self.worker.prepareSbatch(
+            1, 100, 5, 0, "job5", None, fpga + [{"kind": "gpu", "count": 2}]
+        )
+        assert "--partition=fpgas" in command
+        assert "--gres=gpu:2" in command
+
+        # Jobs without that accelerator are unaffected
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, None)
+        assert "--partition=foobar" in command
+
+        # A matching partition in the argument overrides is fine
+        self.worker.boss.config.slurm_args = "--partition=fpgas"
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, fpga)
+        assert "--partition=fpgas" in command
+
+        # But a different one would send the job where its accelerator isn't
+        self.worker.boss.config.slurm_args = "-p baz"
+        with self.assertRaises(ValueError):
+            self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, fpga)
+
+        # And so would an accelerator kind without arguments
+        self.worker.boss.config.slurm_args = ""
+        with self.assertRaises(ValueError):
+            self.worker.prepareSbatch(
+                1, 100, 5, 0, "job5", None, [{"kind": "qpu", "count": 1}]
+            )
+
+        # Or two kinds in different partitions
+        self.worker.boss.config.slurm_accelerator_args = [
+            ("fpga", ["--partition=fpgas"]), ("qpu", ["-p", "qpus"])
+        ]
+        with self.assertRaisesRegex(ValueError, "only run in one"):
+            self.worker.prepareSbatch(
+                1, 100, 5, 0, "job5", None, fpga + [{"kind": "qpu", "count": 1}]
+            )
+
+    def test_prepareSbatch_accelerator_args(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.partitions = ps
+        self.worker.boss.config.slurm_partition = "foobar"
+        self.worker.boss.config.slurm_accelerator_args = [
+            ("qpu", ["--qpu=sim", "--comment=quantum"])
+        ]
+        qpu = [{"kind": "qpu", "count": 1}]
+
+        # A site's own options for an accelerator reach its jobs' sbatch, and
+        # without a partition among them the job keeps the default one
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, qpu)
+        assert "--qpu=sim" in command and "--comment=quantum" in command
+        assert "--partition=foobar" in command
+
+        # Jobs without that accelerator don't get them
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, None)
+        assert "--qpu=sim" not in command
+
+        # Options Toil sets itself can't be given for an accelerator
+        self.worker.boss.config.slurm_accelerator_args = [("qpu", ["--mem=10G"])]
+        with self.assertRaises(ValueError):
+            self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, qpu)
+
+    def test_prepareSbatch_accelerator_properties(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.partitions = ps
+        self.worker.boss.config.slurm_accelerator_args = [
+            toil.batchSystems.slurm.parse_accelerator_args(
+                "qpu=--qpu={backend} --max-qubits={qubits} --comment={{literal}}"
+            )
+        ]
+
+        # Each job's accelerator properties fill the arguments for its kind
+        small = [{"kind": "qpu", "count": 1, "properties": {"backend": "sim", "qubits": "3"}}]
+        large = [{"kind": "qpu", "count": 1, "properties": {"backend": "sim", "qubits": "30"}}]
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, small)
+        assert "--qpu=sim" in command and "--max-qubits=3" in command
+        assert "--comment={literal}" in command
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job6", None, large)
+        assert "--max-qubits=30" in command
+
+        # A kind every node provides needs no arguments
+        self.worker.boss.config.slurm_accelerator_args = [
+            toil.batchSystems.slurm.parse_accelerator_args("qpu=")
+        ]
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job8", None, small)
+        assert not any(arg.startswith("--qpu") for arg in command)
+        self.worker.boss.config.slurm_accelerator_args = [
+            toil.batchSystems.slurm.parse_accelerator_args(
+                "qpu=--qpu={backend} --max-qubits={qubits} --comment={{literal}}"
+            )
+        ]
+
+        # A property the arguments need but the job doesn't give is refused by name
+        missing = [{"kind": "qpu", "count": 1, "properties": {"backend": "sim"}}]
+        with self.assertRaisesRegex(ValueError, "accelerator property qubits"):
+            self.worker.prepareSbatch(1, 100, 5, 0, "job7", None, missing)
+
+    def test_check_accelerator_request(self):
+        boss = FakeBatchSystem()
+        boss.config.slurm_accelerator_args = [("fpga", ["--partition=fpgas"])]
+
+        def check(accelerators):
+            requirer = Requirer({"accelerators": accelerators})
+            toil.batchSystems.slurm.SlurmBatchSystem._check_accelerator_request(
+                boss, requirer
+            )
+
+        # GPUs and mapped kinds can be provided
+        check([{"kind": "gpu", "count": 1}])
+        check([{"kind": "fpga", "count": 1}])
+        check([{"kind": "fpga", "count": 1}, {"kind": "gpu", "count": 1}])
+
+        # Unmapped kinds can't, and the error says how to map them
+        with self.assertRaisesRegex(
+            InsufficientSystemResources, "--slurmAcceleratorArgs qpu=ARGS"
+        ):
+            check([{"kind": "qpu", "count": 1}])
+
+        # Kinds whose arguments need properties can't be had without them
+        boss.config.slurm_accelerator_args = [("qpu", ["--qpu={backend}"])]
+        check([{"kind": "qpu", "count": 1, "properties": {"backend": "sim"}}])
+        with self.assertRaisesRegex(
+            InsufficientSystemResources, "accelerator property backend"
+        ):
+            check([{"kind": "qpu", "count": 1}])
+
     def test_prepareSbatch_export(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
         ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
@@ -922,3 +1069,42 @@ class SlurmTest(ToilTest):
 
         result = toil.batchSystems.slurm.parse_slurm_time("365-00:00:00")
         self.assertEqual(result, 365 * 86400)
+
+    def _fake_qos(self, associations: str, partitions: str, qos_limits: dict[str, str]):
+        def call(args, **_) -> str:
+            if args[:4] == ["sacctmgr", "-nP", "show", "assoc"]:
+                return associations
+            if args[:4] == ["scontrol", "-o", "show", "partition"]:
+                return partitions
+            if args[:4] == ["sacctmgr", "-nP", "show", "qos"]:
+                names = args[5].removeprefix("name=").split(",")
+                return "".join(qos_limits[name] + "\n" for name in names)
+            raise RuntimeError(f"Cannot fake command call: {args}")
+
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call)
+
+    def test_qos_submit_limit_takes_the_smallest_limit(self):
+        self._fake_qos(
+            "normal|normal,long|20\n",
+            "PartitionName=small QoS=small_qos Default=YES\n",
+            {"normal": "", "small_qos": "9"},
+        )
+        self.assertEqual(toil.batchSystems.slurm.qos_submit_limit("u", None, None), 9)
+
+    def test_qos_submit_limit_uses_the_given_qos_and_partition(self):
+        self._fake_qos(
+            "normal|normal,big|\n",
+            "PartitionName=large QoS=N/A Default=NO\n",
+            {"big": "50", "normal": "4"},
+        )
+        self.assertEqual(
+            toil.batchSystems.slurm.qos_submit_limit("u", "big", "large"), 50
+        )
+
+    def test_qos_submit_limit_without_limits(self):
+        self._fake_qos(
+            "||\n",
+            "PartitionName=standard QoS=N/A Default=YES\n",
+            {"normal": ""},
+        )
+        self.assertIsNone(toil.batchSystems.slurm.qos_submit_limit("u", None, None))

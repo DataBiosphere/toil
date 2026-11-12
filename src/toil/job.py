@@ -186,8 +186,10 @@ class AcceleratorRequirement(TypedDict):
     """
     kind: str
     """
-    What kind of accelerator is required. Can be "gpu". Other kinds defined in
-    the future might be "fpga", etc.
+    What kind of accelerator is required. Can be "gpu", which batch systems
+    know how to provide. Any other kind, like "fpga", is provided only by a
+    batch system configured with where to find it (for example, with
+    ``--slurmAcceleratorArgs`` on Slurm); other batch systems refuse it.
     """
     model: NotRequired[str]
     """
@@ -211,6 +213,14 @@ class AcceleratorRequirement(TypedDict):
     "cuda". Other APIs supported in the future might be "rocm", "opencl",
     "metal", etc. If the job does not need a particular API to talk to the
     accelerator, this should be absent.
+    """
+    properties: NotRequired[dict[str, str]]
+    """
+    What else the job needs of the accelerator, by name, such as how large a
+    problem it will run on it. The names and values are the site's own: a
+    batch system configured to ask for the accelerator with them (for example,
+    with ``{name}`` fields in ``--slurmAcceleratorArgs`` on Slurm) passes them
+    on, and other batch systems ignore them.
     """
 
     # TODO: support requesting any GPU with X amount of vram
@@ -247,6 +257,9 @@ def parse_accelerator(
 
     >>> parse_accelerator({"brand": "nvidia", "count": 5})
     {'count': 5, 'kind': 'gpu', 'brand': 'nvidia'}
+
+    >>> parse_accelerator({"kind": "fpga"})
+    {'count': 1, 'kind': 'fpga'}
 
     Assumes that if not specified, we are talking about GPUs, and about one
     of them. Knows that "gpu" is a kind, and "cuda" is an API, and "nvidia"
