@@ -16,6 +16,7 @@ import os
 import time
 from argparse import Namespace
 from threading import Thread
+from unittest.mock import patch
 
 from toil.common import Toil
 from toil.job import Job
@@ -41,6 +42,14 @@ class EnvironmentTest(ToilTest):
         options.retryCount = 0
 
         main(options)
+
+    def test_scheduler_job_variables_stay_the_workers(self):
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.logLevel = "DEBUG"
+        options.retryCount = 0
+
+        with patch.dict(os.environ):
+            run_with_scheduler_job(options)
 
 
 def signal_leader(job):
@@ -86,6 +95,60 @@ def check_environment_repeatedly(job):
     check3 = waiter.addFollowOnJobFn(check_environment, "try3")
 
 
+def change_environment_once_started(jobStore, name: str, value: str) -> None:
+    """
+    Once a job has signalled that the workflow has started, set an environment
+    variable in the leader.
+    """
+    while True:
+        time.sleep(5)
+        try:
+            with jobStore.read_shared_file_stream(
+                "jobstarted.txt", encoding="utf-8"
+            ) as stream:
+                logger.info("Got signal from job: %s", stream.read().strip())
+                break
+        except NoSuchFileException:
+            pass
+    logger.info("Changing environment variable %s", name)
+    os.environ[name] = value
+
+
+def check_scheduler_job(job):
+    """
+    Fail if the job sees the leader's scheduler job ID instead of its own.
+    """
+    value = os.environ.get("SLURM_JOB_ID")
+    job.fileStore.log_to_leader(f"Got SLURM_JOB_ID: {value}")
+    if value != "worker-allocation":
+        raise RuntimeError(f"SLURM_JOB_ID is {value!r}, not the worker's own")
+
+
+def check_scheduler_job_after_start(job):
+    """
+    Check the scheduler job ID in jobs started after the leader's environment
+    changed, as separate invocations.
+    """
+    waiter = job.addChildJobFn(signal_leader).addFollowOnJobFn(wait_a_bit)
+    waiter.addFollowOnJobFn(check_scheduler_job)
+    waiter.addFollowOnJobFn(check_scheduler_job)
+
+
+def run_with_scheduler_job(options: Namespace) -> None:
+    """
+    Run a workflow whose leader starts in one scheduler job and whose later
+    workers are started in another.
+    """
+    os.environ["SLURM_JOB_ID"] = "leader-allocation"
+    with Toil(options) as toil:
+        changer_thread = Thread(
+            target=change_environment_once_started,
+            args=(toil._jobStore, "SLURM_JOB_ID", "worker-allocation"),
+        )
+        changer_thread.start()
+        toil.start(Job.wrapJobFn(check_scheduler_job_after_start))
+
+
 def main(options: Namespace | None = None):
     """
     Run the actual workflow with the given options.
@@ -104,27 +167,10 @@ def main(options: Namespace | None = None):
         # Get a the job store so we can use shared files.
         jobStore = toil._jobStore
 
-        # Once the workflow has started, change the environment
-        def change_environment_later():
-            """
-            After waiting, modify the environment.
-            """
-            while True:
-                # Wait for the workflow to say it ran something
-                time.sleep(5)
-                try:
-                    with jobStore.read_shared_file_stream(
-                        "jobstarted.txt", encoding="utf-8"
-                    ) as stream:
-                        logger.info("Got signal from job: %s", stream.read().strip())
-                        break
-                except NoSuchFileException:
-                    pass
-            # Change the environment variable
-            logger.info("Changing environment variable")
-            os.environ["MAGIC_ENV_VAR_123"] = "Value2"
-
-        changer_thread = Thread(target=change_environment_later)
+        changer_thread = Thread(
+            target=change_environment_once_started,
+            args=(jobStore, "MAGIC_ENV_VAR_123", "Value2"),
+        )
         changer_thread.start()
 
         toil.start(Job.wrapJobFn(check_environment_repeatedly))
