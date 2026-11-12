@@ -281,6 +281,10 @@ levels in toil are based on priority from the logging module:
                         multi-core jobs.
   --slurmArgs SLURM_ARGS
                         Extra arguments to pass to Slurm.
+  --slurmStepArgs ARGS  Extra srun arguments for each job step in the Slurm
+                        allocation, such as --overlap on Slurm versions that
+                        need it to run steps beside the batch script. Used in
+                        the slurm_allocation batch system.
   --kubernetesHostPath KUBERNETES_HOST_PATH
                         Path on Kubernetes hosts to use as shared inter-pod temp
                         directory.

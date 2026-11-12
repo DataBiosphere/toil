@@ -56,6 +56,20 @@ In CWL, a step asks for such an accelerator with the ``toil:AcceleratorRequireme
 
 Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.)
 
+.. _runningSlurmAllocation:
+
+Running inside one Slurm allocation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some Slurm clusters limit how many jobs each user may have queued or running, through a QOS, or give each job a large minimum number of cores. Submitting one ``sbatch`` job for every Toil job then runs into those limits. Instead, you can get one allocation with ``sbatch`` or ``salloc``, run the Toil leader inside it, and use ``--batchSystem slurm_allocation``. Each Toil job then runs as a job step of the allocation, with ``srun``, on a node of the allocation that has room for its cores, memory and GPUs. The nodes and their CPUs are read from ``SLURM_JOB_NODELIST`` and ``SLURM_JOB_CPUS_PER_NODE``, and their memory and GPUs from ``scontrol show job -d``. On the node the leader runs on, one default job's cores and memory (``--defaultCores`` and ``--defaultMemory``) are kept for the leader. A job that asks for more than any one node of the allocation has, or for an accelerator kind other than GPUs, is refused.
+
+For example, to run a CWL workflow on two nodes for up to a day::
+
+    $ sbatch --nodes=2 --time=1-00:00:00 --wrap \
+      "toil-cwl-runner --batchSystem slurm_allocation --jobStore ./store workflow.cwl inputs.yml"
+
+Each step is started with ``srun --exact`` and its own ``--cpus-per-task`` and ``--mem``, so steps on the same node do not share cores. Any additional ``srun`` arguments your cluster needs can be passed with ``--slurmStepArgs``.
+
 Slurm Tips
 ~~~~~~~~~~
 

@@ -99,6 +99,12 @@ def slurm_batch_system_factory():
     return SlurmBatchSystem
 
 
+def slurm_allocation_batch_system_factory():
+    from toil.batchSystems.slurm_allocation import SlurmStepBatchSystem
+
+    return SlurmStepBatchSystem
+
+
 def torque_batch_system_factory():
     from toil.batchSystems.torque import TorqueBatchSystem
 
@@ -127,6 +133,7 @@ add_batch_system_factory("grid_engine", gridengine_batch_system_factory)
 add_batch_system_factory("lsf", lsf_batch_system_factory)
 add_batch_system_factory("mesos", mesos_batch_system_factory)
 add_batch_system_factory("slurm", slurm_batch_system_factory)
+add_batch_system_factory("slurm_allocation", slurm_allocation_batch_system_factory)
 add_batch_system_factory("torque", torque_batch_system_factory)
 add_batch_system_factory("htcondor", htcondor_batch_system_factory)
 add_batch_system_factory("kubernetes", kubernetes_batch_system_factory)
