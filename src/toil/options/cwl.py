@@ -471,7 +471,7 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         metavar="COUNT",
         help=suppress_help
         or "Maximum number of mounts a containerized CWL tool can use for its "
-        "input files. Above this, Toil mounts the directories that hold the "
+        "files. Above this, Toil mounts the directories that hold the "
         "files instead, so the tool can see other files in those directories. "
         f"Must be at least 3. (default: {DEFAULT_MAX_INPUT_MOUNTS})",
         dest="max_input_mounts",

@@ -29,6 +29,7 @@ import errno
 import functools
 import glob
 import io
+import heapq
 import json
 import logging
 import os
@@ -146,7 +147,6 @@ from toil.lib.interpreter import (
     shell_script_to_command_line,
 )
 from toil.lib.misc import call_command
-from toil.options.cwl import DEFAULT_MAX_INPUT_MOUNTS
 from toil.lib.trs import resolve_workflow
 from toil.provisioners.clusterScaler import JobTooBigError
 from toil.statsAndLogging import set_logging_from_options
@@ -1074,15 +1074,14 @@ class ToilCommandLineTool(
         self, runtimeContext: cwltool.context.RuntimeContext
     ) -> type[cwltool.job.JobBase]:
         """
-        Use a job class that monitors container resource usage if needed.
+        Use Toil's job class for the container system, if it has one.
 
-        We only act on container systems where the container isn't a descendant
-        process of us.
+        Toil's container job classes limit how many mounts a job uses. The
+        Docker one also measures resource usage inside the container.
         """
         parent_class = super().make_job_runner(runtimeContext)
-        # There's only one daemon-containerized container system: it's
-        # Docker itself (and not any of the subclasses of this). All the
-        # container systems get their input mounts condensed.
+        # Docker runs the container under its daemon instead of under us, so
+        # Toil measures its resource usage from inside.
         toil_classes: dict[type[cwltool.job.JobBase], type[cwltool.job.JobBase]] = {
             DockerCommandLineJob: ToilDockerCommandLineJob,
             PodmanCommandLineJob: ToilPodmanCommandLineJob,
@@ -1221,23 +1220,11 @@ CHILD_PROCESS_CONTAINER_JOBS = (
 
 HOST_MOUNTS_DIR = "/mnt/cwl-host"
 """
-The container directory where host directories are mounted at their host paths.
+The container directory where host paths are mounted at their own paths.
 
-A host directory mounted read-only appears under ``ro``, and one mounted
-writable appears under ``rw``. One host directory can be mounted both ways at
-once.
+A host path mounted read-only appears under ``ro``, and one mounted writable
+appears under ``rw``. One host path can be mounted both ways at once.
 """
-
-
-def outermost_dirs(dirs: Iterable[str]) -> list[str]:
-    """Keep only the directories that have no ancestor among the others."""
-    result: list[str] = []
-    # Sorting by path components keeps each directory's descendants together,
-    # right after it.
-    for d in sorted(set(dirs), key=lambda d: d.split("/")):
-        if not result or not d.startswith(result[-1] + "/"):
-            result.append(d)
-    return result
 
 
 def without_keys(pathmapper: PathMapper, keys: set[str]) -> PathMapper:
@@ -1248,127 +1235,38 @@ def without_keys(pathmapper: PathMapper, keys: set[str]) -> PathMapper:
     return result
 
 
-def plan_link_tree(
-    pathmapper: PathMapper,
-    container_root: str,
-    stage_created: bool,
-    inplace_update: bool,
-) -> list[tuple[str, MapperEnt, str]] | None:
+def choose_mounts(paths: list[str], max_mounts: int) -> list[str]:
     """
-    Decide how to stage a path mapper's entries under container_root without mounting them.
+    Choose at most max_mounts host paths that together hold all the given paths.
 
-    Return a step for each staged entry under container_root, as the entry's
-    key, the entry and an action:
-
-    - "dir": make an empty directory at the target.
-    - "link": put a link at the target to the entry's host path under
-      HOST_MOUNTS_DIR.
-    - "write": write the created file's contents at the target.
-    - "copy": copy or write the entry into a writable directory, and link to
-      the copy.
-
-    The steps are in target order, so each directory comes before its
-    contents.
-
-    :param stage_created: whether to plan steps for created files and for
-        writable entries that are not updated in place. Leave it false for the
-        working directory, where cwltool stages those without mounts.
-
-    :returns: the steps, or None if an entry's target is inside the target of
-        a link or a file, where it cannot be put.
+    Start from the paths themselves. Then replace the deepest paths with their
+    parent directory until few enough are left. Never choose the host's root
+    directory, even if that leaves too many.
     """
-    steps: list[tuple[str, MapperEnt, str]] = []
-    # The targets that become real directories, which entries can go inside.
-    dirs = {container_root}
-    # The targets that become links or files.
-    leaves: set[str] = set()
-    for key, ent in sorted(pathmapper.items(), key=lambda item: item[1].target):
-        if not ent.staged or not ent.target.startswith(container_root + "/"):
-            continue
-        parent = os.path.dirname(ent.target)
-        while parent not in dirs:
-            if parent in leaves:
-                return None
-            parent = os.path.dirname(parent)
-        if ent.resolved.startswith("_:") and ent.type in ("Directory", "WritableDirectory"):
-            action = "dir"
-        elif ent.type in ("File", "Directory") or (
-            inplace_update and ent.type in ("WritableFile", "WritableDirectory")
-        ):
-            action = "link"
-        elif not stage_created:
-            continue
-        elif ent.type == "CreateFile":
-            action = "write"
-        else:
-            action = "copy"
-        if action == "dir" or (action == "copy" and ent.type == "WritableDirectory"):
-            dirs.add(ent.target)
-        else:
-            leaves.add(ent.target)
-        steps.append((key, ent, action))
-    return steps
-
-
-def build_link_tree(
-    steps: list[tuple[str, MapperEnt, str]],
-    container_root: str,
-    host_root: str,
-    copy_dir: str | None,
-    secret_store: SecretStore | None,
-) -> tuple[list[str], list[str]]:
-    """
-    Carry out the steps from plan_link_tree() in host_root.
-
-    host_root is the host directory that the container sees at container_root.
-    Copies go in copy_dir, which must be given if any step copies.
-
-    :returns: the host paths that the links point to read-only, and those that
-        they point to writable. Their directories must be mounted under
-        HOST_MOUNTS_DIR for the links to work.
-    """
-    # The host directories behind the container directories that hold entries.
-    host_dirs = {container_root: host_root}
-    read_only: list[str] = []
-    writable: list[str] = []
-    for _, ent, action in steps:
-        parent = os.path.dirname(ent.target)
-        while parent not in host_dirs:
-            parent = os.path.dirname(parent)
-        dest = os.path.join(host_dirs[parent], os.path.relpath(ent.target, parent))
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        contents = ent.resolved
-        if secret_store is not None and ent.type in ("CreateFile", "CreateWritableFile"):
-            contents = cast(str, secret_store.retrieve(ent.resolved))
-        if action == "dir":
-            os.makedirs(dest, exist_ok=True)
-            host_dirs[ent.target] = dest
-        elif action == "link":
-            mode = "rw" if ent.type in ("WritableFile", "WritableDirectory") else "ro"
-            os.symlink(f"{HOST_MOUNTS_DIR}/{mode}{ent.resolved}", dest)
-            (writable if mode == "rw" else read_only).append(ent.resolved)
-        elif action == "write":
-            with open(dest, "w") as f:
-                f.write(contents)
-        else:
-            # Give each copy its own directory, so copies with the same name
-            # don't collide.
-            copy_path = os.path.join(
-                cast(str, copy_dir), str(uuid.uuid4()), os.path.basename(ent.target)
-            )
-            os.makedirs(os.path.dirname(copy_path))
-            if ent.type == "CreateWritableFile":
-                with open(copy_path, "w") as f:
-                    f.write(contents)
-            elif ent.type == "WritableFile":
-                shutil.copy(ent.resolved, copy_path)
-            else:
-                shutil.copytree(ent.resolved, copy_path)
-                host_dirs[ent.target] = copy_path
-            ensure_writable(copy_path, include_root=True)
-            os.symlink(f"{HOST_MOUNTS_DIR}/rw{copy_path}", dest)
-            writable.append(copy_path)
-    return read_only, writable
+    # Drop paths inside other paths. With "/" appended to the sort key, a
+    # path's descendants come right after it.
+    mounts: list[str] = []
+    for path in sorted(set(paths), key=lambda p: p + "/"):
+        if not mounts or not path.startswith(mounts[-1] + "/"):
+            mounts.append(path)
+    # The chosen paths, grouped by their parent directories.
+    by_parent: dict[str, set[str]] = {}
+    for path in mounts:
+        by_parent.setdefault(os.path.dirname(path), set()).add(path)
+    # The parent directories other than the root, deepest first.
+    parents = [(-p.count("/"), p) for p in by_parent if p != "/"]
+    heapq.heapify(parents)
+    count = len(mounts)
+    while count > max_mounts and parents:
+        _, parent = heapq.heappop(parents)
+        # Every chosen path inside the parent is one of these children, since
+        # deeper groups were merged first.
+        count -= len(by_parent.pop(parent)) - 1
+        grandparent = os.path.dirname(parent)
+        if grandparent not in by_parent and grandparent != "/":
+            heapq.heappush(parents, (-grandparent.count("/"), grandparent))
+        by_parent.setdefault(grandparent, set()).add(parent)
+    return sorted(path for group in by_parent.values() for path in group)
 
 
 class CondensedMountsMixin(ContainerCommandLineJob):
@@ -1378,17 +1276,10 @@ class CondensedMountsMixin(ContainerCommandLineJob):
     cwltool gives each input file and each InitialWorkDirRequirement entry its
     own mount. With enough of them, the container command is too long to run.
     When the job's two path mappers stage more entries than
-    ``--cwl-max-input-mounts``, this class stages them as links instead (see
-    plan_link_tree()). The input mapper's entries go in a link tree that is
-    mounted read-only at the input staging directory. The
-    InitialWorkDirRequirement mapper's entries go straight into the working
-    directory. The host directories that the links point into are mounted
-    under HOST_MOUNTS_DIR.
-
-    To fit under the limit, those host directories are replaced by their
-    ancestors, deepest first. Everything in a mounted directory is visible to
-    the job, and writable if the mount is. The host's root directory is never
-    mounted.
+    ``--cwl-max-input-mounts``, this class stages them as links instead. Each
+    link points to its host path under HOST_MOUNTS_DIR, where a few ancestor
+    directories of those host paths are mounted. Everything in a mounted
+    directory is visible to the job, and writable if the mount is.
 
     The links in the working directory point to container paths, so they would
     be broken on the host. cwltool's relink_initialworkdir() replaces them with
@@ -1398,14 +1289,8 @@ class CondensedMountsMixin(ContainerCommandLineJob):
     max_input_mounts: int
     """The most mounts the job's path mappers can use."""
 
-    unlinked_input_mapper: PathMapper | None
-    """The input mapper's entries that are not in the link tree, if there is one."""
-
-    unlinked_workdir_mapper: PathMapper | None
-    """
-    The InitialWorkDirRequirement mapper's entries that are not linked into
-    the working directory, if any are linked.
-    """
+    unlinked_mappers: dict[PathMapper, PathMapper]
+    """Each path mapper whose entries were linked, mapped to its entries that were not."""
 
     def run(
         self,
@@ -1413,11 +1298,8 @@ class CondensedMountsMixin(ContainerCommandLineJob):
         tmpdir_lock: threading.Lock | None = None,
     ) -> None:
         """Run the job, with the mount limit from the runtime context."""
-        self.max_input_mounts = getattr(
-            runtimeContext, "max_input_mounts", DEFAULT_MAX_INPUT_MOUNTS
-        )
-        self.unlinked_input_mapper = None
-        self.unlinked_workdir_mapper = None
+        self.max_input_mounts = getattr(runtimeContext, "max_input_mounts")
+        self.unlinked_mappers = {}
         super().run(runtimeContext, tmpdir_lock)
 
     def add_volumes(
@@ -1433,10 +1315,13 @@ class CondensedMountsMixin(ContainerCommandLineJob):
             # cwltool adds the input mapper's mounts first. Link the entries of
             # both mappers now, so their links can share host mounts.
             self.link_entries(runtime, tmpdir_prefix, secret_store)
-            pathmapper = self.unlinked_input_mapper or pathmapper
-        elif pathmapper is self.generatemapper:
-            pathmapper = self.unlinked_workdir_mapper or pathmapper
-        super().add_volumes(pathmapper, runtime, tmpdir_prefix, secret_store, any_path_okay)
+        super().add_volumes(
+            self.unlinked_mappers.get(pathmapper, pathmapper),
+            runtime,
+            tmpdir_prefix,
+            secret_store,
+            any_path_okay,
+        )
 
     def link_entries(
         self,
@@ -1445,84 +1330,129 @@ class CondensedMountsMixin(ContainerCommandLineJob):
         secret_store: SecretStore | None,
     ) -> None:
         """
-        Stage the entries of both path mappers as links, and mount what the links point into.
+        Link the entries of both path mappers, and mount what the links point into.
 
-        Do this only when the mappers stage more entries than the mount limit,
-        and only if every entry can be linked.
+        Do this only if the mappers stage more entries than the mount limit.
+
+        The input mapper's entries go in a new directory, which is mounted
+        read-only at the input staging directory. Created files that are
+        read-only are written into it. Other writable entries are copied into
+        another new directory, and linked writable.
+
+        The InitialWorkDirRequirement mapper's entries go in the working
+        directory. cwltool writes created files and writable copies there
+        itself, except for writable directories that hold entries, which are
+        copied here.
         """
         mappers = [m for m in (self.pathmapper, self.generatemapper) if m is not None]
         if sum(1 for m in mappers for ent in m if ent.staged) <= self.max_input_mounts:
             return
-        input_steps = plan_link_tree(
-            self.pathmapper, self.pathmapper.stagedir, True, self.inplace_update
-        )
-        workdir_steps: list[tuple[str, MapperEnt, str]] | None = []
-        if self.generatemapper is not None:
-            workdir_steps = plan_link_tree(
-                self.generatemapper, self.builder.outdir, False, self.inplace_update
-            )
-        if input_steps is None or workdir_steps is None:
-            logger.warning(
-                "Cannot link the files of job %s, so mounting them one at a time", self.name
-            )
-            return
-
         tree_dir = cwltool.utils.create_tmp_dir(tmpdir_prefix)
-        copy_dir = None
-        if any(action == "copy" for _, _, action in input_steps):
-            copy_dir = cwltool.utils.create_tmp_dir(tmpdir_prefix)
-        input_sources = build_link_tree(
-            input_steps, self.pathmapper.stagedir, tree_dir, copy_dir, secret_store
-        )
-        workdir_sources = build_link_tree(
-            workdir_steps, self.builder.outdir, self.outdir, None, secret_store
-        )
-        self.unlinked_input_mapper = without_keys(
-            self.pathmapper, {key for key, _, _ in input_steps}
-        )
-        unlinked = [self.unlinked_input_mapper]
-        if self.generatemapper is not None:
-            self.unlinked_workdir_mapper = without_keys(
-                self.generatemapper, {key for key, _, _ in workdir_steps}
-            )
-            unlinked.append(self.unlinked_workdir_mapper)
+        # Links resolve inside the container, where symlinks in the mounted
+        # directories can't reach the host paths they name. So links and
+        # mounts use real paths.
+        copy_dir = os.path.realpath(cwltool.utils.create_tmp_dir(tmpdir_prefix))
+        # The host paths the links point to, read-only and writable.
+        read_only: list[str] = []
+        writable: list[str] = []
+        # The number of staged entries outside the link roots, which get their
+        # own mounts.
+        unlinked_mounts = 0
 
-        ancestors = {
-            "ro": outermost_dirs(
-                os.path.dirname(p) for p in input_sources[0] + workdir_sources[0]
-            ),
-            "rw": outermost_dirs(
-                os.path.dirname(p) for p in input_sources[1] + workdir_sources[1]
-            ),
-        }
-        # The link tree takes a mount, and so does each unlinked entry. This
-        # counts too many, because cwltool stages some unlinked entries in the
-        # working directory without a mount.
-        other_mounts = bool(input_steps) + sum(1 for m in unlinked for ent in m if ent.staged)
-        # Each access mode in use needs at least one mount. With the link tree,
-        # that is the minimum of 3 that --cwl-max-input-mounts enforces. The
-        # job can still use more mounts if its files come from more top-level
-        # host directories than the limit leaves room for.
-        budget = max(
-            sum(1 for dirs in ancestors.values() if dirs),
-            self.max_input_mounts - other_mounts,
-        )
-        while sum(len(dirs) for dirs in ancestors.values()) > budget:
-            mode, deepest = max(
-                ((mode, d) for mode, dirs in ancestors.items() for d in dirs),
-                key=lambda item: item[1].count("/"),
-            )
-            if os.path.dirname(deepest) == "/":
-                break
-            ancestors[mode] = outermost_dirs([*ancestors[mode], os.path.dirname(deepest)])
-
-        if input_steps:
-            self.append_volume(runtime, tree_dir, self.pathmapper.stagedir)
-        for mode, dirs in ancestors.items():
-            for d in dirs:
-                self.append_volume(
-                    runtime, d, f"{HOST_MOUNTS_DIR}/{mode}{d}", writable=mode == "rw"
+        for mapper in mappers:
+            in_tree = mapper is self.pathmapper
+            container_root = mapper.stagedir if in_tree else self.builder.outdir
+            staged = [(key, ent) for key, ent in mapper.items() if ent.staged]
+            inside = [
+                (key, ent) for key, ent in staged if ent.target.startswith(container_root + "/")
+            ]
+            unlinked_mounts += len(staged) - len(inside)
+            # Container directories that hold staged entries.
+            holders = set()
+            for _, ent in inside:
+                parent = os.path.dirname(ent.target)
+                while parent != container_root and parent not in holders:
+                    holders.add(parent)
+                    parent = os.path.dirname(parent)
+            # Host directories that hold the contents of container directories.
+            host_dirs = {container_root: tree_dir if in_tree else self.outdir}
+            keys: set[str] = set()
+            # Sorting by target puts each directory before its contents.
+            for key, ent in sorted(inside, key=lambda item: item[1].target):
+                parent = os.path.dirname(ent.target)
+                while parent not in host_dirs:
+                    parent = os.path.dirname(parent)
+                dest = os.path.join(host_dirs[parent], os.path.relpath(ent.target, parent))
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                synthetic = ent.resolved.startswith("_:")
+                holder = ent.target in holders
+                in_place = (
+                    self.inplace_update
+                    and not synthetic
+                    and ent.type in ("WritableFile", "WritableDirectory")
                 )
+                if (
+                    in_place
+                    or ent.type == "File"
+                    or (ent.type == "Directory" and not (synthetic or holder))
+                ):
+                    mode = "rw" if in_place else "ro"
+                    source = os.path.realpath(ent.resolved)
+                    os.symlink(f"{HOST_MOUNTS_DIR}/{mode}{source}", dest)
+                    (writable if in_place else read_only).append(source)
+                    if in_place:
+                        # TODO: A created file inside an in-place directory is
+                        # still left to cwltool, which fails to make its
+                        # directory, because the directory is now a link.
+                        host_dirs[ent.target] = ent.resolved
+                elif not (in_tree or holder or ent.type == "Directory"):
+                    # cwltool writes this into the working directory itself.
+                    continue
+                else:
+                    path = dest
+                    copied = ent.type not in ("CreateFile", "Directory")
+                    if copied and in_tree:
+                        # A copy in the tree would be read-only, so put it in
+                        # the copy directory and link to it.
+                        path = os.path.join(copy_dir, str(uuid.uuid4()))
+                        os.symlink(f"{HOST_MOUNTS_DIR}/rw{path}", dest)
+                        writable.append(path)
+                        host_dirs[ent.target] = path
+                    if ent.type in ("CreateFile", "CreateWritableFile"):
+                        with open(path, "w") as f:
+                            f.write(self.created_contents(ent, secret_store))
+                    elif ent.type == "WritableFile":
+                        shutil.copy(ent.resolved, path)
+                    elif ent.type == "Directory" or synthetic:
+                        os.mkdir(path)
+                    else:
+                        shutil.copytree(ent.resolved, path)
+                    if copied:
+                        ensure_writable(path, include_root=True)
+                keys.add(key)
+            self.unlinked_mappers[mapper] = without_keys(mapper, keys)
+
+        # The link tree takes a mount, and so does each staged entry outside
+        # the link roots.
+        budget = self.max_input_mounts - 1 - unlinked_mounts
+        # Merge writable mounts only as far as needed, since merging them makes
+        # more of the host writable. Read-only mounts get what is left. Each
+        # kind gets at least one mount.
+        rw_mounts = choose_mounts(writable, max(1, budget - bool(read_only)))
+        ro_mounts = choose_mounts(read_only, max(1, budget - len(rw_mounts)))
+
+        self.append_volume(runtime, tree_dir, self.pathmapper.stagedir)
+        for path in ro_mounts:
+            self.append_volume(runtime, path, f"{HOST_MOUNTS_DIR}/ro{path}")
+        for path in rw_mounts:
+            self.append_volume(runtime, path, f"{HOST_MOUNTS_DIR}/rw{path}", writable=True)
+
+    @staticmethod
+    def created_contents(ent: MapperEnt, secret_store: SecretStore | None) -> str:
+        """Return the contents of a created file, with any secrets filled in."""
+        if secret_store is None:
+            return ent.resolved
+        return cast(str, secret_store.retrieve(ent.resolved))
 
 
 class ToilPodmanCommandLineJob(CondensedMountsMixin, PodmanCommandLineJob):
