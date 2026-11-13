@@ -351,7 +351,7 @@ class MultiPartPipe(WritablePipe):
                 # Get the next block of data we want to put
                 buf = readable.read(self.part_size)
                 if len(buf) == 0:
-                    # The writer has stoped writing.
+                    # The writer has stopped writing.
                     if self.writer_error is not None:
                         # This is because of abnormal termination.
                         # Don't complete the upload.
@@ -549,7 +549,7 @@ def s3_key_exists(
     check: bool = False,
     extra_args: dict[Any, Any] | None = None,
 ) -> bool:
-    """Return True if the s3 obect exists, and False if not.  Will error if encryption args are incorrect."""
+    """Return True if the s3 object exists, and False if not.  Will error if encryption args are incorrect."""
     extra_args = extra_args or {}
     s3_client = s3_resource.meta.client
     try:

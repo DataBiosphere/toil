@@ -81,12 +81,12 @@ class ResourceMonitor:
     def get_total_cpu_time(cls) -> float:
         """Gives the total cpu time, including the children."""
         me = resource.getrusage(resource.RUSAGE_SELF)
-        childs = resource.getrusage(resource.RUSAGE_CHILDREN)
+        children = resource.getrusage(resource.RUSAGE_CHILDREN)
         return (
             me.ru_utime
             + me.ru_stime
-            + childs.ru_utime
-            + childs.ru_stime
+            + children.ru_utime
+            + children.ru_stime
             + cls._extra_cpu_seconds
         )
 

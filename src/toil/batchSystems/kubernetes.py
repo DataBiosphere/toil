@@ -14,7 +14,7 @@
 """
 Batch system for running Toil workflows on Kubernetes.
 
-Ony useful with network-based job stores, like AWSJobStore.
+Only useful with network-based job stores, like AWSJobStore.
 
 Within non-privileged Kubernetes containers, additional Docker containers
 cannot yet be launched. That functionality will need to wait for user-mode
@@ -899,7 +899,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 "workdir", self.host_path, self.worker_work_dir, create=True
             )
             # We also need to mount across /run/lock, where we will put
-            # per-node coordiantion info.
+            # per-node coordination info.
             # Don't create this; it really should always exist.
             mount_host_path("coordination", "/run/lock", "/run/lock")
         else:

@@ -13,10 +13,10 @@ class HelloWorld(Job):
     def run(self, fileStore):
         with fileStore.readGlobalFileStream(self.inputFileID, encoding="utf-8") as fi:
             with fileStore.writeGlobalFileStream(encoding="utf-8") as (
-                fo,
+                file_output,
                 outputFileID,
             ):
-                fo.write(fi.read() + "World!")
+                file_output.write(fi.read() + "World!")
         return outputFileID
 
 

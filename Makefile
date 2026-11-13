@@ -353,6 +353,13 @@ check_cpickle:
 	# https://github.com/BD2KGenomics/toil/issues/1503
 	! find src -iname '*.py' | xargs grep 'cPickle.dump' | grep --invert-match HIGHEST_PROTOCOL
 
+check_markers:
+	@# Fail if pytest markers are used in the project but aren't defined
+	@GITLAB_EXTRA_MARKERS="$$(comm -2 -3 <(cat .gitlab-ci.yml | grep MARKER: | cut -f2 -d':' | tr -d '"()' | tr ' ' '\n' | grep -v '^\(and\|or\|not\)$$' | grep -v '^$$' | sort | uniq) <(python3 -c 'import configparser; config = configparser.ConfigParser(); config.read("setup.cfg"); print("\n".join(sorted([x for x in config["tool:pytest"]["markers"].split() if x])))') | tr '\n' ' ')"; \
+		if [[ ! -z "$${GITLAB_EXTRA_MARKERS}" ]] ; then echo 1>&2 "Error: pytest markers found in Gitlab configuration but not in setup.cfg: $${GITLAB_EXTRA_MARKERS}"; exit 1; fi
+	@TEST_EXTRA_MARKERS="$$(comm -2 -3 <(grep -I -o 'pytest\.mark\.[a-zA-Z0-9_-]*' -h -r src/toil/test | cut -f3 -d'.' | grep -v '^\(skip\|skipif\|timeout\|usefixtures\|xfail\)$$' | sort | uniq) <(python3 -c 'import configparser; config = configparser.ConfigParser(); config.read("setup.cfg"); print("\n".join(sorted([x for x in config["tool:pytest"]["markers"].split() if x])))') | tr '\n' ' ')"; \
+		if [[ ! -z "$${TEST_EXTRA_MARKERS}" ]] ; then echo 1>&2 "Error: pytest markers found in tests but not in setup.cfg or on list of built-in markers: $${TEST_EXTRA_MARKERS}"; exit 1; fi
+
 PYSOURCES=$(shell find src -name '*.py') setup.py version_template.py
 
 # Linting and code style related targets
@@ -401,11 +408,18 @@ pyupgrade: $(PYSOURCES)
 flake8: $(PYSOURCES)
 	flake8 --ignore=E501,W293,W291,E265,E302,E722,E126,E303,E261,E201,E202,W503,W504,W391,E128,E301,E127,E502,E129,E262,E111,E117,E306,E203,E231,E226,E741,E122,E251,E305,E701,E222,E225,E241,E305,E123,E121,E703,E704,E125,E402 $^
 
+codespell-check: $(PYSOURCES)
+	@codespell $^ || (echo Probable typo found. Run \"make codespell-fix\" to accept suggested fixes, or add the word to the ignore list in setup.cfg ; exit 1)
+
+codespell-fix: $(PYSOURCES)
+	codespell -w $^
+
 preflight: mypy touched_pylint
 
 .PHONY: help \
 		prepare \
 		check_cpickle \
+		check_markers \
 		develop clean_develop \
 		sdist clean_sdist \
 		download_cwl_spec \

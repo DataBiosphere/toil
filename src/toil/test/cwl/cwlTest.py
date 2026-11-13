@@ -190,7 +190,7 @@ def run_conformance_tests(
                     output_lines.append(line_text)
                     log.info(line_text)
 
-            # Once it's done writing, amke sure it succeeded.
+            # Once it's done writing, make sure it succeeded.
             child.wait()
             log.info("CWL tests finished with exit code %s", child.returncode)
             if child.returncode != 0:
@@ -394,7 +394,7 @@ class TestCWLWorkflow:
         """
         Run a generic download test with a tester function and check the result.
 
-        Ther test is the download.cwl workflow.
+        The test is the download.cwl workflow.
 
         The result has to match _expected_download_output on the output
         directory, so it must contain an empty "output.txt" file.
@@ -744,6 +744,21 @@ class TestCWLWorkflow:
         with get_cwltool_data("loop-ext/loop-inside-scatter.cwl") as cwl_file:
             with get_cwltool_data("loop-ext/loop-inside-scatter-job.yml") as job_file:
                 self._tester(cwl_file, job_file, {"o1": [10, 10, 10, 10, 10]}, tmp_path, main_args=["--enable-ext"])
+
+    @needs_cwl
+    @pytest.mark.cwl
+    @pytest.mark.cwl_small
+    def test_loop_step_depends_on_loop(self, tmp_path: Path) -> None:
+        """A step reading a cwltool:Loop step's output runs after the loop's last iteration."""
+        with get_data("test/cwl/loop_step_depends_on_loop.cwl") as cwl_file:
+            with get_data("test/cwl/empty.json") as job_file:
+                self._tester(
+                    cwl_file,
+                    job_file,
+                    {"final": 1},
+                    tmp_path,
+                    main_args=["--enable-ext", "--retryCount=0"],
+                )
 
     @needs_cwl
     @pytest.mark.cwl
@@ -1930,7 +1945,7 @@ def test_workflow_echo_string_scatter_stderr_log_dir(tmp_path: Path) -> None:
         p = subprocess.run(cmd, capture_output=True, text=True)
         outputs = json.loads(p.stdout)
         out_list = outputs["list_out"]
-        assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"
+        assert len(out_list) == 2, f"outList should have two file elements {out_list}"
         out_base = outputs["list_out"][0]
         # This is a test on the scatter functionality and stdout.
         # Each value of scatter should generate a separate file in the output.
@@ -2033,7 +2048,7 @@ def test_filename_conflict_resolution(tmp_path: Path) -> None:
                 str(msin),
             ]
             p = subprocess.run(cmd, capture_output=True, text=True)
-            assert "Finished toil run successfully" in p.stderr
+            assert "Finished toil run successfully" in p.stderr, p
             assert p.returncode == 0
 
 
@@ -2225,7 +2240,7 @@ def test_workflow_echo_string_scatter_capture_stdout(tmp_path: Path) -> None:
         assert len(p.stdout) > 0
         outputs = json.loads(p.stdout)
         out_list = outputs["list_out"]
-        assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"
+        assert len(out_list) == 2, f"outList should have two file elements {out_list}"
         out_base = outputs["list_out"][0]
         # This is a test on the scatter functionality and stdout.
         # Each value of scatter should generate a separate file in the output.
@@ -2619,8 +2634,8 @@ def test_download_structure(tmp_path: Path) -> None:
     """
 
     # Define what we would download
-    fid1 = FileID("afile", 10, False)
-    fid2 = FileID("adifferentfile", 1000, True)
+    fid1 = FileID("a_file", 10, False)
+    fid2 = FileID("a_different_file", 1000, True)
 
     # And what directory structure it would be in
     structure: DirectoryStructure = {

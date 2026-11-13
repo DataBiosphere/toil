@@ -999,7 +999,7 @@ class AbstractJobStore(ABC):
         starts with 'http:',  'https:' or 'file:'. The returned URL may expire as early as 1h
         after its been returned. Throw an exception if the file does not exist.
 
-        :param str shared_file_name: The name of the shared file to generate a publically accessible url for.
+        :param str shared_file_name: The name of the shared file to generate a publicly accessible url for.
 
         :raise NoSuchFileException: raised if the specified file does not exist in the store
 
@@ -1829,7 +1829,7 @@ class HintedJobStore:
         """
         Create a tombstone for the slot occupied by the given slot path.
 
-        Ensures that the slot will never be re-used even if the object at the
+        Ensures that the slot will never be reused even if the object at the
         slot path vanishes from the hint tree.
         """
         marker = f"/{self._HINT_FILES_DIR}/"

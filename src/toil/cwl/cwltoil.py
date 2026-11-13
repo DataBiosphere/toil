@@ -887,7 +887,7 @@ CallbackTypesT = TypeVar(
 class ProcessProtocol(Protocol, Generic[JobTypesT, CallbackTypesT]):
     """
     Protocol for the type of a cwltool Process that yields jobs of the given
-    union type and accepts output_callbacks of the givne union type on its
+    union type and accepts output_callbacks of the given union type on its
     run() method.
     """
 
@@ -1208,7 +1208,7 @@ class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
 
 # We need to know which cwltool container implementations run the container
 # under the calling process's child tree. Unlisted container implementations
-# are assumed to run it elsewhere through a deamon.
+# are assumed to run it elsewhere through a daemon.
 #
 # We have to list it this way around (and not list the implementations that use
 # a daemon) because some of these extend DockerCommandLineJob.
@@ -1790,7 +1790,7 @@ class ToilPathMapper(PathMapper):
             # If we've already mapped this, map it consistently.
             tgt = self._pathmap[location].target
             logger.debug(
-                "ToilPathMapper re-using target %s for path %s",
+                "ToilPathMapper reusing target %s for path %s",
                 tgt,
                 location,
             )
@@ -4665,8 +4665,7 @@ class CWLWorkflow(CWLNamedJob):
                             CWLLoop | CWLScatter | CWLWorkflow | CWLJob | CWLJobWrapper
                         )
                         followOn: (
-                            CWLLoop
-                            | CWLGather
+                            CWLGather
                             | ResolveIndirect
                             | CWLJob
                             | CWLJobWrapper
@@ -4684,7 +4683,15 @@ class CWLWorkflow(CWLNamedJob):
                                     1000,
                                 ),
                             )
-                            followOn = wfjob
+                            # Each iteration's body, and the next CWLLoop,
+                            # are successors of this job; steps reading the
+                            # loop's outputs hang off its follow-on, which
+                            # runs only after all of them.
+                            followOn = ResolveIndirect(
+                                wfjob.rv(),
+                                parent_name=f"{parent_name}.{shortname(step_id)}",
+                            )
+                            wfjob.addFollowOn(followOn)
                             logger.debug(
                                 "Is loop with job %s and follow-on %s",
                                 wfjob,

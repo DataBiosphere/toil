@@ -11,7 +11,7 @@ variables:
   # Used to tell pytest which tests to be run by specifying markers,
   # Allows partitioning of tests to prevent duplicate running of tests in different jobs.
   # Currently specifies special tests that are not run by quick_test_offline.
-  MARKER: "(tes or integrative or encryption or server_mode or fetchable_appliance or appliance or slow or docker or cwl or singularity or rsync3) and not kubernetes"
+  MARKER: "(integrative or encryption or server_mode or fetchable_appliance or appliance or slow or docker or cwl or singularity) and not kubernetes"
   TEST_THREADS: "4"
 before_script:
   # Log where we are running, in case some Kubernetes hosts are busted. IPs are assigned per host.
@@ -81,6 +81,12 @@ lint:
     echo -e "\e[0Ksection_start:`date +%s`:mypy\r\e[0KCheck the Python types with mypy"
     make mypy
     echo -e "\e[0Ksection_end:`date +%s`:mypy\r\e[0K"
+    echo -e "\e[0Ksection_start:`date +%s`:pytest-markers\r\e[0KCheck pytest marker configuration"
+    make check_markers
+    echo -e "\e[0Ksection_end:`date +%s`:pytest-markers\r\e[0K"
+    echo -e "\e[0Ksection_start:`date +%s`:codespell\r\e[0KCheck for common typos with codespell"
+    make codespell-check
+    echo -e "\e[0Ksection_end:`date +%s`:codespell\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:docs\r\e[0KBuild the docs"
     make docs
     echo -e "\e[0Ksection_end:`date +%s`:docs\r\e[0K"

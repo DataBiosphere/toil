@@ -101,7 +101,7 @@ def main(options: Namespace | None = None):
 
     with Toil(options) as toil:
 
-        # Get a tthe job store so we can use shared files.
+        # Get a the job store so we can use shared files.
         jobStore = toil._jobStore
 
         # Once the workflow has started, change the environment

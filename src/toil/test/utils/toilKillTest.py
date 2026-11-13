@@ -87,6 +87,7 @@ class TestToilKill(_ToilKillTest):
     """A set of test cases for "toil kill"."""
 
     @needs_cwl
+    @needs_aws_s3
     def test_cwl_toil_kill(self, tmp_path: Path) -> None:
         """Test "toil kill" on a CWL workflow with a 100 second sleep."""
         self._test_cwl_toil_kill(str(tmp_path / "job_store"))

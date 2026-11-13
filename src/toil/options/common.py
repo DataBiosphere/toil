@@ -578,7 +578,7 @@ def add_base_toil_options(
         type=parse_int_list,
         action=NodeExtendAction,
         metavar="INT[,INT...]",
-        help="Mininum number of nodes of each type in the cluster, if using "
+        help="Minimum number of nodes of each type in the cluster, if using "
         "auto-scaling.  This should be provided as a comma-separated list of the "
         "same length as the list of node types. default=%(default)s",
     )
