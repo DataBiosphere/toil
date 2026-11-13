@@ -80,7 +80,7 @@ import schema_salad.ref_resolver
 from configargparse import ArgParser, Namespace
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
-from cwltool.mpi import MpiConfig
+from cwltool.mpi import MPIRequirementName, MpiConfig
 from cwltool.mutation import MutationManager
 from cwltool.pathmapper import MapperEnt, PathMapper
 from cwltool.process import (
@@ -124,8 +124,11 @@ from schema_salad.exceptions import ValidationException
 from schema_salad.ref_resolver import file_uri, uri_file_path
 from schema_salad.sourceline import SourceLine
 
-from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
-from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
+from toil.batchSystems.abstractBatchSystem import (
+    AbstractBatchSystem,
+    InsufficientSystemResources,
+)
+from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM, get_batch_system
 from toil.common import (
     Config,
     Toil,
@@ -2873,6 +2876,7 @@ class CWLNamedJob(Job):
         accelerators: list[AcceleratorRequirement] | None = None,
         preemptible: bool | None = None,
         walltime: int | None = 0,
+        processes: int | None = None,
         tool_id: str | None = None,
         parent_name: str | None = None,
         subjob_name: str | None = None,
@@ -2920,6 +2924,7 @@ class CWLNamedJob(Job):
             accelerators=accelerators,
             preemptible=preemptible,
             walltime=walltime,
+            processes=processes,
             unitName=self.task_path,
             displayName=display_name,
             local=local,
@@ -3085,6 +3090,21 @@ class CWLJob(CWLNamedJob):
                 }
             ]
 
+        processes: int | None = None
+        mpi_req, _ = tool.get_requirement(MPIRequirementName)
+        if mpi_req is not None:
+            mpi_processes = mpi_req.get(
+                "processes", runtime_context.mpi_config.default_nproc
+            )
+            if isinstance(mpi_processes, str):
+                mpi_processes = self.builder.do_eval(mpi_processes)
+            if not isinstance(mpi_processes, int):
+                raise ValidationException(
+                    f"{MPIRequirementName} processes must evaluate to an int "
+                    f"but got: {repr(mpi_processes)}"
+                )
+            processes = max(mpi_processes, 1)
+
         # cwltool doesn't handle http://arvados.org/cwl#UsePreemptible as part
         # of its resource logic so we have to do it manually.
         #
@@ -3142,6 +3162,7 @@ class CWLJob(CWLNamedJob):
             accelerators=accelerators,
             preemptible=preemptible,
             walltime=walltime,
+            processes=processes,
             tool_id=self.cwltool.tool["id"],
             parent_name=parent_name,
             local=isinstance(tool, cwltool.command_line_tool.ExpressionTool),
@@ -3247,6 +3268,11 @@ class CWLJob(CWLNamedJob):
 
         runtime_context.basedir = os.getcwd()
         runtime_context.preserve_environment = required_env_vars
+        if self.processes > 1:
+            runtime_context.mpi_config = pass_placement_variables(
+                runtime_context.mpi_config,
+                get_batch_system(file_store.jobStore.config.batchSystem),
+            )
 
         # When the tool makes its own PathMappers with make_path_mapper, they
         # will come and grab this function for fetching files from the Toil
@@ -3564,6 +3590,7 @@ def makeJob(
         REQUIREMENT_TYPES = [
             "ResourceRequirement",
             "http://commonwl.org/cwltool#CUDARequirement",
+            MPIRequirementName,
         ]
         has_dynamic_resource_requirement = False
         for requirement_type in REQUIREMENT_TYPES:
@@ -4975,6 +5002,21 @@ def filtered_secondary_files(
                 "Secondary file %s is dropped because it is known to be missing", sf
             )
     return final_secondary_files
+
+
+def pass_placement_variables(
+    mpi_config: MpiConfig, batch_system: type[AbstractBatchSystem]
+) -> MpiConfig:
+    """
+    Get a copy of the MPI config that also passes the MPI launcher the
+    variables through which the batch system tells a job's processes where it
+    placed them.
+    """
+    placed = copy.copy(mpi_config)
+    placed.env_pass_regex = (
+        mpi_config.env_pass_regex + batch_system.process_placement_variables()
+    )
+    return placed
 
 
 def scan_for_unsupported_requirements(

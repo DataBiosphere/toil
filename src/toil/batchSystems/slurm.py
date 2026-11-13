@@ -85,6 +85,15 @@ NONTERMINAL_STATES: set[str] = {
 }
 
 
+SLURM_CLIENT_VARIABLES = {"SLURM_CONF"}
+
+
+def is_submitter_job_variable(name: str) -> bool:
+    return (
+        name.startswith(("SLURM_", "SLURMD_")) and name not in SLURM_CLIENT_VARIABLES
+    )
+
+
 def parse_slurm_time(slurm_time: str) -> int:
     """
     Parse a Slurm-style time duration to a number of seconds.
@@ -360,11 +369,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             jobName: str,
             job_environment: dict[str, str] | None = None,
             gpus: int | None = None,
+            processes: int = 1,
         ) -> list[str]:
             # Make sure to use exec so we can get Slurm's signals in the Toil
             # worker instead of having an intervening Bash
             return self.prepareSbatch(
-                cpu, memory, walltime, jobID, jobName, job_environment, gpus
+                cpu, memory, walltime, jobID, jobName, job_environment, gpus, processes
             ) + [f"--wrap=exec {command}"]
 
         def submitJob(self, subLine: list[str]) -> int:
@@ -382,14 +392,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 # Might as well hide DBUS also.
                 # This doesn't get us a trustworthy XDG session in Slurm, but
                 # it does let us see the one Slurm tries to give us.
-                no_session_environment = os.environ.copy()
-                session_names = [
-                    n
-                    for n in no_session_environment.keys()
-                    if n.startswith("XDG_") or n.startswith("DBUS_")
-                ]
-                for name in session_names:
-                    del no_session_environment[name]
+                no_session_environment = {
+                    name: value
+                    for name, value in os.environ.items()
+                    if not name.startswith(("XDG_", "DBUS_"))
+                    and not is_submitter_job_variable(name)
+                }
 
                 output = call_command(subLine, env=no_session_environment)
                 # sbatch prints a line like 'Submitted batch job 2954103'
@@ -909,9 +917,14 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             jobName: str,
             job_environment: dict[str, str] | None,
             gpus: int | None,
+            processes: int = 1,
         ) -> list[str]:
             """
             Returns the sbatch command line to run to queue the job.
+
+            A job of more than one process is submitted as that many Slurm
+            tasks sharing its cores and memory, which Slurm may place on
+            different nodes.
             """
 
             # Start by naming the job
@@ -949,6 +962,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             is_time_option = option_detector("time", "t")
             is_partition_option = option_detector("partition", "p")
             is_qos_option = option_detector("qos")
+            is_ntasks_option = option_detector("ntasks", "n")
 
             # We will fill these in with stuff parsed from TOIL_SLURM_ARGS, or
             # with our own determinations if they aren't there.
@@ -976,6 +990,11 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                         raise ValueError(
                             f"Cannot use Slurm argument {arg} which conflicts "
                             f"with Toil's own arguments to Slurm"
+                        )
+                    elif processes > 1 and is_ntasks_option(arg):
+                        raise ValueError(
+                            f"Cannot use Slurm argument {arg} for job {jobName}, "
+                            f"which starts {processes} processes"
                         )
                     elif is_export_option(arg):
                         # Capture the export argument value so we can modify it
@@ -1094,11 +1113,18 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                         f"Job {jobName} needs GPUs, but specified partition {partition} does not have them. This job may not work."
                         f"Try specifying one of these partitions instead: {', '.join(self.boss.partitions.gpu_partitions)}."
                     )
+            cpus_per_task = math.ceil(cpu / processes)
+            if processes > 1:
+                sbatch_line.append(f"--ntasks={processes}")
             if mem is not None and self.boss.config.slurm_allocate_mem:  # type: ignore[attr-defined]
                 # memory passed in is in bytes, but slurm expects megabytes
-                sbatch_line.append(f"--mem={math.ceil(mem / 2 ** 20)}")
-            if cpu is not None:
-                sbatch_line.append(f"--cpus-per-task={math.ceil(cpu)}")
+                if processes > 1 and mem > 0:
+                    sbatch_line.append(
+                        f"--mem-per-cpu={math.ceil(mem / 2 ** 20 / (processes * cpus_per_task))}"
+                    )
+                else:
+                    sbatch_line.append(f"--mem={math.ceil(mem / 2 ** 20)}")
+            sbatch_line.append(f"--cpus-per-task={cpus_per_task}")
             if time_limit and time_limit > 0:
                 # Put all the seconds in the seconds slot
                 sbatch_line.append(f"--time=0:{time_limit}")
@@ -1155,6 +1181,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     get_job_kind(job_desc.get_names()),
                     job_environment,
                     gpus,
+                    job_desc.processes,
                 )
             )
             logger.debug(
@@ -1164,6 +1191,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 get_job_kind(job_desc.get_names()),
             )
         return job_id
+
+    @classmethod
+    def process_placement_variables(cls) -> list[str]:
+        return ["SLURM_.*"]
 
     def _check_accelerator_request(self, requirer: Requirer) -> None:
         for accelerator in requirer.accelerators:

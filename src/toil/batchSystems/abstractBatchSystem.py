@@ -315,6 +315,17 @@ class AbstractBatchSystem(ABC):
         """
         return []
 
+    @classmethod
+    def process_placement_variables(cls) -> list[str]:
+        """
+        Get regular expressions matching the environment variables that tell a
+        job's processes which machines the batch system placed them on.
+
+        Empty for batch systems that run all of a job's processes on one
+        machine.
+        """
+        return []
+
 
 class BatchSystemSupport(AbstractBatchSystem):
     """Partial implementation of AbstractBatchSystem, support methods."""

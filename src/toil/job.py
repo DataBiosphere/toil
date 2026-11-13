@@ -419,10 +419,19 @@ class RequirementsDict(TypedDict):
     accelerators: NotRequired[list[AcceleratorRequirement]]
     preemptible: NotRequired[bool]
     walltime: NotRequired[int]
+    processes: NotRequired[int]
 
 
 # These must be all the key names in RequirementsDict
-REQUIREMENT_NAMES = ["disk", "memory", "cores", "accelerators", "preemptible", "walltime"]
+REQUIREMENT_NAMES = [
+    "disk",
+    "memory",
+    "cores",
+    "accelerators",
+    "preemptible",
+    "walltime",
+    "processes",
+]
 
 # This is the supertype of all value types in RequirementsDict
 ParsedRequirement = Union[int, float, bool, list[AcceleratorRequirement]]
@@ -455,7 +464,7 @@ class Requirer:
     """
     Base class implementing the storage and presentation of requirements.
 
-    Has cores, memory, disk, preemptability, and walltime as properties.
+    Has cores, memory, disk, preemptability, walltime, and processes as properties.
     """
 
     _requirementOverrides: RequirementsDict
@@ -466,8 +475,8 @@ class Requirer:
 
         :param dict requirements: Dict from string to value
             describing a set of resource requirements. 'cores', 'memory',
-            'disk', 'preemptible', 'accelerators', and 'walltime' fields, if set, are
-            parsed and broken out into properties. If unset, the relevant
+            'disk', 'preemptible', 'accelerators', 'walltime', and 'processes'
+            fields, if set, are parsed and broken out into properties. If unset, the relevant
             property will be unspecified, and will be pulled from the assigned
             Config object if queried (see
             :meth:`toil.job.Requirer.assignConfig`). If unspecified and no
@@ -546,7 +555,7 @@ class Requirer:
     @overload
     @staticmethod
     def _parseResource(
-        name: Literal["memory"] | Literal["disk"] | Literal["walltime"],
+        name: Literal["memory"] | Literal["disk"] | Literal["walltime"] | Literal["processes"],
         value: ParseableIndivisibleResource,
     ) -> int: ...
 
@@ -611,7 +620,7 @@ class Requirer:
             # Anything can be None.
             return value
 
-        if name in ("memory", "disk", "cores", "walltime"):
+        if name in ("memory", "disk", "cores", "walltime", "processes"):
             # These should be numbers that accept things like "5G".
             if isinstance(value, bytes):
                 value = value.decode("utf-8")
@@ -733,6 +742,22 @@ class Requirer:
         self._requirementOverrides["walltime"] = Requirer._parseResource("walltime", val)
 
     @property
+    def processes(self) -> int:
+        """
+        Get the number of processes the job starts, 1 unless set.
+
+        The job's cores, memory, and disk are shared among its processes, which
+        a batch system may place on different machines.
+        """
+        return self._requirementOverrides.get("processes", 1)
+
+    @processes.setter
+    def processes(self, val: ParseableIndivisibleResource) -> None:
+        self._requirementOverrides["processes"] = Requirer._parseResource(
+            "processes", val
+        )
+
+    @property
     def cores(self) -> int | float:
         """Get the number of CPU cores required."""
         return cast(Union[int, float], self._fetchRequirement("cores"))
@@ -799,8 +824,10 @@ class Requirer:
         """Get a nice human-readable string of our requirements."""
         parts: list[str] = []
         for k in REQUIREMENT_NAMES:
-            v: str | ParsedRequirement | None = self._fetchRequirement(k)
+            v: str | ParsedRequirement | None = getattr(self, k)
             if v is not None:
+                if k == "processes" and v == 1:
+                    continue
                 if k == "walltime":
                     if v == 0:
                         continue
@@ -857,7 +884,7 @@ class JobDescription(Requirer):
 
         :param requirements: Dict from string to number, string, or bool
             describing the resource requirements of the job. 'cores', 'memory',
-            'disk', 'preemptible', and 'walltime' fields, if set, are parsed and broken out
+            'disk', 'preemptible', 'walltime', and 'processes' fields, if set, are parsed and broken out
             into properties. If unset, the relevant property will be
             unspecified, and will be pulled from the assigned Config object if
             queried (see :meth:`toil.job.Requirer.assignConfig`).
@@ -1776,6 +1803,7 @@ class Job:
         preemptible: ParseableFlag | None = None,
         preemptable: ParseableFlag | None = None,  # codespell:ignore preemptable
         walltime: ParseableIndivisibleResource | None = None,
+        processes: ParseableIndivisibleResource | None = None,
         unitName: str | None = "",
         checkpoint: bool | None = False,
         displayName: str | None = "",
@@ -1799,6 +1827,9 @@ class Job:
         :param preemptible: if the job can be run on a preemptible node.
         :param walltime: the maximum walltime in seconds that the job is allowed
             to run.
+        :param processes: the number of processes the job starts, such as the
+            ranks of an MPI program, which share its cores, memory and disk and
+            may be placed on different machines.
         :param unitName: Human-readable name for this instance of the job.
         :param checkpoint: if any of this job's successor jobs completely fails,
             exhausting all their retries, remove any successor jobs and rerun
@@ -1839,6 +1870,7 @@ class Job:
             "accelerators": accelerators,
             "preemptible": preemptible,
             "walltime": walltime,
+            "processes": processes,
         }
         if descriptionClass is None:
             if checkpoint:
@@ -1990,6 +2022,15 @@ class Job:
     @walltime.setter
     def walltime(self, val: int) -> None:
         self.description.walltime = val
+
+    @property
+    def processes(self) -> int:
+        """The number of processes the job starts."""
+        return self.description.processes
+
+    @processes.setter
+    def processes(self, val: int) -> None:
+        self.description.processes = val
 
     # Note that unless the two halves of a property are *immediately* adjacent,
     # MyPy throws an error. So the old version has to come later.
@@ -3538,7 +3579,7 @@ class FunctionWrappingJob(Job):
                ``**kwargs`` as arguments.
 
         The keywords ``memory``, ``cores``, ``disk``, ``accelerators`,
-        ``preemptible``, ``walltime``, and ``checkpoint`` are reserved keyword arguments that
+        ``preemptible``, ``walltime``, ``processes``, and ``checkpoint`` are reserved keyword arguments that
         if specified will be used to determine the resources required for the
         job, as :func:`toil.job.Job.__init__`. If they are keyword arguments to
         the function they will be extracted from the function definition, but
@@ -3578,6 +3619,7 @@ class FunctionWrappingJob(Job):
             accelerators=resolve("accelerators"),
             preemptible=resolve("preemptible"),
             walltime=resolve("walltime"),
+            processes=resolve("processes"),
             checkpoint=resolve("checkpoint", default=False),
             unitName=resolve("name", default=None),
         )
@@ -3640,6 +3682,7 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
         - accelerators
         - preemptible
         - walltime
+        - processes
 
     For example to wrap a function into a job we would call::
 
