@@ -29,6 +29,7 @@ import errno
 import functools
 import glob
 import io
+import heapq
 import json
 import logging
 import os
@@ -38,6 +39,7 @@ import stat
 import subprocess
 import sys
 import textwrap
+import threading
 import uuid
 
 # This is also in configargparse but MyPy doesn't know it
@@ -45,6 +47,7 @@ from argparse import RawDescriptionHelpFormatter
 from collections.abc import (
     Callable,
     Generator,
+    Iterable,
     Iterator,
     Mapping,
     MutableMapping,
@@ -104,6 +107,7 @@ from cwltool.utils import (
     adjustDirObjs,
     aslist,
     downloadHttpFile,
+    ensure_writable,
     get_listing,
     normalizeFilesDirs,
     visit_class,
@@ -1070,17 +1074,20 @@ class ToilCommandLineTool(
         self, runtimeContext: cwltool.context.RuntimeContext
     ) -> type[cwltool.job.JobBase]:
         """
-        Use a job class that monitors container resource usage if needed.
+        Use Toil's job class for the container system, if it has one.
 
-        We only act on container systems where the container isn't a descendant
-        process of us.
+        Toil's container job classes limit how many mounts a job uses. The
+        Docker one also measures resource usage inside the container.
         """
         parent_class = super().make_job_runner(runtimeContext)
-        if parent_class is DockerCommandLineJob:
-            # There's only one daemon-containerized container system: it's
-            # Docker itself (and not any of the subclasses of this),
-            return ToilDockerCommandLineJob
-        return parent_class
+        # Docker runs the container under its daemon instead of under us, so
+        # Toil measures its resource usage from inside.
+        toil_classes: dict[type[cwltool.job.JobBase], type[cwltool.job.JobBase]] = {
+            DockerCommandLineJob: ToilDockerCommandLineJob,
+            PodmanCommandLineJob: ToilPodmanCommandLineJob,
+            SingularityCommandLineJob: ToilSingularityCommandLineJob,
+        }
+        return toil_classes.get(parent_class, parent_class)
 
     def _initialworkdir(
         self, j: cwltool.job.JobBase | None, builder: cwltool.builder.Builder
@@ -1211,7 +1218,252 @@ CHILD_PROCESS_CONTAINER_JOBS = (
 )
 
 
-class ToilDockerCommandLineJob(DockerCommandLineJob):
+HOST_MOUNTS_DIR = "/mnt/cwl-host"
+"""
+The container directory where host paths are mounted at their own paths.
+
+A host path mounted read-only appears under ``ro``, and one mounted writable
+appears under ``rw``. One host path can be mounted both ways at once.
+"""
+
+
+def without_keys(pathmapper: PathMapper, keys: set[str]) -> PathMapper:
+    """Return a copy of a path mapper without the entries that have the given keys."""
+    result = copy.copy(pathmapper)
+    # PathMapper has no public way to remove entries.
+    result._pathmap = {k: v for k, v in pathmapper.items() if k not in keys}
+    return result
+
+
+def choose_mounts(paths: list[str], max_mounts: int) -> list[str]:
+    """
+    Choose at most max_mounts host paths that together hold all the given paths.
+
+    Start from the paths themselves. Then replace the deepest paths with their
+    parent directory until few enough are left. Never choose the host's root
+    directory, even if that leaves too many.
+    """
+    # Drop paths inside other paths. With "/" appended to the sort key, a
+    # path's descendants come right after it.
+    mounts: list[str] = []
+    for path in sorted(set(paths), key=lambda p: p + "/"):
+        if not mounts or not path.startswith(mounts[-1] + "/"):
+            mounts.append(path)
+    # The chosen paths, grouped by their parent directories.
+    by_parent: dict[str, set[str]] = {}
+    for path in mounts:
+        by_parent.setdefault(os.path.dirname(path), set()).add(path)
+    # The parent directories other than the root, deepest first.
+    parents = [(-p.count("/"), p) for p in by_parent if p != "/"]
+    heapq.heapify(parents)
+    count = len(mounts)
+    while count > max_mounts and parents:
+        _, parent = heapq.heappop(parents)
+        # Every chosen path inside the parent is one of these children, since
+        # deeper groups were merged first.
+        count -= len(by_parent.pop(parent)) - 1
+        grandparent = os.path.dirname(parent)
+        if grandparent not in by_parent and grandparent != "/":
+            heapq.heappush(parents, (-grandparent.count("/"), grandparent))
+        by_parent.setdefault(grandparent, set()).add(parent)
+    return sorted(path for group in by_parent.values() for path in group)
+
+
+class CondensedMountsMixin(ContainerCommandLineJob):
+    """
+    Container job that stages any number of files with a bounded number of mounts.
+
+    cwltool gives each input file and each InitialWorkDirRequirement entry its
+    own mount. With enough of them, the container command is too long to run.
+    When the job's two path mappers stage more entries than
+    ``--cwl-max-input-mounts``, this class stages them as links instead. Each
+    link points to its host path under HOST_MOUNTS_DIR, where a few ancestor
+    directories of those host paths are mounted. Everything in a mounted
+    directory is visible to the job, and writable if the mount is.
+
+    The links in the working directory point to container paths, so they would
+    be broken on the host. cwltool's relink_initialworkdir() replaces them with
+    links to the host paths before it collects outputs.
+    """
+
+    max_input_mounts: int
+    """The most mounts the job's path mappers can use."""
+
+    unlinked_mappers: dict[PathMapper, PathMapper]
+    """Each path mapper whose entries were linked, mapped to its entries that were not."""
+
+    def run(
+        self,
+        runtimeContext: cwltool.context.RuntimeContext,
+        tmpdir_lock: threading.Lock | None = None,
+    ) -> None:
+        """Run the job, with the mount limit from the runtime context."""
+        self.max_input_mounts = getattr(runtimeContext, "max_input_mounts")
+        self.unlinked_mappers = {}
+        super().run(runtimeContext, tmpdir_lock)
+
+    def add_volumes(
+        self,
+        pathmapper: PathMapper,
+        runtime: list[str],
+        tmpdir_prefix: str,
+        secret_store: SecretStore | None = None,
+        any_path_okay: bool = False,
+    ) -> None:
+        """Add mounts for the entries of a path mapper that are not linked."""
+        if pathmapper is self.pathmapper:
+            # cwltool adds the input mapper's mounts first. Link the entries of
+            # both mappers now, so their links can share host mounts.
+            self.link_entries(runtime, tmpdir_prefix, secret_store)
+        super().add_volumes(
+            self.unlinked_mappers.get(pathmapper, pathmapper),
+            runtime,
+            tmpdir_prefix,
+            secret_store,
+            any_path_okay,
+        )
+
+    def link_entries(
+        self,
+        runtime: list[str],
+        tmpdir_prefix: str,
+        secret_store: SecretStore | None,
+    ) -> None:
+        """
+        Link the entries of both path mappers, and mount what the links point into.
+
+        Do this only if the mappers stage more entries than the mount limit.
+
+        The input mapper's entries go in a new directory, which is mounted
+        read-only at the input staging directory. Created files that are
+        read-only are written into it. Other writable entries are copied into
+        another new directory, and linked writable.
+
+        The InitialWorkDirRequirement mapper's entries go in the working
+        directory. cwltool writes created files and writable copies there
+        itself, except for writable directories that hold entries, which are
+        copied here.
+        """
+        mappers = [m for m in (self.pathmapper, self.generatemapper) if m is not None]
+        if sum(1 for m in mappers for ent in m if ent.staged) <= self.max_input_mounts:
+            return
+        tree_dir = cwltool.utils.create_tmp_dir(tmpdir_prefix)
+        # Links resolve inside the container, where symlinks in the mounted
+        # directories can't reach the host paths they name. So links and
+        # mounts use real paths.
+        copy_dir = os.path.realpath(cwltool.utils.create_tmp_dir(tmpdir_prefix))
+        # The host paths the links point to, read-only and writable.
+        read_only: list[str] = []
+        writable: list[str] = []
+        # The number of staged entries outside the link roots, which get their
+        # own mounts.
+        unlinked_mounts = 0
+
+        for mapper in mappers:
+            in_tree = mapper is self.pathmapper
+            container_root = mapper.stagedir if in_tree else self.builder.outdir
+            staged = [(key, ent) for key, ent in mapper.items() if ent.staged]
+            inside = [
+                (key, ent) for key, ent in staged if ent.target.startswith(container_root + "/")
+            ]
+            unlinked_mounts += len(staged) - len(inside)
+            # Container directories that hold staged entries.
+            holders = set()
+            for _, ent in inside:
+                parent = os.path.dirname(ent.target)
+                while parent != container_root and parent not in holders:
+                    holders.add(parent)
+                    parent = os.path.dirname(parent)
+            # Host directories that hold the contents of container directories.
+            host_dirs = {container_root: tree_dir if in_tree else self.outdir}
+            keys: set[str] = set()
+            # Sorting by target puts each directory before its contents.
+            for key, ent in sorted(inside, key=lambda item: item[1].target):
+                parent = os.path.dirname(ent.target)
+                while parent not in host_dirs:
+                    parent = os.path.dirname(parent)
+                dest = os.path.join(host_dirs[parent], os.path.relpath(ent.target, parent))
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                synthetic = ent.resolved.startswith("_:")
+                holder = ent.target in holders
+                in_place = (
+                    self.inplace_update
+                    and not synthetic
+                    and ent.type in ("WritableFile", "WritableDirectory")
+                )
+                if (
+                    in_place
+                    or ent.type == "File"
+                    or (ent.type == "Directory" and not (synthetic or holder))
+                ):
+                    mode = "rw" if in_place else "ro"
+                    source = os.path.realpath(ent.resolved)
+                    os.symlink(f"{HOST_MOUNTS_DIR}/{mode}{source}", dest)
+                    (writable if in_place else read_only).append(source)
+                    if in_place:
+                        # TODO: A created file inside an in-place directory is
+                        # still left to cwltool, which fails to make its
+                        # directory, because the directory is now a link.
+                        host_dirs[ent.target] = ent.resolved
+                elif not (in_tree or holder or ent.type == "Directory"):
+                    # cwltool writes this into the working directory itself.
+                    continue
+                else:
+                    path = dest
+                    copied = ent.type not in ("CreateFile", "Directory")
+                    if copied and in_tree:
+                        # A copy in the tree would be read-only, so put it in
+                        # the copy directory and link to it.
+                        path = os.path.join(copy_dir, str(uuid.uuid4()))
+                        os.symlink(f"{HOST_MOUNTS_DIR}/rw{path}", dest)
+                        writable.append(path)
+                        host_dirs[ent.target] = path
+                    if ent.type in ("CreateFile", "CreateWritableFile"):
+                        with open(path, "w") as f:
+                            f.write(self.created_contents(ent, secret_store))
+                    elif ent.type == "WritableFile":
+                        shutil.copy(ent.resolved, path)
+                    elif ent.type == "Directory" or synthetic:
+                        os.mkdir(path)
+                    else:
+                        shutil.copytree(ent.resolved, path)
+                    if copied:
+                        ensure_writable(path, include_root=True)
+                keys.add(key)
+            self.unlinked_mappers[mapper] = without_keys(mapper, keys)
+
+        # The link tree takes a mount, and so does each staged entry outside
+        # the link roots.
+        budget = self.max_input_mounts - 1 - unlinked_mounts
+        # Merge writable mounts only as far as needed, since merging them makes
+        # more of the host writable. Read-only mounts get what is left. Each
+        # kind gets at least one mount.
+        rw_mounts = choose_mounts(writable, max(1, budget - bool(read_only)))
+        ro_mounts = choose_mounts(read_only, max(1, budget - len(rw_mounts)))
+
+        self.append_volume(runtime, tree_dir, self.pathmapper.stagedir)
+        for path in ro_mounts:
+            self.append_volume(runtime, path, f"{HOST_MOUNTS_DIR}/ro{path}")
+        for path in rw_mounts:
+            self.append_volume(runtime, path, f"{HOST_MOUNTS_DIR}/rw{path}", writable=True)
+
+    @staticmethod
+    def created_contents(ent: MapperEnt, secret_store: SecretStore | None) -> str:
+        """Return the contents of a created file, with any secrets filled in."""
+        if secret_store is None:
+            return ent.resolved
+        return cast(str, secret_store.retrieve(ent.resolved))
+
+
+class ToilPodmanCommandLineJob(CondensedMountsMixin, PodmanCommandLineJob):
+    """Podman job that stages any number of files with a bounded number of mounts."""
+
+
+class ToilSingularityCommandLineJob(CondensedMountsMixin, SingularityCommandLineJob):
+    """Singularity job that stages any number of files with a bounded number of mounts."""
+
+
+class ToilDockerCommandLineJob(CondensedMountsMixin, DockerCommandLineJob):
     """Container job that collects resource stats from injected in-container code."""
 
     def _execute(
@@ -5226,6 +5478,7 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.outdir = outdir
     setattr(runtime_context, "cwl_default_ram", options.cwl_default_ram)
     setattr(runtime_context, "cwl_min_ram", options.cwl_min_ram)
+    setattr(runtime_context, "max_input_mounts", options.max_input_mounts)
     setattr(
         runtime_context, "cwl_loop_iteration_limit", options.cwl_loop_iteration_limit
     )

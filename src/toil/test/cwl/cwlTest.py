@@ -2292,6 +2292,68 @@ def test_timelimit_expression(tmp_path: Path) -> None:
 
 
 @needs_cwl
+@needs_docker
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_container_mounts_independent_of_file_count(tmp_path: Path) -> None:
+    """
+    Make sure that the number of mounts, and so the length of the container
+    command, doesn't grow with the number of input files when it is limited.
+
+    See <https://github.com/DataBiosphere/toil/issues/3358>.
+    """
+    # Spread the inputs over two directories, as if on two file systems.
+    input_paths = []
+    for i in range(10):
+        input_path = tmp_path / f"inputs_{i % 2}" / f"{i:02d}.txt"
+        input_path.parent.mkdir(exist_ok=True)
+        input_path.write_text(f"file {i}\n")
+        input_paths.append(input_path)
+    job_file = tmp_path / "job.json"
+    job_file.write_text(
+        json.dumps({"files": [{"class": "File", "path": str(p)} for p in input_paths]})
+    )
+
+    def run_cat(max_mounts: int) -> tuple[str, int]:
+        """
+        Run the tool on the input files with a limit on input mounts.
+
+        :returns: the concatenated files, and how many mounts the container
+            command used.
+        """
+        run_dir = tmp_path / f"run_{max_mounts}"
+        run_dir.mkdir()
+        with get_data("test/cwl/cat_file_array.cwl") as cwl_file:
+            cmd = [
+                "toil-cwl-runner",
+                f"--jobStore=file:{run_dir / 'jobStore'}",
+                f"--outdir={run_dir / 'out'}",
+                "--logDebug",
+                str(cwl_file),
+                str(job_file),
+            ]
+            p = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "TOIL_CWL_MAX_INPUT_MOUNTS": str(max_mounts)},
+            )
+        assert p.returncode == 0, p.stderr
+        # The command shows up more than once in the log.
+        mounts = set(re.findall(r"--mount=\S*", p.stderr))
+        concatenated = json.loads(p.stdout)["concatenated"]["path"]
+        return Path(concatenated).read_text(), len(mounts)
+
+    expected = "".join(f"file {i}\n" for i in range(10))
+    output, unlimited_mounts = run_cat(100)
+    assert output == expected
+    output, limited_mounts = run_cat(3)
+    assert output == expected
+    # Instead of 10 mounts, the inputs get at most 3.
+    assert unlimited_mounts - limited_mounts >= 7, (unlimited_mounts, limited_mounts)
+
+
+@needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
 def test_visit_top_cwl_class() -> None:
