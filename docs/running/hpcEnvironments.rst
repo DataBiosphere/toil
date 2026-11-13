@@ -59,7 +59,7 @@ Slurm Tips
 
 #. With a shared filesystem, Toil's caching system is not necessarily going to help your workflow. Try running and timing test workflows with ``--caching true`` and with ``--caching false``, to determine whether it is worth it for your workload to copy files from the shared filesystem to local storage on each node.
 
-#. If running CWL workflows on Slurm, with a shared filesystem, you can try the ``--bypass-file-store`` option to ``toil-cwl-runner``. It may speed up your workflow, but you may also need to make sure to change Toil's work directory to a shared directory provided with the ``--workDir`` option in order for it to work properly across machines.
+#. If running CWL workflows on Slurm, with a shared filesystem, you can try the ``--bypass-file-store`` option to ``toil-cwl-runner``. It may speed up your workflow, but you may also need to make sure to change Toil's work directory to a shared directory provided with the ``--workDir`` option, and to put ``--tmp-outdir-prefix`` (and ``--cachedir``, if you use it), where intermediate outputs are kept, on the shared filesystem, in order for it to work properly across machines.
 
 
 Standard Output/Error from Batch System Jobs
