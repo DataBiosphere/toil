@@ -1,5 +1,6 @@
 import errno
 import logging
+import os
 import sys
 import textwrap
 from datetime import datetime, timedelta
@@ -775,6 +776,29 @@ class SlurmTest(ToilTest):
         self.worker.boss.config.slurm_args = "--export-file=./thefile.txt"
         command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, None)
         assert "--export=ALL" not in command
+
+    def test_submitJob_environment(self):
+        submitted = {}
+
+        def call_sbatch(args, env=None, **_) -> str:
+            submitted.update(env)
+            return "Submitted batch job 7"
+
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sbatch)
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PATH": "/usr/bin",
+                "SLURM_CONF": "/etc/slurm/slurm.conf",
+                "SLURM_JOB_ID": "6",
+                "SLURM_MEM_PER_NODE": "8192",
+                "SLURMD_NODENAME": "node1",
+                "XDG_RUNTIME_DIR": "/run/user/1000",
+            },
+            clear=True,
+        ):
+            assert self.worker.submitJob(["sbatch"]) == 7
+        assert submitted == {"PATH": "/usr/bin", "SLURM_CONF": "/etc/slurm/slurm.conf"}
 
     def test_prepareSbatch_processes(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
