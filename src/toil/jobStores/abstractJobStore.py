@@ -473,7 +473,7 @@ class AbstractJobStore(ABC):
     ) -> FileID | None:
         """
         Import the file at the given URL using the given job store class to retrieve that file.
-        See also :meth:`.importFile`. This method applies a generic approach to importing: it
+        See also :meth:`.import_file`. This method applies a generic approach to importing: it
         asks the other job store class for a stream and writes that stream as either a regular or
         a shared file.
 
@@ -512,8 +512,8 @@ class AbstractJobStore(ABC):
 
         Refer to :meth:`.AbstractJobStore.import_file` documentation for currently supported URL schemes.
 
-        Note that the helper method _exportFile is used to read from the source and write to
-        destination. To implement any optimizations that circumvent this, the _exportFile method
+        Note that the helper method _export_file is used to read from the source and write to
+        destination. To implement any optimizations that circumvent this, the _export_file method
         should be overridden by subclasses of AbstractJobStore.
 
         :param str file_id: The id of the file in the job store that should be exported.
@@ -532,7 +532,7 @@ class AbstractJobStore(ABC):
         self, otherCls: type["URLAccess"], jobStoreFileID: FileID, url: ParseResult
     ) -> None:
         """
-        Refer to exportFile docstring for information about this method.
+        Refer to export_file docstring for information about this method.
 
         :param URLAccess otherCls: The class of URLAccess that supports
                exporting to the given URL. Note that the type annotation here is not completely
@@ -549,7 +549,7 @@ class AbstractJobStore(ABC):
         self, otherCls: type["URLAccess"], jobStoreFileID: FileID, url: ParseResult
     ) -> None:
         """
-        Refer to exportFile docstring for information about this method.
+        Refer to export_file docstring for information about this method.
 
         :param URLAccess otherCls: The class of URLAccess that supports
                exporting to the given URL. Note that the type annotation here is not completely
@@ -1237,7 +1237,7 @@ class AbstractJobStore(ABC):
     ) -> str:
         """
         Creates an empty file in the job store and returns its ID.
-        Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
+        Call to fileExists(get_empty_file_store_id(jobStoreID)) will return True.
 
         :param job_id: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.

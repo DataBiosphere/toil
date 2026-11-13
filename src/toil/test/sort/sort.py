@@ -306,7 +306,7 @@ def main(options=None):
         sortedFileURL = "file://" + os.path.abspath(sortedFileName)
         if not workflow.options.restart:
             sortFileURL = "file://" + os.path.abspath(fileName)
-            sortFileID = workflow.importFile(sortFileURL)
+            sortFileID = workflow.import_file(sortFileURL)
             sortedFileID = workflow.start(
                 Job.wrapJobFn(
                     setup,
@@ -319,7 +319,7 @@ def main(options=None):
             )
         else:
             sortedFileID = workflow.restart()
-        workflow.exportFile(sortedFileID, sortedFileURL)
+        workflow.export_file(sortedFileID, sortedFileURL)
 
 
 if __name__ == "__main__":

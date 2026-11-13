@@ -308,7 +308,7 @@ def main(options=None):
 
         if not workflow.options.restart:
             sortFileURL = "file://" + os.path.abspath(fileName)
-            sortFileID = workflow.importFile(sortFileURL)
+            sortFileID = workflow.import_file(sortFileURL)
             sortedFileID = workflow.start(
                 Job.wrapJobFn(
                     setup,

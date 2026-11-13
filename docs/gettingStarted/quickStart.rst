@@ -274,7 +274,7 @@ Finally we come to the context manager that initializes the workflow. We create 
 ``'file://'`` as per the documentation for :func:`toil.common.Toil` when staging a file that is stored locally. Notice
 that we have to check whether or not the workflow is restarting so that we don't import the file more than once.
 Finally we can kick off the workflow by calling :func:`toil.common.Toil.start` on the job ``setup``. When the workflow
-ends we capture its output (the sorted file's fileID) and use that in :func:`toil.common.Toil.exportFile` to move the
+ends we capture its output (the sorted file's fileID) and use that in :func:`toil.common.Toil.export_file` to move the
 sorted file from the job store back into "userland".
 
 Next let's look at the job that begins the actual workflow, ``setup``.
@@ -317,7 +317,7 @@ we see that the two input files are merged together and the output is written to
 :func:`job.fileStore.writeGlobalFileStream`. After a little cleanup, the output file is returned.
 
 Once the final ``up`` finishes and all of the ``rv()`` promises are fulfilled, ``main`` receives the sorted file's ID
-which it uses in ``exportFile`` to send it to the user.
+which it uses in ``export_file`` to send it to the user.
 
 There are other things in this example that we didn't go over such as :ref:`checkpoints` and the details of much of
 the :ref:`api`.

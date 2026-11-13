@@ -42,14 +42,14 @@ if __name__ == "__main__":
             # Note: this may create a symlink depending on the value of the
             # --linkImports command line option, in which case the original
             # input file needs to still exist if the workflow is restarted.
-            inputFileID = toil.importFile(f"file://{path}")
+            inputFileID = toil.import_file(f"file://{path}")
 
             # Run the workflow
             outputFileID = toil.start(HelloWorld(inputFileID))
         else:
             outputFileID = toil.restart()
 
-        toil.exportFile(
+        toil.export_file(
             outputFileID,
             "file://" + os.path.join(tmp, "out.txt"),
         )

@@ -24,14 +24,7 @@ from uuid import uuid4
 
 import pytest
 
-import toil.lib.aws.session
-from toil.lib.aws import zone_to_region
 from toil.provisioners import cluster_factory
-from toil.provisioners.aws import (
-    _get_spot_history,
-    get_aws_zone_from_spot_market,
-    get_best_aws_zone,
-)
 from toil.test import (
     get_data,
     integrative,
@@ -72,6 +65,7 @@ class TestAWSProvisionerBenchTest:
         """
         Supply an appropriate AWS zone to work in to tests that need one.
         """
+        from toil.provisioners.aws import get_best_aws_zone
         zone = get_best_aws_zone()
         assert (
             zone is not None
@@ -83,6 +77,7 @@ class TestAWSProvisionerBenchTest:
         """
         Supply an appropriate AWS region to work in to tests that need one.
         """
+        from toil.lib.aws import zone_to_region
         return zone_to_region(aws_zone)
 
     @pytest.fixture
@@ -90,6 +85,7 @@ class TestAWSProvisionerBenchTest:
         """
         Supply an AWS EC2 client tests that need one.
         """
+        import toil.lib.aws.session
         return toil.lib.aws.session.client("ec2", aws_region)
 
     # Needs to talk to EC2 for image discovery
@@ -135,6 +131,7 @@ class TestAWSProvisionerBenchTest:
         """
         Make sure that we can download spot price history from AWS.
         """
+        from toil.provisioners.aws import _get_spot_history
         history = _get_spot_history(ec2_client, "t3.large")
         # We should have 7 days of history, newest first.
 
@@ -142,6 +139,7 @@ class TestAWSProvisionerBenchTest:
         """
         Make sure that we can process spot price history to pick a zone.
         """
+        from toil.provisioners.aws import get_aws_zone_from_spot_market
         zone_options = ["us-west-2a", "af-south-1c"]
         zone_choice = get_aws_zone_from_spot_market(
             0.01, "t3.large", ec2_client, zone_options
@@ -256,6 +254,7 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
 
     def _test(self, preemptibleJobs=False):
         """Does the work of the testing.  Many features' tests are thrown in here in no particular order."""
+        from toil.lib.aws import zone_to_region
         # Make a cluster
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
@@ -377,6 +376,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         Otherwise is functionally equivalent to parent.
         :return: volumeID
         """
+        from toil.lib.aws import zone_to_region
         volumeID = super().getRootVolID()
         boto3_ec2: "EC2Client" = self.aws.client(
             region=zone_to_region(self.region), service_name="ec2"
@@ -424,6 +424,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
 
     def launchCluster(self):
         from toil.lib.ec2 import wait_instances_running
+        from toil.lib.aws import zone_to_region
 
         self.createClusterUtil(
             args=[

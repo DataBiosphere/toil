@@ -54,7 +54,7 @@ class TestImportExportFile:
                 msg_portion_file_path = create_file(
                     tmp_path, content=self.message_portion_1
                 )
-                msg_portion_file_id = toil.importFile(msg_portion_file_path.as_uri())
+                msg_portion_file_id = toil.import_file(msg_portion_file_path.as_uri())
                 assert isinstance(msg_portion_file_id, FileID)
                 assert msg_portion_file_path.stat().st_size == msg_portion_file_id.size
 
@@ -62,7 +62,7 @@ class TestImportExportFile:
                     tmp_path,
                     content="Time to freak out!" if fail else "Keep calm and carry on.",
                 )
-                self.trigger_file_id = toil.importFile(
+                self.trigger_file_id = toil.import_file(
                     file_that_can_trigger_failure_when_job_starts.as_uri()
                 )
                 workflow_final_output_file_id = toil.start(
@@ -84,7 +84,7 @@ class TestImportExportFile:
 
                 workflow_final_output_file_id = toil.restart()
 
-            toil.exportFile(workflow_final_output_file_id, str(tmp_path / "out"))
+            toil.export_file(workflow_final_output_file_id, str(tmp_path / "out"))
             with (tmp_path / "out").open() as f:
                 assert f.read() == f"{self.message_portion_1}{self.message_portion_2}"
 
@@ -122,16 +122,16 @@ class TestImportExportFile:
             #  Note: this is somewhat done in src/toil/test/src/fileStoreTest.py
 
             with subtests.test(
-                msg="Testing permissions are preserved for local importFile/exportFile"
+                msg="Testing permissions are preserved for local import_file/export_file"
             ):
                 for executable in True, False:
                     file_path = create_file(
                         tmp_path, content="Hello", executable=executable
                     )
                     initial_permissions = file_path.stat().st_mode & stat.S_IXUSR
-                    file_id = toil.importFile(file_path.as_uri())
+                    file_id = toil.import_file(file_path.as_uri())
                     output_file_path = tmp_path / f"out_{executable}"
-                    toil.exportFile(file_id, output_file_path.as_uri())
+                    toil.export_file(file_id, output_file_path.as_uri())
                     current_permissions = output_file_path.stat().st_mode & stat.S_IXUSR
                     assert initial_permissions == current_permissions
 
@@ -141,20 +141,20 @@ class TestImportExportFile:
                 relative_path_data = "Everything is relative."
                 file_path = create_file(tmp_path, content=relative_path_data)
 
-                file_id = toil.importFile(os.path.relpath(file_path))
+                file_id = toil.import_file(os.path.relpath(file_path))
                 output_file_path = tmp_path / "out2"
-                toil.exportFile(file_id, os.path.relpath(output_file_path))
+                toil.export_file(file_id, os.path.relpath(output_file_path))
                 with output_file_path.open() as f:
                     assert f.read() == relative_path_data
 
-            with subtests.test(msg="Test local importFile accepts a shared_file_name."):
+            with subtests.test(msg="Test local import_file accepts a shared_file_name."):
                 # TODO: whyyyy do we allow this?  shared file names are not unique and can overwrite each other
-                #  ...not only that... we can't use exportFile on them afterwards!?
+                #  ...not only that... we can't use export_file on them afterwards!?
                 file_path = create_file(tmp_path, content="why")
                 shared_file_name = (
                     "users_should_probably_not_be_allowed_to_make_shared_files.bad"
                 )
-                toil.importFile(file_path.as_uri(), sharedFileName=shared_file_name)
+                toil.import_file(file_path.as_uri(), shared_file_name=shared_file_name)
                 with toil._jobStore.read_shared_file_stream(
                     shared_file_name, encoding="utf-8"
                 ) as f:
