@@ -2303,7 +2303,8 @@ def test_container_mounts_independent_of_file_count(tmp_path: Path) -> None:
         """
         Run the tool on the input files with a limit on input mounts.
 
-        :returns: the concatenated files, and how many mounts the inputs used.
+        :returns: the concatenated files, and how many mounts the container
+            command used.
         """
         run_dir = tmp_path / f"run_{max_mounts}"
         run_dir.mkdir()
@@ -2320,20 +2321,21 @@ def test_container_mounts_independent_of_file_count(tmp_path: Path) -> None:
                 cmd,
                 capture_output=True,
                 text=True,
-                env={**os.environ, "CWLTOOL_MAX_INPUT_MOUNTS": str(max_mounts)},
+                env={**os.environ, "TOIL_CWL_MAX_INPUT_MOUNTS": str(max_mounts)},
             )
         assert p.returncode == 0, p.stderr
-        mounts = set(re.findall(r"--mount=\S*target=/var/lib/cwl/[^,\s]*", p.stderr))
+        # The command shows up more than once in the log.
+        mounts = set(re.findall(r"--mount=\S*", p.stderr))
         concatenated = json.loads(p.stdout)["concatenated"]["path"]
         return Path(concatenated).read_text(), len(mounts)
 
     expected = "".join(f"file {i}\n" for i in range(10))
-    output, mounts = run_cat(100)
+    output, unlimited_mounts = run_cat(100)
     assert output == expected
-    assert mounts == 10
-    output, mounts = run_cat(2)
+    output, limited_mounts = run_cat(3)
     assert output == expected
-    assert mounts == 2
+    # Instead of 10 mounts, the inputs get at most 3.
+    assert unlimited_mounts - limited_mounts >= 7, (unlimited_mounts, limited_mounts)
 
 
 @needs_cwl

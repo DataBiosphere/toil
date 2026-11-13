@@ -7,6 +7,9 @@ from toil.lib.conversions import human2bytes
 from toil.options.common import make_open_interval_action
 from toil.version import baseVersion
 
+DEFAULT_MAX_INPUT_MOUNTS = 100
+"""The default for ``--cwl-max-input-mounts``."""
+
 
 def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     """
@@ -459,6 +462,20 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         dest="cachedir",
     )
 
+    parser.add_argument(
+        "--cwl-max-input-mounts",
+        type=int,
+        action=make_open_interval_action(3),
+        default=DEFAULT_MAX_INPUT_MOUNTS,
+        env_var="TOIL_CWL_MAX_INPUT_MOUNTS",
+        metavar="COUNT",
+        help=suppress_help
+        or "Maximum number of mounts a containerized CWL tool can use for its "
+        "input files. Above this, Toil mounts the directories that hold the "
+        "files instead, so the tool can see other files in those directories. "
+        f"Must be at least 3. (default: {DEFAULT_MAX_INPUT_MOUNTS})",
+        dest="max_input_mounts",
+    )
     parser.add_argument(
         "--cwl-loop-iteration-limit",
         type=int,
