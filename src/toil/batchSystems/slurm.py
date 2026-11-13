@@ -85,6 +85,15 @@ NONTERMINAL_STATES: set[str] = {
 }
 
 
+SLURM_CLIENT_VARIABLES = {"SLURM_CONF"}
+
+
+def is_submitter_job_variable(name: str) -> bool:
+    return (
+        name.startswith(("SLURM_", "SLURMD_")) and name not in SLURM_CLIENT_VARIABLES
+    )
+
+
 def parse_slurm_time(slurm_time: str) -> int:
     """
     Parse a Slurm-style time duration to a number of seconds.
@@ -383,14 +392,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 # Might as well hide DBUS also.
                 # This doesn't get us a trustworthy XDG session in Slurm, but
                 # it does let us see the one Slurm tries to give us.
-                no_session_environment = os.environ.copy()
-                session_names = [
-                    n
-                    for n in no_session_environment.keys()
-                    if n.startswith("XDG_") or n.startswith("DBUS_")
-                ]
-                for name in session_names:
-                    del no_session_environment[name]
+                no_session_environment = {
+                    name: value
+                    for name, value in os.environ.items()
+                    if not name.startswith(("XDG_", "DBUS_"))
+                    and not is_submitter_job_variable(name)
+                }
 
                 output = call_command(subLine, env=no_session_environment)
                 # sbatch prints a line like 'Submitted batch job 2954103'
