@@ -80,7 +80,7 @@ import schema_salad.ref_resolver
 from configargparse import ArgParser, Namespace
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
-from cwltool.mpi import MpiConfig
+from cwltool.mpi import MPIRequirementName, MpiConfig
 from cwltool.mutation import MutationManager
 from cwltool.pathmapper import MapperEnt, PathMapper
 from cwltool.process import (
@@ -2873,6 +2873,7 @@ class CWLNamedJob(Job):
         accelerators: list[AcceleratorRequirement] | None = None,
         preemptible: bool | None = None,
         walltime: int | None = 0,
+        processes: int | None = None,
         tool_id: str | None = None,
         parent_name: str | None = None,
         subjob_name: str | None = None,
@@ -2920,6 +2921,7 @@ class CWLNamedJob(Job):
             accelerators=accelerators,
             preemptible=preemptible,
             walltime=walltime,
+            processes=processes,
             unitName=self.task_path,
             displayName=display_name,
             local=local,
@@ -3085,6 +3087,21 @@ class CWLJob(CWLNamedJob):
                 }
             ]
 
+        processes: int | None = None
+        mpi_req, _ = tool.get_requirement(MPIRequirementName)
+        if mpi_req is not None:
+            mpi_processes = mpi_req.get(
+                "processes", runtime_context.mpi_config.default_nproc
+            )
+            if isinstance(mpi_processes, str):
+                mpi_processes = self.builder.do_eval(mpi_processes)
+            if not isinstance(mpi_processes, int):
+                raise ValidationException(
+                    f"{MPIRequirementName} processes must evaluate to an int "
+                    f"but got: {repr(mpi_processes)}"
+                )
+            processes = max(mpi_processes, 1)
+
         # cwltool doesn't handle http://arvados.org/cwl#UsePreemptible as part
         # of its resource logic so we have to do it manually.
         #
@@ -3142,6 +3159,7 @@ class CWLJob(CWLNamedJob):
             accelerators=accelerators,
             preemptible=preemptible,
             walltime=walltime,
+            processes=processes,
             tool_id=self.cwltool.tool["id"],
             parent_name=parent_name,
             local=isinstance(tool, cwltool.command_line_tool.ExpressionTool),
@@ -3564,6 +3582,7 @@ def makeJob(
         REQUIREMENT_TYPES = [
             "ResourceRequirement",
             "http://commonwl.org/cwltool#CUDARequirement",
+            MPIRequirementName,
         ]
         has_dynamic_resource_requirement = False
         for requirement_type in REQUIREMENT_TYPES:

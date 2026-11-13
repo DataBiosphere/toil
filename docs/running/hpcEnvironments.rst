@@ -39,6 +39,8 @@ If some of your jobs can take a lot longer than others, you can set ``--defaultW
 
 Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.)
 
+A job that starts more than one process, such as a CWL step with ``cwltool:MPIRequirement``, is submitted as that many Slurm tasks with ``--ntasks``, sharing the job's cores and memory, so Slurm can place them on several nodes. The job then starts its processes inside that allocation itself, for a CWL step with the launcher from ``--mpi-config-file`` (``mpirun`` by default). Other batch systems run all of a job's processes on one machine.
+
 Slurm Tips
 ~~~~~~~~~~
 

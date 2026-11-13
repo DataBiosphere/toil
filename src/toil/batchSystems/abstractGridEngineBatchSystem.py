@@ -45,8 +45,9 @@ logger = logging.getLogger(__name__)
 # Unit name of the job
 # Environment dict for the job
 # Number of GPUs
+# Number of processes
 JobTuple = tuple[
-    int, float, int, int, int, str, str, dict[str, str] | None, int
+    int, float, int, int, int, str, str, dict[str, str] | None, int, int
 ]
 
 
@@ -156,14 +157,32 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 self.boss.config.max_jobs
             ):
                 activity = True
-                jobID, cpu, memory, disk, walltime, command, jobName, environment, gpus = (
-                    self.waitingJobs.pop(0)
-                )
+                (
+                    jobID,
+                    cpu,
+                    memory,
+                    disk,
+                    walltime,
+                    command,
+                    jobName,
+                    environment,
+                    gpus,
+                    processes,
+                ) = self.waitingJobs.pop(0)
                 if self.boss.config.memory_is_product and cpu > 1:
                     memory = int(memory // cpu)
                 # prepare job submission command
                 subLine = self.prepareSubmission(
-                    cpu, memory, disk, walltime, jobID, command, jobName, environment, gpus
+                    cpu,
+                    memory,
+                    disk,
+                    walltime,
+                    jobID,
+                    command,
+                    jobName,
+                    environment,
+                    gpus,
+                    processes,
                 )
                 logger.debug("Running %r", subLine)
                 batchJobID = self.boss.with_retries(self.submitJob, subLine)
@@ -383,6 +402,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             jobName: str,
             job_environment: dict[str, str] | None = None,
             gpus: int | None = None,
+            processes: int = 1,
         ) -> T:
             """
             Preparation in putting together something submittable
@@ -397,6 +417,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             :param: jobName: the name of the Toil job, to provide metadata to batch systems if desired
             :param: job_environment: the environment variables to be set on the worker
             :param: gpus: number of gpus
+            :param: processes: number of processes the job starts, sharing its
+                cores and memory
 
             :returns: the submission to pass to submitJob()
             """
@@ -524,6 +546,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                     get_job_kind(job_desc.get_names()),
                     job_environment,
                     gpus,
+                    job_desc.processes,
                 )
             )
             logger.debug(

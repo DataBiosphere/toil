@@ -2103,6 +2103,50 @@ def test_filename_conflict_detection_at_root(tmp_path: Path) -> None:
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
+def test_mpi_processes_on_step_output(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    A step whose MPIRequirement processes reference an upstream step's output
+    must be issued as a job starting that many processes.
+    """
+    from toil.cwl import cwltoil
+
+    with get_data("test/cwl/mock_mpi/fake_mpi.yml") as mpi_config_file:
+        with get_data("test/cwl/mock_mpi/fake_mpi_run.py") as fake_mpi_run:
+            with get_data("test/cwl/mpi_processes_depend_on_step.cwl") as cwl_file:
+                monkeypatch.setenv(
+                    "PATH", f"{os.environ['PATH']}:{fake_mpi_run.parent}"
+                )
+                with caplog.at_level(logging.DEBUG, logger="toil.leader"):
+                    cwltoil.main(
+                        [
+                            "--logDebug",
+                            f"--outdir={tmp_path}",
+                            "--enable-ext",
+                            "--mpi-config-file",
+                            str(mpi_config_file),
+                            "--disableChaining=True",
+                            str(cwl_file),
+                            "--ranks",
+                            "3",
+                        ]
+                    )
+                    assert any(
+                        "Finished toil run successfully" in record.getMessage()
+                        for record in caplog.records
+                    ), "Toil run didn't finish"
+                    assert any(
+                        "Issued job 'CWLJob'" in record.getMessage()
+                        and "consume" in record.getMessage()
+                        and "processes: 3" in record.getMessage()
+                        for record in caplog.records
+                    ), "consume's 'CWLJob' not issued with 3 processes"
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
 def test_pick_value_with_one_null_value(
     caplog: pytest.LogCaptureFixture, tmp_path: Path
 ) -> None:

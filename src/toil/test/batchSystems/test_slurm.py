@@ -776,6 +776,38 @@ class SlurmTest(ToilTest):
         command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, None)
         assert "--export=ALL" not in command
 
+    def test_prepareSbatch_processes(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        self.worker.boss.partitions = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.config.slurm_allocate_mem = True
+
+        command = self.worker.prepareSbatch(4, 4 * 2**30, 5, 0, "job5", None, None)
+        assert "--cpus-per-task=4" in command
+        assert "--mem=4096" in command
+        assert not any(arg.startswith("--ntasks") for arg in command)
+
+        command = self.worker.prepareSbatch(
+            96, 96 * 2**30, 5, 0, "job5", None, None, 2
+        )
+        assert "--ntasks=2" in command
+        assert "--cpus-per-task=48" in command
+        assert "--mem-per-cpu=1024" in command
+        assert not any(arg.startswith("--mem=") for arg in command)
+
+        command = self.worker.prepareSbatch(1, 2**30, 5, 0, "job5", None, None, 3)
+        assert "--ntasks=3" in command
+        assert "--cpus-per-task=1" in command
+        assert "--mem-per-cpu=342" in command
+
+        command = self.worker.prepareSbatch(2, 0, 5, 0, "job5", None, None, 2)
+        assert "--mem=0" in command
+
+        self.worker.boss.config.slurm_args = "--ntasks=4"
+        with pytest.raises(ValueError):
+            self.worker.prepareSbatch(2, 2**30, 5, 0, "job5", None, None, 2)
+        command = self.worker.prepareSbatch(2, 2**30, 5, 0, "job5", None, None)
+        assert "--ntasks=4" in command
+
     def test_option_detector(self):
         detector = toil.batchSystems.slurm.option_detector("foobar", "f")
 
