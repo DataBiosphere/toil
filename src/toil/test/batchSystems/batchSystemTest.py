@@ -532,18 +532,21 @@ class AbstractBatchSystemJobTest:
 
     def test_omp_threads(self, tmp_path: Path) -> None:
         """
-        Test if the OMP_NUM_THREADS env var is set correctly based on jobs.cores.
+        Test if the OMP_NUM_THREADS env var is set correctly based on the cores
+        of each of a job's processes.
         """
         test_cases = {
-            # mapping of the number of cores to the OMP_NUM_THREADS value
-            0.1: "1",
-            1: "1",
-            2: "2",
+            # mapping of the number of cores and processes to the OMP_NUM_THREADS value
+            (0.1, 1): "1",
+            (1, 1): "1",
+            (2, 1): "2",
+            (2, 2): "1",
+            (1, 2): "1",
         }
 
         options = self.getOptions(tmp_path)
 
-        for cores, expected_omp_threads in test_cases.items():
+        for (cores, processes), expected_omp_threads in test_cases.items():
             if eont := os.environ.get("OMP_NUM_THREADS"):
                 expected_omp_threads = eont
                 logger.info(
@@ -551,7 +554,13 @@ class AbstractBatchSystemJobTest:
                 )
             with Toil(options) as toil:
                 output = toil.start(
-                    Job.wrapFn(get_omp_threads, memory="1Mi", cores=cores, disk="1Mi")
+                    Job.wrapFn(
+                        get_omp_threads,
+                        memory="1Mi",
+                        cores=cores,
+                        disk="1Mi",
+                        processes=processes,
+                    )
                 )
             assert output == expected_omp_threads
 

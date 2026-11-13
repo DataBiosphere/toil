@@ -1175,7 +1175,7 @@ class Leader:
             )
 
         omp_threads = os.environ.get("OMP_NUM_THREADS") or str(
-            max(1, int(jobNode.cores))
+            max(1, int(jobNode.cores / jobNode.processes))
         )  # make sure OMP_NUM_THREADS is a positive integer
 
         job_environment = {
