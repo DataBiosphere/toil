@@ -124,8 +124,11 @@ from schema_salad.exceptions import ValidationException
 from schema_salad.ref_resolver import file_uri, uri_file_path
 from schema_salad.sourceline import SourceLine
 
-from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
-from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
+from toil.batchSystems.abstractBatchSystem import (
+    AbstractBatchSystem,
+    InsufficientSystemResources,
+)
+from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM, get_batch_system
 from toil.common import (
     Config,
     Toil,
@@ -3265,6 +3268,11 @@ class CWLJob(CWLNamedJob):
 
         runtime_context.basedir = os.getcwd()
         runtime_context.preserve_environment = required_env_vars
+        if self.processes > 1:
+            runtime_context.mpi_config = pass_placement_variables(
+                runtime_context.mpi_config,
+                get_batch_system(file_store.jobStore.config.batchSystem),
+            )
 
         # When the tool makes its own PathMappers with make_path_mapper, they
         # will come and grab this function for fetching files from the Toil
@@ -4994,6 +5002,21 @@ def filtered_secondary_files(
                 "Secondary file %s is dropped because it is known to be missing", sf
             )
     return final_secondary_files
+
+
+def pass_placement_variables(
+    mpi_config: MpiConfig, batch_system: type[AbstractBatchSystem]
+) -> MpiConfig:
+    """
+    Get a copy of the MPI config that also passes the MPI launcher the
+    variables through which the batch system tells a job's processes where it
+    placed them.
+    """
+    placed = copy.copy(mpi_config)
+    placed.env_pass_regex = (
+        mpi_config.env_pass_regex + batch_system.process_placement_variables()
+    )
+    return placed
 
 
 def scan_for_unsupported_requirements(

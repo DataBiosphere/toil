@@ -2103,6 +2103,34 @@ def test_filename_conflict_detection_at_root(tmp_path: Path) -> None:
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
+def test_mpi_launcher_gets_placement_variables() -> None:
+    """
+    The MPI launcher of a multi-process step must get the variables through
+    which the batch system tells the processes where it placed them, along
+    with the ones the user's MPI config passes.
+    """
+    from cwltool.mpi import MpiConfig
+
+    from toil.batchSystems.singleMachine import SingleMachineBatchSystem
+    from toil.batchSystems.slurm import SlurmBatchSystem
+    from toil.cwl.cwltoil import pass_placement_variables
+
+    mpi_config = MpiConfig(env_pass_regex=["SITE_.*"])
+    placed = pass_placement_variables(mpi_config, SlurmBatchSystem)
+    assert placed.env_pass_regex == ["SITE_.*", "SLURM_.*"]
+    assert mpi_config.env_pass_regex == ["SITE_.*"]
+    env: dict[str, str] = {}
+    with patch.dict(os.environ, {"SLURM_JOB_ID": "42", "SITE_X": "1", "OTHER": "2"}):
+        placed.pass_through_env_vars(env)
+    assert env == {"SLURM_JOB_ID": "42", "SITE_X": "1"}
+    assert pass_placement_variables(
+        mpi_config, SingleMachineBatchSystem
+    ).env_pass_regex == ["SITE_.*"]
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
 def test_mpi_processes_on_step_output(
     caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -1185,6 +1185,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             )
         return job_id
 
+    @classmethod
+    def process_placement_variables(cls) -> list[str]:
+        return ["SLURM_.*"]
+
     def _check_accelerator_request(self, requirer: Requirer) -> None:
         for accelerator in requirer.accelerators:
             if accelerator["kind"] != "gpu":
