@@ -1349,11 +1349,11 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             dest="slurm_accelerator_partitions",
             type=parse_accelerator_partitions,
             default={},
-            metavar="KIND=PARTITION[,KIND=PARTITION...]",
             env_var="TOIL_SLURM_ACCELERATOR_PARTITIONS",
             help="Partitions to send Slurm jobs to if they ask for accelerators "
-            "other than GPUs, by accelerator kind. Jobs asking for an accelerator "
-            "kind not listed here are refused.",
+            "other than GPUs, by accelerator kind, as a comma-separated list of "
+            "KIND=PARTITION. Jobs asking for an accelerator kind not listed here "
+            "are refused.",
         )
         parser.add_argument(
             "--slurmPE",

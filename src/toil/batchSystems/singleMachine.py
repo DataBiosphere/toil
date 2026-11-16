@@ -1068,11 +1068,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             dest="local_accelerators",
             type=parse_local_accelerators,
             default={},
-            metavar="KIND=COUNT[,KIND=COUNT...]",
             help="Accelerators other than GPUs that this machine has, by kind, for "
-            "jobs that ask for them. Used in the single_machine batch system, which "
-            "detects GPUs itself and refuses jobs asking for an accelerator kind it "
-            "does not have.",
+            "jobs that ask for them, as a comma-separated list of KIND=COUNT. Used "
+            "in the single_machine batch system, which detects GPUs itself and "
+            "refuses jobs asking for an accelerator kind it does not have.",
         )
 
     @classmethod
