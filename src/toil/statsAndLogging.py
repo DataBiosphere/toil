@@ -189,7 +189,7 @@ class StatsAndLogging:
         startTime = time.time()
         startClock = ResourceMonitor.get_total_cpu_time()
 
-        # We buffer log messages on each tick so we can pring them in an
+        # We buffer log messages on each tick so we can print them in an
         # approximation of the order they were sent.
         log_buffer: list[LeaderLogMessage] = []
 
