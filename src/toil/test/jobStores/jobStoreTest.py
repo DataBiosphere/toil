@@ -118,7 +118,7 @@ class AbstractJobStoreTest:
 
         def setUp(self):
             super().setUp()
-            self.namePrefix = "jobstore-test-" + str(uuid.uuid4())
+            self.namePrefix = mkdtemp() + "jobstore-test-" + str(uuid.uuid4())
             self.config = self._createConfig()
 
             # Jobstores to be used in testing.

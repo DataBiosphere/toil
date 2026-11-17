@@ -20,6 +20,7 @@ import sys
 from toil.common import Config, Toil, parser_with_common_options
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.conversions import strtobool
+from toil.lib.io import mkdtemp
 from toil.lib.resources import glob
 from toil.statsAndLogging import set_logging_from_options
 
@@ -60,7 +61,7 @@ def printContentsOfJobStore(job_store: FileJobStore, job_id: str | None = None) 
     Fetch a list of all files contained in the job store if nameOfJob is not
     declared, otherwise it only prints out the names of files for that specific
     job for which it can find a match.  Also creates a log file of these file
-    names in the current directory.
+    names in a temporary directory.
 
     :param job_store: Job store to ask for files from.
     :param job_id: Default is None, which prints out all files in the jobStore.
@@ -72,18 +73,18 @@ def printContentsOfJobStore(job_store: FileJobStore, job_id: str | None = None) 
     # FileJobStore.
 
     if job_id:
-        logFile = job_id.replace("/", "_") + "_fileset.txt"
+        logFile = os.path.join(mkdtemp(), job_id.replace("/", "_") + "_fileset.txt")
     else:
-        logFile = "jobstore_files.txt"
+        logFile = os.path.join(mkdtemp(), "jobstore_files.txt")
 
     list_of_files = job_store.list_all_file_names(for_job=job_id)
     if os.path.exists(logFile):
         os.remove(logFile)
     for gfile in sorted(list_of_files):
         if job_id:
-            logger.debug(f"{job_id} File: {os.path.basename(gfile)}")
+            logger.debug(f"{job_id} File: {os.path.basename(gfile)}, log: {logFile}")
         else:
-            logger.debug(f"File: {os.path.basename(gfile)}")
+            logger.debug(f"File: {os.path.basename(gfile)}, log: {logFile}")
         with open(logFile, "a+") as f:
             f.write(os.path.basename(gfile))
             f.write("\n")

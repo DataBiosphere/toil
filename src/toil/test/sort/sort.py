@@ -22,6 +22,7 @@ from configargparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 from toil.lib.misc import StrPath
 from toil.realtimeLogger import RealtimeLogger
 
@@ -284,7 +285,7 @@ def main(options=None):
     fileName = options.fileToSort
     if options.fileToSort is None:
         # make the file ourselves
-        fileName = "fileToSort.txt"
+        fileName = os.path.join(mkdtemp(), "fileToSort.txt")
         if os.path.exists(fileName):
             print(f"Sorting existing file: {fileName}")
         else:
