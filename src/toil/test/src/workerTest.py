@@ -129,9 +129,13 @@ class WorkerTests(ToilTest):
             getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
             self.assertEqual(nextChainable(jobDesc1, self.jobStore, self.config), None)
 
-            gpu = [{"count": 1, "kind": "gpu"}]
-            fpga = [{"count": 1, "kind": "fpga"}]
-            for before, after in ((None, gpu), (gpu, None), (gpu, fpga)):
+            def gpu() -> list[dict]:
+                return [{"count": 1, "kind": "gpu"}]
+
+            def fpga() -> list[dict]:
+                return [{"count": 1, "kind": "fpga"}]
+
+            for before, after in ((None, gpu()), (gpu(), None), (gpu(), fpga())):
                 jobDesc1 = createTestJobDesc(1, 2, 3, accelerators=before)
                 jobDesc2 = createTestJobDesc(1, 2, 3, accelerators=after)
                 getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
@@ -139,8 +143,8 @@ class WorkerTests(ToilTest):
                     nextChainable(jobDesc1, self.jobStore, self.config), None
                 )
 
-            jobDesc1 = createTestJobDesc(1, 2, 3, accelerators=gpu)
-            jobDesc2 = createTestJobDesc(1, 2, 3, accelerators=gpu)
+            jobDesc1 = createTestJobDesc(1, 2, 3, accelerators=gpu())
+            jobDesc2 = createTestJobDesc(1, 2, 3, accelerators=gpu())
             getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
             chainable = nextChainable(jobDesc1, self.jobStore, self.config)
             self.assertNotEqual(chainable, None)
