@@ -153,12 +153,11 @@ say where that kind can be found::
 as for accelerators requested through Toil's Python API.
 
 The step's Toil job then requires that accelerator, and the batch system must
-know how to provide it. On Slurm, map each kind to the partition that has it
-with ``--slurmAcceleratorPartitions`` (see :ref:`runningSlurm`). With the
-single machine batch system, say how many of each kind the machine has with
-``--localAccelerators``, for example ``--localAccelerators fpga=1``. A batch system
-that does not know how to provide a kind refuses the job with an error naming
-the accelerator, rather than running the step somewhere without it.
+be able to provide it (see :ref:`runningSlurm` for Slurm). For steps run on the
+local machine, say how many of each kind it has with ``--localAccelerators``,
+for example ``--localAccelerators fpga=1``. A batch system that cannot provide
+a kind refuses the job with an error naming the accelerator, rather than
+running the step somewhere without it.
 
 Toil & CWL Tips
 ---------------

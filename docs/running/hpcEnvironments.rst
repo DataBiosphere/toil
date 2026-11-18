@@ -11,7 +11,6 @@ To use one of these batch systems specify the ``--batchSystem`` argument to the 
 Due to the cost and complexity of maintaining support for these schedulers we currently consider all but Slurm to be "community supported", that is the core development team does not regularly test or develop support for these systems. However, there are members of the Toil community currently deploying Toil in a wide variety of HPC environments and we welcome external contributions.
 
 Developing the support of a new or existing batch system involves extending the abstract batch system class :class:`toil.batchSystems.abstractBatchSystem.AbstractBatchSystem`.
-A batch system that can provide accelerators, of any kind, says so by overriding ``_check_accelerator_request()``; batch systems built on :class:`toil.batchSystems.abstractGridEngineBatchSystem.AbstractGridEngineBatchSystem` also get each job's accelerators in ``prepareSubmission()``, so they can turn them into their own submission arguments, such as a queue for each kind configured by the user.
 
 .. _runningSlurm:
 
@@ -29,23 +28,34 @@ For example, to run the sort example :ref:`sort example <sortExample>` on Slurm,
 
 By default, this does not include any time limit or particular Slurm partition. If your Slurm cluster requires time limits, you can set the ``--defaultWalltime`` in seconds, or assign wall clock time requirements to your jobs individually in your workflow.
 
-For jobs that have a walltime requirement, a partition will be automatically selected that can accommodate jobs of that duration. A partition will also be automatically selected for jobs that need GPUs. To use a particular partition, use the ``--slurmPartition`` argument. If you are running GPU jobs and they need to go to a different partition, use the ``--slurmGPUPartition`` argument. For example, to :ref:`run a WDL workflow from Dockstore <runWdl>` using GPUs on Slurm, with a time limit of 4 hours per job and partitions manually specified, you would run::
+For jobs that have a walltime requirement, a partition will be automatically selected that can accommodate jobs of that duration. To use a particular partition, use the ``--slurmPartition`` argument. For example, to :ref:`run a WDL workflow from Dockstore <runWdl>` on Slurm, with a time limit of 4 hours per job and the partition manually specified, you would run::
+
+    $ toil-wdl-runner '#workflow/github.com/vgteam/vg_wdl/GiraffeDeepVariantFromGAF:gbz' \
+      https://raw.githubusercontent.com/vgteam/vg_wdl/refs/heads/gbz/params/giraffe_and_deepvariant_gaf.json \
+      --jobStore ./store --batchSystem slurm --batchLogsDir ./logs \
+      --defaultWalltime 14400 --slurmPartition medium
+
+If some of your jobs can take a lot longer than others, you can set ``--defaultWalltime`` to reserve enough time for the typical cases, and add ``--doubleTime=True`` to double the time limit for a job every time it fails with a timeout. This can let the short jobs run in a partition for short jobs, while jobs that take longer get retried in a partition for longer jobs.
+
+Some jobs need computational accelerators, like GPUs, and Slurm clusters often keep the nodes that have them in partitions of their own. Toil automatically selects a partition with GPUs, from the partitions whose nodes have the ``gpu`` GRES, for jobs that need GPUs, and asks Slurm for the GPUs with ``--gres``. If your GPU jobs need to go to a particular partition, use the ``--slurmGPUPartition`` argument. For example, if the workflow above uses GPUs, and your GPUs are in a partition named ``gpu``, you would run::
 
     $ toil-wdl-runner '#workflow/github.com/vgteam/vg_wdl/GiraffeDeepVariantFromGAF:gbz' \
       https://raw.githubusercontent.com/vgteam/vg_wdl/refs/heads/gbz/params/giraffe_and_deepvariant_gaf.json \
       --jobStore ./store --batchSystem slurm --batchLogsDir ./logs \
       --defaultWalltime 14400 --slurmPartition medium --slurmGPUPartition gpu
 
-If some of your jobs can take a lot longer than others, you can set ``--defaultWalltime`` to reserve enough time for the typical cases, and add ``--doubleTime=True`` to double the time limit for a job every time it fails with a timeout. This can let the short jobs run in a partition for short jobs, while jobs that take longer get retried in a partition for longer jobs.
-
-Jobs can also need accelerators other than GPUs, such as FPGAs, which a Slurm cluster usually keeps in partitions of their own. Toil can't tell from Slurm which partition has which kind of accelerator, so you tell it with the ``--slurmAcceleratorPartitions`` argument (or the ``TOIL_SLURM_ACCELERATOR_PARTITIONS`` environment variable), a comma-separated list of ``KIND=PARTITION`` pairs. A job needing a listed kind goes to that partition, ahead of ``--slurmPartition``, ``--slurmGPUPartition`` and ``--slurmPE``; a job needing a kind that isn't listed is refused, rather than sent to a partition without it. For example, if your FPGAs are in a partition named ``fpga-nodes``, you would run::
+GPUs are just one kind of accelerator, and Toil supports other kinds, such as ``fpga``. If you have jobs that need other kinds of accelerators, you can give the partitions that have each kind with the ``--slurmAcceleratorPartitions`` argument, a comma-separated list of ``KIND=PARTITION`` pairs. (``--slurmGPUPartition gpu`` is the same as ``--slurmAcceleratorPartitions gpu=gpu``.) For example, if your FPGAs are in a partition named ``fpga-nodes``, you would run::
 
     $ toil-cwl-runner --batchSystem slurm --batchLogsDir ./logs \
       --slurmAcceleratorPartitions fpga=fpga-nodes workflow.cwl inputs.yml
 
-In CWL, a step asks for such an accelerator with the ``toil:AcceleratorRequirement`` hint (see :ref:`cwlAccelerators`); in Toil's Python API, with ``accelerators=[{"kind": "fpga", "count": 1}]``.
+A job that needs a kind of accelerator that Toil does not know any partition for is refused, rather than sent to a partition without it.
 
-Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.)
+If your cluster has a GRES for another kind of accelerator, as it does for GPUs, you can give it with the ``--slurmAcceleratorGres`` argument, a comma-separated list of ``KIND=GRES`` pairs. Toil then asks Slurm for that GRES for jobs that need the kind, as it does for GPUs, and finds the partitions that have it by itself. For example, with ``--slurmAcceleratorGres fpga=fpga``, a job that needs 2 FPGAs is submitted with ``--gres=fpga:2``. For a kind without a GRES, Toil only sends the job to a partition that has it, and the job gets whatever the nodes of that partition provide.
+
+A job that needs several kinds of accelerators goes to a partition that has all of them; Toil refuses the job if there is no such partition. To give more than one partition for a kind, give the kind more than once, as in ``--slurmAcceleratorPartitions fpga=fpga-short,fpga=fpga-long``. Partitions given for a kind are used for it instead of the partitions with its GRES. Out of the partitions with all the accelerators a job needs and a long enough time limit, Toil prefers ones without other accelerators, then ones with lower priority, then ones with shorter time limits. Jobs that need accelerators go to a partition with them even if ``--slurmPE`` or ``--slurmPartition`` is set; those only apply to jobs that need no accelerators.
+
+Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.) A ``--partition`` passed this way is used for every job, instead of the partition Toil would select, even for jobs that need accelerators the partition might not have.
 
 Slurm Tips
 ~~~~~~~~~~

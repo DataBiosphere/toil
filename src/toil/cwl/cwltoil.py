@@ -199,11 +199,10 @@ DEFAULT_TMPDIR_PREFIX = os.path.join(DEFAULT_TMPDIR, "tmp")
 INTERPRETER_JOB_MEMORY = "1GiB"
 INTERPRETER_JOB_DISK = "1MiB"
 
-# Toil's own CWL extension for asking for an accelerator of any kind, which a
-# batch system must be configured to provide (for example, on Slurm, with
-# --slurmAcceleratorPartitions). Unlike cwltool:CUDARequirement, the kind is
-# not limited to GPUs, so a site can route steps to special hardware without
-# the workflow naming any site-specific queue.
+# Toil's own CWL extension for asking for an accelerator of any kind, which the
+# batch system must be able to provide. Unlike cwltool:CUDARequirement, the
+# kind is not limited to GPUs, so a site can route steps to special hardware
+# without the workflow naming any site-specific queue.
 TOIL_ACCELERATOR_REQUIREMENT = "http://toil.ucsc-cgl.org/cwl#AcceleratorRequirement"
 
 
