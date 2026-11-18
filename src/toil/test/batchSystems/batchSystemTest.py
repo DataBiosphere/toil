@@ -14,19 +14,23 @@
 import argparse
 import fcntl
 import itertools
+import json
 import logging
 import os
+import socket
 import subprocess
 import sys
 import tempfile
 import textwrap
 import time
 from abc import ABCMeta, abstractmethod
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
+from contextlib import contextmanager
 from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest import skipIf
+from unittest.mock import patch
 
 import pytest
 
@@ -564,6 +568,29 @@ class AbstractBatchSystemJobTest:
                 )
             assert output == expected_omp_threads
 
+    @pytest.mark.parametrize("debug_worker", [False, True])
+    def test_process_hostfile(self, tmp_path: Path, debug_worker: bool) -> None:
+        """
+        A job of several processes must have a process hostfile naming the
+        machine each of them runs on.
+        """
+        options = self.getOptions(tmp_path)
+        options.debugWorker = debug_worker
+        with patch.dict(os.environ):
+            for name in ("PBS_NODEFILE", "SLURM_JOB_NODELIST", "TOIL_PROCESS_HOSTFILE"):
+                os.environ.pop(name, None)
+            with Toil(options) as toil:
+                output = toil.start(
+                    Job.wrapFn(
+                        get_process_hosts,
+                        memory="1Mi",
+                        cores=2,
+                        disk="1Mi",
+                        processes=2,
+                    )
+                )
+        assert output == [socket.gethostname()] * 2
+
 
 @needs_kubernetes
 @needs_aws_s3
@@ -928,6 +955,132 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
         when the Toil workflow stops, even if the job process stops and leaves children.
         """
         self.testProcessEscape(hide=True)
+
+    @contextmanager
+    def _in_pbs_job(self, other_node_cores: int) -> Iterator[None]:
+        """
+        Pretend Toil runs in a PBS job holding this machine's node and a node
+        with the given cores.
+        """
+        nodefile = os.path.join(self.tempDir, "nodefile")
+        with open(nodefile, "w") as f:
+            f.write(f"{socket.gethostname()}\nnode-b.example.org\n")
+        qstat = json.dumps(
+            {
+                "Jobs": {
+                    "1.server": {
+                        "exec_vnode": f"({socket.gethostname()}:ncpus=8)"
+                        f"+(node-b:ncpus={other_node_cores}:ngpus=4)"
+                    }
+                }
+            }
+        )
+        with patch.dict(
+            os.environ, {"PBS_NODEFILE": nodefile, "PBS_JOBID": "1.server"}
+        ), patch("toil.batchSystems.allocation.call_command", return_value=qstat):
+            yield
+
+    def _process_job(self, name: str, processes: int, cores: float) -> JobDescription:
+        return self._mockJobDescription(
+            jobName=name,
+            jobStoreID=name,
+            requirements=dict(defaultRequirements, cores=cores, processes=processes),
+        )
+
+    def _check_request(self, job_desc: JobDescription) -> None:
+        assert isinstance(self.batchSystem, SingleMachineBatchSystem)
+        self.batchSystem.check_resource_request(job_desc)
+
+    def _run_job_writing_hostfile(
+        self, job_desc: JobDescription, seconds: int = 0
+    ) -> tuple[int, str]:
+        """
+        Issue a job that copies its process hostfile, if any, and then sleeps.
+
+        :returns: the job's ID and the path the hostfile is copied to.
+        """
+        copy = os.path.join(self.tempDir, f"{job_desc.jobName}.hosts")
+        job_id = self.batchSystem.issueBatchJob(
+            f'cat "${{TOIL_PROCESS_HOSTFILE:-/dev/null}}" > {copy}.part; '
+            f"mv {copy}.part {copy}; sleep {seconds}",
+            job_desc,
+        )
+        return job_id, copy
+
+    def _hosts(self, copy: str) -> list[str]:
+        for _ in range(600):
+            if os.path.exists(copy):
+                with open(copy) as f:
+                    return f.read().split()
+            time.sleep(0.1)
+        raise RuntimeError(f"Job never wrote {copy}")
+
+    def test_processes_placed_across_allocation_nodes(self) -> None:
+        """
+        A job of more processes than fit on this machine must be placed on the
+        other nodes of the PBS job Toil runs in.
+        """
+        this_node = socket.gethostname()
+        with self._in_pbs_job(other_node_cores=4):
+            _, copy = self._run_job_writing_hostfile(self._process_job("mpi", 3, 3))
+            assert self._hosts(copy) == [this_node, this_node, "node-b.example.org"]
+
+    def test_processes_refused_when_allocation_too_small(self) -> None:
+        """
+        A job of more processes than the nodes of the PBS job Toil runs in hold
+        must be refused.
+        """
+        with self._in_pbs_job(other_node_cores=4):
+            self._check_request(self._process_job("fits", 6, 6))
+            with pytest.raises(InsufficientSystemResources):
+                self._check_request(self._process_job("big", 7, 7))
+            with pytest.raises(InsufficientSystemResources):
+                # Each process needs 3 cores on one node; only one fits on node-b.
+                self._check_request(self._process_job("wide", 2, 6))
+
+    def test_concurrent_processes_do_not_share_cores(self) -> None:
+        """
+        Two jobs of several processes running at once must be placed on
+        different cores.
+        """
+        this_node = socket.gethostname()
+        with self._in_pbs_job(other_node_cores=4):
+            _, first = self._run_job_writing_hostfile(
+                self._process_job("first", 3, 3), seconds=60
+            )
+            assert self._hosts(first) == [this_node, this_node, "node-b.example.org"]
+            _, second = self._run_job_writing_hostfile(
+                self._process_job("second", 3, 3), seconds=60
+            )
+            assert self._hosts(second) == ["node-b.example.org"] * 3
+            _, third = self._run_job_writing_hostfile(self._process_job("third", 2, 2))
+            time.sleep(2)
+            assert not os.path.exists(third), "Job started on taken cores"
+
+    def test_one_process_jobs_unchanged_in_allocation(self) -> None:
+        """
+        A job of one process must run on this machine with no process hostfile,
+        and be refused if it needs more cores than this machine has, even in a
+        PBS job with other nodes.
+        """
+        with self._in_pbs_job(other_node_cores=4):
+            with pytest.raises(InsufficientSystemResources):
+                self._check_request(self._process_job("big", 1, 3))
+            _, copy = self._run_job_writing_hostfile(self._process_job("one", 1, 2))
+            assert self._hosts(copy) == []
+
+    def test_processes_on_this_machine_outside_allocation(self) -> None:
+        """
+        Outside a PBS or Slurm job, all of a job's processes must run on this
+        machine, which its process hostfile names.
+        """
+        with patch.dict(os.environ):
+            for name in ("PBS_NODEFILE", "SLURM_JOB_NODELIST"):
+                os.environ.pop(name, None)
+            with pytest.raises(InsufficientSystemResources):
+                self._check_request(self._process_job("big", 3, 3))
+            _, copy = self._run_job_writing_hostfile(self._process_job("two", 2, 2))
+            assert self._hosts(copy) == [socket.gethostname()] * 2
 
 
 @slow
@@ -1523,3 +1676,8 @@ def resetCounters(path: StrPath) -> None:
 
 def get_omp_threads() -> str:
     return os.environ["OMP_NUM_THREADS"]
+
+
+def get_process_hosts() -> list[str]:
+    with open(os.environ["TOIL_PROCESS_HOSTFILE"]) as hostfile:
+        return hostfile.read().split()
