@@ -978,3 +978,50 @@ class SlurmTest(ToilTest):
 
         result = toil.batchSystems.slurm.parse_slurm_time("365-00:00:00")
         self.assertEqual(result, 365 * 86400)
+
+
+def call_scontrol_hostnames(args: list[str], **_: object) -> str:
+    assert args == ["scontrol", "show", "hostnames", "node[1-3]"]
+    return "node1\nnode2\nnode3\n"
+
+
+def test_process_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A Slurm job's processes must be named on the nodes Slurm placed its tasks.
+    """
+    import toil.batchSystems.allocation
+
+    monkeypatch.setattr(
+        toil.batchSystems.allocation, "call_command", call_scontrol_hostnames
+    )
+    monkeypatch.setenv("SLURM_JOB_NODELIST", "node[1-3]")
+    monkeypatch.setenv("SLURM_TASKS_PER_NODE", "2(x2),1")
+    assert toil.batchSystems.slurm.SlurmBatchSystem.process_hosts(5) == [
+        "node1",
+        "node1",
+        "node2",
+        "node2",
+        "node3",
+    ]
+
+
+def test_allocation_cores(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    The nodes of a Slurm job Toil runs in must come with their CPUs.
+    """
+    import toil.batchSystems.allocation
+
+    monkeypatch.setattr(
+        toil.batchSystems.allocation, "call_command", call_scontrol_hostnames
+    )
+    monkeypatch.delenv("PBS_NODEFILE", raising=False)
+    monkeypatch.setenv("SLURM_JOB_NODELIST", "node[1-3]")
+    monkeypatch.setenv("SLURM_JOB_CPUS_PER_NODE", "48(x2),36")
+    assert toil.batchSystems.allocation.allocation_cores() == {
+        "node1": 48,
+        "node2": 48,
+        "node3": 36,
+    }
+    monkeypatch.setenv("SLURM_JOB_CPUS_PER_NODE", "48")
+    with pytest.raises(RuntimeError):
+        toil.batchSystems.allocation.allocation_cores()
