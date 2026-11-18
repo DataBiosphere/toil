@@ -59,31 +59,46 @@ logger = logging.getLogger(__name__)
 
 def parse_local_accelerators(spec: str) -> dict[str, int]:
     """
-    Parse how many accelerators of each kind other than GPUs a machine has.
+    Parse how many accelerators of each kind a machine has.
 
-    >>> parse_local_accelerators("fpga=2,tpu=1")
-    {'fpga': 2, 'tpu': 1}
-    >>> parse_local_accelerators("fpga=0")
+    >>> parse_local_accelerators("gpu=1,fpga=2")
+    {'gpu': 1, 'fpga': 2}
+    >>> parse_local_accelerators("fpga=many")
     Traceback (most recent call last):
     ...
-    ValueError: Expected a positive count of fpga accelerators but got: '0'
-    >>> parse_local_accelerators("gpu=1")
-    Traceback (most recent call last):
-    ...
-    ValueError: GPUs are detected, not configured
+    ValueError: Expected a count of fpga accelerators but got: 'many'
 
     :raises ValueError: if not parseable.
     """
     counts: dict[str, int] = {}
-    for kind, count in parse_accelerator_kind_mapping(spec).items():
-        if kind == "gpu":
-            raise ValueError("GPUs are detected, not configured")
-        if not count.isdigit() or int(count) < 1:
+    for kind, count in parse_accelerator_kind_mapping(spec):
+        if not count.isdigit():
             raise ValueError(
-                f"Expected a positive count of {kind} accelerators but got: {count!r}"
+                f"Expected a count of {kind} accelerators but got: {count!r}"
             )
         counts[kind] = int(count)
     return counts
+
+
+def get_local_accelerators(counts: dict[str, int]) -> list[AcceleratorRequirement]:
+    """
+    Get the individual accelerators this machine has, each with count 1.
+
+    These are the GPUs detected, or as many as the given counts say, followed
+    by the given numbers of each other kind. GPUs come first, so their numbers
+    are the ones the GPU drivers use.
+    """
+    gpus = get_individual_local_accelerators()
+    if "gpu" in counts:
+        gpus = (
+            gpus + [{"kind": "gpu", "count": 1} for _ in range(counts["gpu"])]
+        )[: counts["gpu"]]
+    return gpus + [
+        {"kind": kind, "count": 1}
+        for kind, count in counts.items()
+        if kind != "gpu"
+        for _ in range(count)
+    ]
 
 
 class SingleMachineBatchSystem(BatchSystemSupport):
@@ -225,12 +240,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.childToJob: dict[int, str] = {}
 
         # For accelerators, we need a collection of what each accelerator is, and an acquirable set of them.
-        # The GPUs we can detect come first, so their numbers are the ones the GPU drivers use.
-        self.accelerator_identities = get_individual_local_accelerators() + [
-            {"kind": kind, "count": 1}
-            for kind, count in config.local_accelerators.items()
-            for _ in range(count)
-        ]
+        self.accelerator_identities = get_local_accelerators(config.local_accelerators)
 
         # Put them all organized by resource type
         self.resource_sources = [
@@ -1068,10 +1078,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             dest="local_accelerators",
             type=parse_local_accelerators,
             default={},
-            help="Accelerators other than GPUs that this machine has, by kind, for "
-            "jobs that ask for them, as a comma-separated list of KIND=COUNT. Used "
-            "in the single_machine batch system, which detects GPUs itself and "
-            "refuses jobs asking for an accelerator kind it does not have.",
+            help="Accelerators this machine has for jobs run on it, as a "
+            "comma-separated list of KIND=COUNT, such as fpga=2. A gpu count "
+            "replaces the number of GPUs detected.",
         )
 
     @classmethod
