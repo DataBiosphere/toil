@@ -568,12 +568,21 @@ class AbstractBatchSystemJobTest:
                 )
             assert output == expected_omp_threads
 
-    @pytest.mark.parametrize("debug_worker", [False, True])
-    def test_process_hostfile(self, tmp_path: Path, debug_worker: bool) -> None:
+    def test_process_hostfile(self, tmp_path: Path) -> None:
         """
         A job of several processes must have a process hostfile naming the
         machine each of them runs on.
         """
+        self._check_process_hostfile(tmp_path, debug_worker=False)
+
+    def test_process_hostfile_in_debug_worker(self, tmp_path: Path) -> None:
+        """
+        A job run in the leader's own process must have the same process
+        hostfile.
+        """
+        self._check_process_hostfile(tmp_path, debug_worker=True)
+
+    def _check_process_hostfile(self, tmp_path: Path, debug_worker: bool) -> None:
         options = self.getOptions(tmp_path)
         options.debugWorker = debug_worker
         with patch.dict(os.environ):
