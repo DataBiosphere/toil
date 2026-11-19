@@ -51,9 +51,10 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             """Determines PBS/Torque version via pbsnodes"""
             try:
                 out = call_command(["pbsnodes", "--version"])
-                # PBS Pro before OpenPBS prints "PBSPro_<version>"; OpenPBS and
-                # later PBS Pro print "pbs_version = <version>"
-                # (openpbs src/include/pbs_version.h.in PRINT_VERSION_AND_EXIT).
+                # OpenPBS, and PBS Pro since its open-source release, print
+                # "pbs_version = <version>" (openpbs PRINT_VERSION_AND_EXIT in
+                # src/include/pbs_version.h.in). OSS Torque prints its version
+                # to stderr, leaving stdout empty.
                 if "PBSPro" in out or out.lstrip().startswith("pbs_version ="):
                     logger.debug("PBS Pro version detected")
                     self._version = "pro"

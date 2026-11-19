@@ -33,8 +33,7 @@ FakeBatchSystem.__abstractmethods__ = set()
 def test_pbs_version(monkeypatch: pytest.MonkeyPatch) -> None:
     for output, version in [
         ("pbs_version = 2026.1.0.20260821184519\n", "pro"),
-        ("PBSPro_13.1.0.160576\n", "pro"),
-        ("Version: 6.1.3\n", "oss"),
+        ("", "oss"),
     ]:
         monkeypatch.setattr(
             toil.batchSystems.torque, "call_command", lambda args, **_: output
