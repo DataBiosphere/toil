@@ -66,7 +66,7 @@ def expand_slurm_counts(counts: str) -> list[int]:
     for group in counts.split(","):
         match = re.fullmatch(r"(\d+)(?:\(x(\d+)\))?", group)
         if match is None:
-            raise ValueError(f"Unparseable Slurm per-node count: {counts!r}")
+            raise ValueError(f"Unparsable Slurm per-node count: {counts!r}")
         expanded += [int(match.group(1))] * int(match.group(2) or 1)
     return expanded
 
