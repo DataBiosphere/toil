@@ -193,8 +193,7 @@ class ToilTest(unittest.TestCase):
     @classmethod
     def _createTempDirEx(cls, *names: str | None) -> str:
         classname = strclass(cls)
-        if classname.startswith("toil.test."):
-            classname = classname[len("toil.test.") :]
+        classname = classname.removeprefix("toil.test.")
         prefix = ["toil", "test", classname]
         prefix.extend([_f for _f in names if _f])
         prefix.append("")

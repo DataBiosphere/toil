@@ -19,7 +19,8 @@ import time
 from unittest.mock import Mock
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, NoReturn, cast
+from typing import Any, NoReturn, cast
+from collections.abc import Callable
 
 import pytest
 

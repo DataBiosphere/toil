@@ -69,7 +69,8 @@ import tempfile
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import IO, Any, MutableSequence, NamedTuple, Optional, TypeVar, cast
+from typing import IO, Any, NamedTuple, Optional, TypeVar, cast
+from collections.abc import MutableSequence
 
 from pubsub.core import Publisher
 from pubsub.core.listener import Listener

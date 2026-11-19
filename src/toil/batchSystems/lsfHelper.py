@@ -30,7 +30,8 @@ import subprocess
 from packaging import version
 
 from toil.lib.conversions import convert_units
-from typing import IO, Iterable, Iterator, TypeVar, Callable
+from typing import IO, TypeVar
+from collections.abc import Iterable, Iterator, Callable
 
 LSB_PARAMS_FILENAME = "lsb.params"
 LSF_CONF_FILENAME = "lsf.conf"
