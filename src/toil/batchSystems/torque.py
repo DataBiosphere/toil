@@ -133,7 +133,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             job_environment: dict[str, str] | None = None,
             gpus: int | None = None,
         ) -> list[str]:
-            return self.prepareQsub(cpu, memory, jobID, job_environment) + [
+            return self.prepareQsub(cpu, memory, jobID, job_environment, walltime) + [
                 self.generateTorqueWrapper(command, jobID)
             ]
 
@@ -180,6 +180,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             mem: int,
             jobID: int,
             job_environment: dict[str, str] | None,
+            walltime: int = 0,
         ) -> list[str]:
 
             # TODO: passing $PWD on command line not working for -d, resorting to
@@ -213,6 +214,11 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                     reqline.append(f"mem={mem//1024}K")
                 if cpu is not None and math.ceil(cpu) > 1:
                     reqline.append("nodes=1:ppn=" + str(int(math.ceil(cpu))))
+
+            if walltime:
+                minutes, seconds = divmod(math.ceil(walltime), 60)
+                hours, minutes = divmod(minutes, 60)
+                reqline.append(f"walltime={hours}:{minutes:02d}:{seconds:02d}")
 
             # Other resource requirements can be passed through the environment (see man qsub)
             reqlineEnv = os.getenv("TOIL_TORQUE_REQS")
