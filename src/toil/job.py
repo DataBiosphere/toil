@@ -36,7 +36,6 @@ from typing import (
     Any,
     ContextManager,
     IO,
-    Iterable,
     Literal,
     NamedTuple,
     NoReturn,
@@ -46,6 +45,7 @@ from typing import (
     cast,
     overload,
 )
+from collections.abc import Iterable
 from typing_extensions import reveal_type, ParamSpec
 from urllib.error import HTTPError
 from urllib.parse import unquote, urljoin, urlsplit
@@ -2206,7 +2206,7 @@ class Job:
     # allowed to fiddle with the kwargs with Concatenate and ParamSpec (see
     # https://peps.python.org/pep-0612/#concatenating-keyword-parameters)
 
-    def addChildFn(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> "Job":
+    def addChildFn(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Job:
         """
         Add a function as a child job.
 
@@ -2222,7 +2222,7 @@ class Job:
         else:
             return self.addChild(FunctionWrappingJob(fn, *args, **kwargs))
 
-    def addFollowOnFn(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> "Job":
+    def addFollowOnFn(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Job:
         """
         Add a function as a follow-on job.
 
@@ -2238,7 +2238,7 @@ class Job:
         else:
             return self.addFollowOn(FunctionWrappingJob(fn, *args, **kwargs))
 
-    def addChildJobFn(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> "Job":
+    def addChildJobFn(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Job:
         """
         Add a job function as a child job.
 
@@ -2256,7 +2256,7 @@ class Job:
         else:
             return self.addChild(JobFunctionWrappingJob(fn, *args, **kwargs))
 
-    def addFollowOnJobFn(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> "Job":
+    def addFollowOnJobFn(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Job:
         """
         Add a follow-on job function.
 

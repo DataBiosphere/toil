@@ -22,7 +22,7 @@ import os
 import platform
 import shlex
 import textwrap
-from typing import Iterable
+from collections.abc import Iterable
 
 from toil.lib.resources import ResourceMonitor
 
@@ -57,7 +57,7 @@ def command_line_to_shell_script(command_line: list[str]) -> str:
     We don't want to disturb user CWL command line binding lists that
     explicitly ask for things like ["bash", "-c"].
     """
-    return " ".join(shlex.quote(arg) for arg in command_line)
+    return shlex.join(command_line)
 
 
 def shell_script_to_command_line(script: str) -> list[str]:
