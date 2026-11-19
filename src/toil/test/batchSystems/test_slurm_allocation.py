@@ -1,4 +1,7 @@
 import shlex
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -53,7 +56,7 @@ def slurm(monkeypatch: pytest.MonkeyPatch) -> FakeSlurm:
 
 
 @pytest.fixture
-def batch_system(slurm: FakeSlurm, tmp_path: object):
+def batch_system(slurm: FakeSlurm, tmp_path: Path) -> Iterator[SlurmStepBatchSystem]:
     config = Config()
     config.workflowID = str(uuid4())
     config.workDir = str(tmp_path)
@@ -64,7 +67,7 @@ def batch_system(slurm: FakeSlurm, tmp_path: object):
 
 
 def requirer(
-    cores: int, memory: int, accelerators: list[dict] | None = None
+    cores: int, memory: int, accelerators: list[dict[str, Any]] | None = None
 ) -> Requirer:
     return Requirer(
         {
@@ -163,15 +166,24 @@ def test_mixed_placement_runs_steps_and_submits_the_rest(
     batch_system: SlurmStepBatchSystem, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     issued: list[str] = []
+
+    def issue(
+        command: str,
+        job_desc: JobDescription,
+        job_environment: dict[str, str] | None = None,
+    ) -> int:
+        issued.append(command)
+        return 1
+
     monkeypatch.setattr(
         batch_system,
         "issueBatchJob",
-        lambda command, job_desc, job_environment=None: issued.append(command) or 1,
+        issue,
     )
     mixed = SlurmAllocationBatchSystem.__new__(SlurmAllocationBatchSystem)
     mixed.localBatch = batch_system
 
-    def job(accelerators: list[dict]) -> JobDescription:
+    def job(accelerators: list[dict[str, Any]]) -> JobDescription:
         return JobDescription(
             requirements={
                 "cores": 1,
