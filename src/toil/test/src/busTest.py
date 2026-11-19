@@ -20,6 +20,7 @@ from typing import NoReturn
 
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 from toil.bus import (
+    ExternalBatchIdMessage,
     JobCompletedMessage,
     JobIssuedMessage,
     MessageBus,
@@ -105,6 +106,25 @@ class TestMessageBus:
         assert box.count(JobIssuedMessage) == 11
         # And having polled for those, our handler should have run
         assert message_count == 11
+
+    def test_output_file_holds_message_published_from_another_thread(
+        self, tmp_path: Path
+    ) -> None:
+        bus_file = tmp_path / "bus"
+        bus = MessageBus()
+        output_file = bus.connect_output_file(bus_file)
+
+        sender = Thread(
+            target=bus.publish,
+            args=(ExternalBatchIdMessage(1, "12345", "SlurmBatchSystem"),),
+        )
+        sender.start()
+        sender.join()
+
+        with open(bus_file, "rb") as stream:
+            assert list(
+                MessageBus.scan_bus_messages(stream, [ExternalBatchIdMessage])
+            ) == [ExternalBatchIdMessage(1, "12345", "SlurmBatchSystem")]
 
     def test_restart_without_bus_path(self, tmp_path: Path) -> None:
         """

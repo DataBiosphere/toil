@@ -67,14 +67,13 @@ import os
 import queue
 import tempfile
 import threading
+import weakref
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import IO, Any, MutableSequence, NamedTuple, Optional, TypeVar, cast
 
 from pubsub.core import Publisher
 from pubsub.core.listener import Listener
-from pubsub.core.topicobj import Topic
-from pubsub.core.topicutils import ALL_TOPICS
 
 from toil.lib.misc import FileDescriptorOrPath
 
@@ -333,6 +332,9 @@ class MessageBus:
         # Messages from other threads go in this queue
         self._queue: queue.Queue[Any] = queue.Queue()
 
+        self._output_files: weakref.WeakSet[IO[bytes]] = weakref.WeakSet()
+        self._output_files_lock = threading.Lock()
+
     @classmethod
     def _type_to_name(cls, message_type: type) -> str:
         """
@@ -347,7 +349,12 @@ class MessageBus:
     def publish(self, message: Any) -> None:
         """
         Put a message onto the bus. Can be called from any thread.
+
+        The message is in every connected output file when this returns, even
+        when it is published from a thread that does not own the bus.
         """
+
+        self._write_to_output_files(message)
 
         if threading.get_ident() == self._owning_thread:
             # We can deliver this now
@@ -377,6 +384,20 @@ class MessageBus:
                     return
                 # Handle the message
                 self._deliver(message)
+
+    def _write_to_output_files(self, message: Any) -> None:
+        line = b"".join(
+            [
+                self._type_to_name(type(message)).encode("utf-8"),
+                b"\t",
+                message_to_bytes(message),
+                b"\n",
+            ]
+        )
+        with self._output_files_lock:
+            for stream in self._output_files:
+                stream.write(line)
+                stream.flush()
 
     def _deliver(self, message: Any) -> None:
         """
@@ -447,33 +468,9 @@ class MessageBus:
         """
 
         stream = open(file_path, "wb")
-
-        # Type of the ** is the value type of the dictionary; key type is always string.
-        def handler(
-            topic_object: Topic = Listener.AUTO_TOPIC, **message_data: NamedTuple
-        ) -> None:
-            """
-            Log the message in the given message data, associated with the
-            given topic.
-            """
-            # There should always be a "message"
-            if len(message_data) != 1 or "message" not in message_data:
-                raise RuntimeError(
-                    "Cannot log the bus message. The message is either empty/malformed or there are too many messages provided."
-                )
-            message = message_data["message"]
-            topic = topic_object.getName()
-            stream.write(topic.encode("utf-8"))
-            stream.write(b"\t")
-            stream.write(message_to_bytes(message))
-            stream.write(b"\n")
-            stream.flush()
-
-        listener, _ = self._pubsub.subscribe(handler, ALL_TOPICS)
-
-        # To keep this alive, we need to keep the handler alive, and we might
-        # want the pypubsub Listener.
-        return (handler, listener)
+        with self._output_files_lock:
+            self._output_files.add(stream)
+        return stream
 
     # TODO: If we annotate this as returning an Iterator[NamedTuple], MyPy
     # complains when we loop over it that the loop variable is a <nothing>,
