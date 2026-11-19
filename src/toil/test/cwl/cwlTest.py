@@ -2363,6 +2363,29 @@ def test_captured_stderr_for_failed_job_is_reported(tmp_path: Path) -> None:
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
+def test_empty_directory_literal_input(tmp_path: Path) -> None:
+    """
+    Make sure a tool can write into an empty Directory literal it is given:
+    the literal has nothing on disk to list, so its empty listing is all
+    there is of it and must reach the worker.
+    """
+    with get_data("test/cwl/empty_directory_literal.cwl") as cwl_file:
+        with get_data("test/cwl/empty_directory_literal.json") as job_file:
+            cmd = [
+                "toil-cwl-runner",
+                f"--jobStore=file:{tmp_path / 'jobStore'}",
+                f"--outdir={tmp_path / 'outdir'}",
+                str(cwl_file),
+                str(job_file),
+            ]
+            p = subprocess.run(cmd, capture_output=True, text=True)
+            assert p.returncode == 0, p.stderr
+            assert (tmp_path / "outdir" / "out" / "written").is_file()
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
 def test_timelimit_expression(tmp_path: Path) -> None:
     with get_data("test/cwl/timelimit.cwl") as cwl_file:
         cmd = [
