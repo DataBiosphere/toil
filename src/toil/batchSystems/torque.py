@@ -52,7 +52,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             try:
                 out = call_command(["pbsnodes", "--version"])
                 if "PBSPro" in out or out.lstrip().startswith("pbs_version ="):
-                    logger.debug("PBS Pro version detected")
+                    logger.debug("PBS Pro / OpenPBS version detected")
                     self._version = "pro"
                 else:
                     logger.debug("Torque OSS version detected")
