@@ -126,6 +126,22 @@ class TestMessageBus:
                 MessageBus.scan_bus_messages(stream, [ExternalBatchIdMessage])
             ) == [ExternalBatchIdMessage(1, "12345", "SlurmBatchSystem")]
 
+    def test_replay_gives_external_batch_id_published_before_job_was_issued(
+        self, tmp_path: Path
+    ) -> None:
+        bus_file = tmp_path / "bus"
+        bus = MessageBus()
+        output_file = bus.connect_output_file(bus_file)
+        bus.publish(ExternalBatchIdMessage(1, "12345", "SlurmBatchSystem"))
+        bus.publish(JobIssuedMessage("CWLJob", "kind-CWLJob/instance-1", 1))
+        del output_file
+
+        status = replay_message_bus(bus_file)["kind-CWLJob/instance-1"]
+        assert (status.external_batch_id, status.batch_system) == (
+            "12345",
+            "SlurmBatchSystem",
+        )
+
     def test_restart_without_bus_path(self, tmp_path: Path) -> None:
         """
         Test the ability to restart a workflow when the message bus path used

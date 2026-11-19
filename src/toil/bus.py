@@ -755,6 +755,7 @@ def replay_message_bus(path: FileDescriptorOrPath) -> dict[str, JobStatus]:
         lambda: JobStatus("", "", -1, {}, -1, "", "")
     )
     batch_to_job_id = {}
+    external_batch_ids: dict[int, ExternalBatchIdMessage] = {}
     try:
         with open(path, "rb") as log_stream:
             # Read all the full, properly-terminated messages about job updates
@@ -795,15 +796,16 @@ def replay_message_bus(path: FileDescriptorOrPath) -> dict[str, JobStatus]:
                         job_statuses[event.job_id].annotations[
                             event.annotation_name
                         ] = event.annotation_value
-                    case ExternalBatchIdMessage() as ebim if (
-                        ebim.toil_batch_id in batch_to_job_id
-                    ):
-                        job_statuses[
-                            batch_to_job_id[ebim.toil_batch_id]
-                        ].external_batch_id = ebim.external_batch_id
-                        job_statuses[
-                            batch_to_job_id[ebim.toil_batch_id]
-                        ].batch_system = ebim.batch_system
+                    case ExternalBatchIdMessage():
+                        external_batch_ids[event.toil_batch_id] = event
+        for toil_batch_id, ebim in external_batch_ids.items():
+            if toil_batch_id in batch_to_job_id:
+                job_statuses[batch_to_job_id[toil_batch_id]].external_batch_id = (
+                    ebim.external_batch_id
+                )
+                job_statuses[batch_to_job_id[toil_batch_id]].batch_system = (
+                    ebim.batch_system
+                )
     except FileNotFoundError:
         logger.warning("We were unable to access the file")
 
