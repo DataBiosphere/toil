@@ -895,6 +895,43 @@ class SlurmTest(ToilTest):
         ):
             check([{"kind": "qpu", "count": 1}])
 
+    def test_prepareSbatch_partition_args(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        self.worker.boss.partitions = (
+            toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet({"fpga": "fpga"})
+        )
+        self.worker.boss.config.slurm_partition = "foobar"
+        self.worker.boss.config.slurm_partition_args = [
+            toil.batchSystems.slurm.parse_partition_args("foobar=--exclusive --nodes=1")
+        ]
+
+        # Jobs in the partition get its arguments
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, None)
+        assert "--partition=foobar" in command
+        assert {"--exclusive", "--nodes=1"} <= set(command)
+
+        # Jobs sent to another partition for their accelerators don't
+        command = self.worker.prepareSbatch(
+            1, 100, 5, 0, "job5", None, [{"kind": "fpga", "count": 1}]
+        )
+        assert "--partition=fpga-nodes" in command
+        assert not {"--exclusive", "--nodes=1"} & set(command)
+
+        # Arguments that set what Toil sets or what chooses the partition are refused
+        for arg in (
+            "--partition=long",
+            "-p long",
+            "--time=10",
+            "--qos=high",
+            "--export=ALL",
+            "--export-file=env",
+            "--mem=10G",
+            "--cpus-per-task=4",
+            "--gres=gpu:1",
+        ):
+            with self.subTest(arg=arg), self.assertRaises(ValueError):
+                toil.batchSystems.slurm.parse_partition_args(f"foobar={arg}")
+
     def test_check_accelerator_request(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
         boss = FakeBatchSystem()

@@ -62,6 +62,12 @@ Some kinds need ``sbatch`` arguments of their own, such as a site's option that 
 
 These arguments can't set what chooses the partition or what Toil sets itself: the partition, time limit, QOS, exported environment, GRES, memory or CPUs.
 
+Some ``sbatch`` arguments belong to a partition rather than to every job, such as ``--exclusive`` for a partition whose nodes are only handed out whole. Give them with ``--slurmPartitionArgs``, once per partition as ``PARTITION=ARGS``. They are added once a job's partition is chosen, so a job sent to another partition for its accelerators does not get them, and they can't set what chooses the partition or what Toil sets itself. For example::
+
+    $ toil-cwl-runner --batchSystem slurm --batchLogsDir ./logs \
+      --slurmPartition compute --slurmPartitionArgs compute=--exclusive \
+      --slurmAcceleratorPartitions qpu=quantum workflow.cwl inputs.yml
+
 Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.) A ``--partition`` passed this way is used for every job, instead of the partition Toil would select, even for jobs that need accelerators the partition might not have.
 
 Slurm Tips

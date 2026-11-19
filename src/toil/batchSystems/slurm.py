@@ -213,6 +213,20 @@ def parse_keyed_args(spec: str, key_name: str, flag: str) -> tuple[str, list[str
     return key, split
 
 
+def parse_partition_args(spec: str) -> tuple[str, list[str]]:
+    """
+    Parse the sbatch arguments for the jobs that run in one partition.
+
+    >>> parse_partition_args("compute=--exclusive --nodes=1")
+    ('compute', ['--exclusive', '--nodes=1'])
+    >>> parse_partition_args("compute=--time=10")
+    Traceback (most recent call last):
+    ...
+    ValueError: Cannot use Slurm argument --time=10 in --slurmPartitionArgs, since Toil sets it or it chooses the partition
+    """
+    return parse_keyed_args(spec, "PARTITION", "--slurmPartitionArgs")
+
+
 def get_accelerator_args(
     accelerators: list[AcceleratorRequirement],
     accelerator_args: dict[str, list[str]],
@@ -1339,6 +1353,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 sbatch_line.append("--export=" + ",".join(export_list))
             if partition is not None:
                 sbatch_line.append(f"--partition={partition}")
+                sbatch_line.extend(
+                    dict(self.boss.config.slurm_partition_args or []).get(partition, [])  # type: ignore[attr-defined]
+                )
             if qos is not None:
                 sbatch_line.append(f"--qos={qos}")
             gres_counts: dict[str, int] = {}
@@ -1588,6 +1605,19 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             "or CPUs.",
         )
         parser.add_argument(
+            "--slurmPartitionArgs",
+            dest="slurm_partition_args",
+            type=parse_partition_args,
+            action="append",
+            default=[],
+            help="sbatch arguments for the Slurm jobs that run in one partition, "
+            "as PARTITION=ARGS, such as --exclusive for a partition whose nodes "
+            "are only handed out whole (compute=--exclusive). Give it once per "
+            "partition. They apply once a job's partition is chosen, so they "
+            "can't set the partition, time limit, QOS, exported environment, "
+            "GRES, memory or CPUs.",
+        )
+        parser.add_argument(
             "--slurmPE",
             dest="slurm_pe",
             default=None,
@@ -1616,5 +1646,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         setOption("slurm_accelerator_partitions")
         setOption("slurm_accelerator_gres")
         setOption("slurm_accelerator_args")
+        setOption("slurm_partition_args")
         setOption("slurm_pe")
         setOption("slurm_args")
