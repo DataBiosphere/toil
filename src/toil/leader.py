@@ -136,8 +136,7 @@ class Leader:
         self._waiting_jobs: list[tuple[float, JobDescription]] = []
 
         # Message bus messages need to go to the given file.
-        # Keep a reference to the return value so the listener stays alive.
-        self._message_subscription = self.toilState.bus.connect_output_file(
+        self._messages_file = self.toilState.bus.connect_output_file(
             self.config.write_messages
         )
 

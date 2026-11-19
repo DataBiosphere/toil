@@ -386,6 +386,8 @@ class MessageBus:
                 self._deliver(message)
 
     def _write_to_output_files(self, message: Any) -> None:
+        if not self._output_files:
+            return
         line = b"".join(
             [
                 self._type_to_name(type(message)).encode("utf-8"),

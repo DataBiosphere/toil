@@ -14,11 +14,16 @@
 
 import logging
 import os
+import signal
+import subprocess
+import sys
 from pathlib import Path
 from threading import Thread, current_thread
-from typing import NoReturn
+from typing import NamedTuple, NoReturn
 
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
+from toil.batchSystems.gridengine import GridEngineBatchSystem
+from toil.batchSystems.registry import add_batch_system_factory
 from toil.bus import (
     ExternalBatchIdMessage,
     JobCompletedMessage,
@@ -31,6 +36,38 @@ from toil.exceptions import FailedJobsException
 from toil.job import Job
 
 logger = logging.getLogger(__name__)
+
+
+class HostsMessage(NamedTuple):
+    hosts: list[str]
+
+
+class HeldSubmitBatchSystem(GridEngineBatchSystem):
+    class GridEngineThread(GridEngineBatchSystem.GridEngineThread):
+        killed: set[str] = set()
+
+        def submitJob(self, subLine: list[str]) -> int:
+            print("submitting", flush=True)
+            sys.stdin.readline()
+            return 4242
+
+        def getRunningJobIDs(self) -> dict[int, float]:
+            return {}
+
+        def killJob(self, jobID: int) -> None:
+            self.killed.add(self.getBatchSystemID(jobID))
+
+        def getJobExitCode(self, batchJobID: str) -> int | None:
+            return 143 if batchJobID in self.killed else None
+
+
+def run_leader_with_held_submit(job_store: str, bus_file: str) -> None:
+    add_batch_system_factory("held_submit", lambda: HeldSubmitBatchSystem)
+    options = Job.Runner.getDefaultOptions(job_store)
+    options.batchSystem = "held_submit"
+    options.write_messages = bus_file
+    with Toil(options) as toil:
+        toil.start(Job.wrapJobFn(failing_job_fn))
 
 
 class TestMessageBus:
@@ -141,6 +178,45 @@ class TestMessageBus:
             "12345",
             "SlurmBatchSystem",
         )
+
+    def test_message_not_storable_in_a_file_reaches_subscribers_of_a_bus_without_one(
+        self,
+    ) -> None:
+        bus = MessageBus()
+        box = bus.connect([HostsMessage])
+        bus.publish(HostsMessage(["node1", "node2"]))
+        assert box.count(HostsMessage) == 1
+
+    def test_leader_terminated_during_a_submit_writes_its_external_batch_id(
+        self, tmp_path: Path
+    ) -> None:
+        bus_file = tmp_path / "bus"
+        leader = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import sys; from toil.test.src.busTest import run_leader_with_held_submit; "
+                "run_leader_with_held_submit(sys.argv[1], sys.argv[2])",
+                str(tmp_path / "jobstore"),
+                str(bus_file),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        assert leader.stdout is not None and leader.stdin is not None
+        assert leader.stdout.readline() == "submitting\n"
+        leader.send_signal(signal.SIGTERM)
+        leader.stdin.write("released\n")
+        leader.stdin.flush()
+        leader.wait(timeout=300)
+        leader.stdin.close()
+        leader.stdout.close()
+
+        with open(bus_file, "rb") as stream:
+            assert list(
+                MessageBus.scan_bus_messages(stream, [ExternalBatchIdMessage])
+            ) == [ExternalBatchIdMessage(1, "4242", "HeldSubmitBatchSystem")]
 
     def test_restart_without_bus_path(self, tmp_path: Path) -> None:
         """
