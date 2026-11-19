@@ -152,6 +152,20 @@ say where that kind can be found::
 ``model``, ``brand``, and ``api`` may also be given, and have the same meanings
 as for accelerators requested through Toil's Python API.
 
+``properties`` says what else the step needs of the accelerator, by name, in
+strings or CWL expressions evaluated for each job like ``count``, such as how
+large a problem it will run there::
+
+    hints:
+      toil:AcceleratorRequirement:
+        kind: qpu
+        properties:
+          qubits: $(inputs.circuit_qubits)
+
+The names are the site's own: a batch system that asks for the accelerator
+with them passes them on, and others ignore them. A property that evaluates to
+null is left out.
+
 The step's Toil job then requires that accelerator, and the batch system must
 be able to provide it (see :ref:`runningSlurm` for Slurm). For steps run on the
 local machine, say how many of each kind it has with ``--localAccelerators``,
