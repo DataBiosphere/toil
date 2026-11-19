@@ -244,12 +244,10 @@ levels in toil are based on priority from the logging module:
                         system. Useful for running workflows on smaller
                         machines than they were designed for, by setting a
                         value less than 1. (default: 1)
-  --localAccelerators KIND=COUNT[,KIND=COUNT...]
-                        Accelerators other than GPUs that this machine has,
-                        by kind, for jobs that ask for them. Used in the
-                        single_machine batch system, which detects GPUs itself
-                        and refuses jobs asking for an accelerator kind it does
-                        not have.
+  --localAccelerators LOCAL_ACCELERATORS
+                        Accelerators this machine has for jobs run on it, as
+                        a comma-separated list of KIND=COUNT, such as fpga=2.
+                        A gpu count replaces the number of GPUs detected.
   --slurmAllocateMem SLURM_ALLOCATE_MEM
                         If False, do not use --mem. Used as a workaround for
                         Slurm clusters that reject jobs with memory
@@ -264,17 +262,36 @@ levels in toil are based on priority from the logging module:
                         Partition to send Slurm jobs to if they ask for GPUs.
   --slurmGPUQOS SLURM_GPU_QOS
                         Quality Of Service to request for Slurm jobs if they ask for GPUs.
-  --slurmAcceleratorArgs KIND=ARGS
-                        sbatch arguments for Slurm jobs that ask for an
-                        accelerator other than GPUs, for one accelerator
-                        kind, such as the partition that has it
-                        (fpga=--partition=fpga-nodes) or a site's own option
-                        for it. Give it once per kind. A partition among them
-                        is where the job must run. A {name} field in them
-                        is filled with the job's accelerator property of
-                        that name. Jobs asking for an accelerator kind not
-                        given here, or lacking a property it needs, are
-                        refused.
+  --slurmAcceleratorPartitions SLURM_ACCELERATOR_PARTITIONS
+                        Partitions to send Slurm jobs to if they ask for
+                        accelerators, as a comma-separated list of
+                        KIND=PARTITION, such as fpga=fpga-nodes. A kind can be
+                        given more than once.
+  --slurmAcceleratorGres SLURM_ACCELERATOR_GRES
+                        Slurm GRES to request for jobs that ask for
+                        accelerators, as a comma-separated list of KIND=GRES,
+                        such as fpga=fpga. Partitions with a kind's GRES are
+                        used for jobs that ask for it. GPUs use the gpu GRES
+                        unless given here.
+  --slurmAcceleratorArgs SLURM_ACCELERATOR_ARGS
+                        Extra sbatch arguments for Slurm jobs that ask for
+                        one kind of accelerator, as KIND=ARGS, such as a
+                        site's own option for it (qpu=--qpu={backend}). Give
+                        it once per kind. A {name} field in them is filled
+                        with the job's accelerator property of that name. A
+                        kind given here but not in
+                        --slurmAcceleratorPartitions or
+                        --slurmAcceleratorGres is had in every partition.
+                        They can't set the partition, time limit, QOS,
+                        exported environment, GRES, memory or CPUs.
+  --slurmPartitionArgs SLURM_PARTITION_ARGS
+                        sbatch arguments for the Slurm jobs that run in one
+                        partition, as PARTITION=ARGS, such as --exclusive for
+                        a partition whose nodes are only handed out whole
+                        (compute=--exclusive). Give it once per partition.
+                        They apply once a job's partition is chosen, so they
+                        can't set the partition, time limit, QOS, exported
+                        environment, GRES, memory or CPUs.
   --slurmPE SLURM_PE    Special partition to send Slurm jobs to if they ask
                         for more than 1 CPU. Useful for Slurm clusters that do
                         not offer a partition accepting both single-core and

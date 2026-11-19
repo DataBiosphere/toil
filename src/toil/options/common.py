@@ -106,20 +106,17 @@ def parse_accelerator_list(specs: str | None) -> list["AcceleratorRequirement"]:
     return [parse_accelerator(r) for r in specs.split(",")]
 
 
-def parse_accelerator_kind_mapping(spec: str) -> dict[str, str]:
+def parse_accelerator_kind_mapping(spec: str) -> list[tuple[str, str]]:
     """
-    Parse a mapping from accelerator kinds to batch-system-specific values.
-
-    Batch systems use these to let a site say how to provide each kind of
-    accelerator, such as which queue or partition has them. The mapping is a
-    comma-separated list of ``KIND=VALUE`` pairs.
+    Parse a comma-separated list of ``KIND=VALUE`` pairs, giving values for
+    kinds of accelerators.
 
     >>> parse_accelerator_kind_mapping("fpga=fpgas")
-    {'fpga': 'fpgas'}
-    >>> parse_accelerator_kind_mapping("fpga=fpgas,tpu=tpus")
-    {'fpga': 'fpgas', 'tpu': 'tpus'}
+    [('fpga', 'fpgas')]
+    >>> parse_accelerator_kind_mapping("gpu=a,gpu=b,tpu=c")
+    [('gpu', 'a'), ('gpu', 'b'), ('tpu', 'c')]
     >>> parse_accelerator_kind_mapping("")
-    {}
+    []
     >>> parse_accelerator_kind_mapping("fpga")
     Traceback (most recent call last):
     ...
@@ -127,12 +124,12 @@ def parse_accelerator_kind_mapping(spec: str) -> dict[str, str]:
 
     :raises ValueError: if not parseable.
     """
-    mapping: dict[str, str] = {}
+    mapping: list[tuple[str, str]] = []
     for pair in filter(None, spec.split(",")):
         kind, _, value = pair.partition("=")
         if not kind or not value:
             raise ValueError(f"Expected KIND=VALUE but got: {pair!r}")
-        mapping[kind] = value
+        mapping.append((kind, value))
     return mapping
 
 

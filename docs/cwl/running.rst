@@ -154,7 +154,7 @@ as for accelerators requested through Toil's Python API.
 
 ``properties`` says what else the step needs of the accelerator, by name, in
 strings or CWL expressions evaluated for each job like ``count``, such as how
-large a problem it will run there; a property evaluating to null is left out::
+large a problem it will run there::
 
     hints:
       toil:AcceleratorRequirement:
@@ -163,17 +163,15 @@ large a problem it will run there; a property evaluating to null is left out::
           qubits: $(inputs.circuit_qubits)
 
 The names are the site's own: a batch system that asks for the accelerator
-with them passes them on, and others ignore them.
+with them passes them on, and others ignore them. A property that evaluates to
+null is left out.
 
 The step's Toil job then requires that accelerator, and the batch system must
-know how to provide it. On Slurm, give each kind the ``sbatch`` arguments that
-provide it, such as its partition, with ``--slurmAcceleratorArgs`` (see
-:ref:`runningSlurm`), whose ``{name}`` fields are filled from the step's
-properties. With the
-single machine batch system, say how many of each kind the machine has with
-``--localAccelerators``, for example ``--localAccelerators fpga=1``. A batch system
-that does not know how to provide a kind refuses the job with an error naming
-the accelerator, rather than running the step somewhere without it.
+be able to provide it (see :ref:`runningSlurm` for Slurm). For steps run on the
+local machine, say how many of each kind it has with ``--localAccelerators``,
+for example ``--localAccelerators fpga=1``. A batch system that cannot provide
+a kind refuses the job with an error naming the accelerator, rather than
+running the step somewhere without it.
 
 Toil & CWL Tips
 ---------------
