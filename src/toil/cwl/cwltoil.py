@@ -2654,11 +2654,20 @@ def writeGlobalFileWrapper(
 
 
 def remove_empty_listings(rec: CWLDirectoryType) -> None:
+    """
+    Drop each empty listing that cwltool can list again from where it is.
+
+    A Directory literal (one cwltool gave a "_:" location) is not anywhere to
+    be listed: its listing is all there is of it, even when empty, so it keeps
+    it.
+    """
     if rec.get("class") != "Directory":
         finddirs: list[CWLDirectoryType] = []
         visit_class(rec, ("Directory",), finddirs.append)
         for f in finddirs:
             remove_empty_listings(f)
+        return
+    if rec.get("location", "_:").startswith("_:"):
         return
     if "listing" in rec and rec["listing"] == []:
         del rec["listing"]

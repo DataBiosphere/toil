@@ -1,0 +1,7 @@
+{
+  "target": {
+    "class": "Directory",
+    "basename": "out",
+    "listing": []
+  }
+}
