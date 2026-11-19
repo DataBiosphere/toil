@@ -19,6 +19,7 @@ import math
 import os
 import re
 import shlex
+import string
 import sys
 from argparse import SUPPRESS, ArgumentParser, _ArgumentGroup
 from collections.abc import Callable
@@ -149,6 +150,111 @@ def parse_accelerator_gres(spec: str) -> dict[str, str]:
     return dict(parse_accelerator_kind_mapping(spec))
 
 
+def parse_accelerator_args(spec: str) -> tuple[str, list[str]]:
+    """
+    Parse the extra sbatch arguments for jobs that need one kind of
+    accelerator.
+
+    The value is ``KIND=ARGS``, where ARGS are split as a shell would split
+    them. A ``{name}`` field in them is filled, for each job, with the
+    property of that name of the job's accelerator; ``{{`` and ``}}`` stand
+    for braces.
+
+    >>> parse_accelerator_args("qpu=--qpu={backend} --comment='quantum job'")
+    ('qpu', ['--qpu={backend}', '--comment=quantum job'])
+    >>> parse_accelerator_args("qpu=")
+    ('qpu', [])
+    >>> parse_accelerator_args("qpu=--qpu={0}")
+    Traceback (most recent call last):
+    ...
+    ValueError: Expected only {name} fields, each naming an accelerator property, in qpu arguments but got: '--qpu={0}'
+    >>> parse_accelerator_args("fpga=--partition=fpgas")
+    Traceback (most recent call last):
+    ...
+    ValueError: Cannot use Slurm argument --partition=fpgas in --slurmAcceleratorArgs, since Toil sets it or it chooses the partition
+
+    Raises ValueError if not parseable.
+    """
+    kind, args = parse_keyed_args(spec, "KIND", "--slurmAcceleratorArgs")
+    for arg in args:
+        for _, name, format_spec, conversion in string.Formatter().parse(arg):
+            if name is not None and (
+                not name.isidentifier() or format_spec or conversion
+            ):
+                raise ValueError(
+                    f"Expected only {{name}} fields, each naming an accelerator "
+                    f"property, in {kind} arguments but got: {arg!r}"
+                )
+    return kind, args
+
+
+def parse_keyed_args(spec: str, key_name: str, flag: str) -> tuple[str, list[str]]:
+    """
+    Parse ``KEY=ARGS``, refusing sbatch arguments that set what Toil sets
+    itself or what chooses a job's partition.
+
+    >>> parse_keyed_args("qpu=--qpu=sim", "KIND", "--slurmAcceleratorArgs")
+    ('qpu', ['--qpu=sim'])
+    >>> parse_keyed_args("qpu", "KIND", "--slurmAcceleratorArgs")
+    Traceback (most recent call last):
+    ...
+    ValueError: Expected KIND=ARGS but got: 'qpu'
+    """
+    key, separator, args = spec.partition("=")
+    if not key or not separator:
+        raise ValueError(f"Expected {key_name}=ARGS but got: {spec!r}")
+    split = shlex.split(args)
+    for arg in split:
+        if is_toil_set_option(arg):
+            raise ValueError(
+                f"Cannot use Slurm argument {arg} in {flag}, since Toil sets it "
+                f"or it chooses the partition"
+            )
+    return key, split
+
+
+def get_accelerator_args(
+    accelerators: list[AcceleratorRequirement],
+    accelerator_args: dict[str, list[str]],
+) -> list[str]:
+    """
+    Get the extra sbatch arguments for the given accelerators, with their
+    fields filled from each accelerator's properties.
+
+    >>> get_accelerator_args(
+    ...     [{"kind": "qpu", "count": 1, "properties": {"backend": "sim"}}],
+    ...     {"qpu": ["--qpu={backend}"]},
+    ... )
+    ['--qpu=sim']
+    >>> get_accelerator_args([{"kind": "gpu", "count": 1}], {})
+    []
+    >>> get_accelerator_args([{"kind": "qpu", "count": 1}], {"qpu": ["--qpu={backend}"]})
+    Traceback (most recent call last):
+    ...
+    ValueError: The Slurm arguments for qpu accelerators need the accelerator property backend, which the job's qpu accelerator does not have
+
+    Raises ValueError if an accelerator lacks a property its arguments need.
+    """
+    args: list[str] = []
+    for kind, properties in dict.fromkeys(
+        (
+            accelerator["kind"],
+            tuple(sorted(accelerator.get("properties", {}).items())),
+        )
+        for accelerator in accelerators
+    ):
+        for arg in accelerator_args.get(kind, []):
+            try:
+                args.append(arg.format_map(dict(properties)))
+            except KeyError as e:
+                raise ValueError(
+                    f"The Slurm arguments for {kind} accelerators need the "
+                    f"accelerator property {e.args[0]}, which the job's {kind} "
+                    f"accelerator does not have"
+                ) from e
+    return args
+
+
 def parse_gres_names(gres: str) -> frozenset[str]:
     """
     Parse the names of the GRES in a GRES list from sinfo.
@@ -219,6 +325,23 @@ def any_option_detector(options: list[str | tuple[str, str]]) -> Callable[[str],
     return is_match
 
 
+is_toil_set_option = any_option_detector(
+    [
+        ("partition", "p"),
+        ("time", "t"),
+        "qos",
+        "export",
+        "export-file",
+        "gres",
+        "mem",
+        "mem-per-cpu",
+        "mem-per-gpu",
+        ("cpus-per-task", "c"),
+        "cpus-per-gpu",
+    ]
+)
+
+
 def parse_slurm_option_value(args: list[str], i: int) -> tuple[str, int]:
     """
     Parse a Slurm option value in either ``--opt=value`` or ``--opt value`` form.
@@ -257,6 +380,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             self,
             accelerator_gres: dict[str, str] | None = None,
             accelerator_partitions: dict[str, list[str]] | None = None,
+            provided_kinds: frozenset[str] = frozenset(),
         ) -> None:
             """
             :param accelerator_gres: The GRES that provides each kind of
@@ -265,9 +389,17 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             :param accelerator_partitions: The partitions that have each kind
                 of accelerator. For a kind given here, these are used instead
                 of the partitions with its GRES.
+            :param provided_kinds: Kinds of accelerators a job's own sbatch
+                arguments provide. Those not given a GRES or partitions here
+                are had in every partition.
             """
             self.accelerator_gres = {"gpu": "gpu", **(accelerator_gres or {})}
             self.accelerator_partitions = accelerator_partitions or {}
+            self.everywhere_kinds = (
+                provided_kinds
+                - self.accelerator_gres.keys()
+                - self.accelerator_partitions.keys()
+            )
             try:
                 self._get_partition_info()
             except CalledProcessErrorStderr as e:
@@ -314,6 +446,13 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                         )
                     )
             self.all_partitions = parsed_partitions
+
+        def placed_kinds(self, accelerator_kinds: frozenset[str]) -> frozenset[str]:
+            """
+            Get those of the given kinds of accelerators that only some
+            partitions have.
+            """
+            return accelerator_kinds - self.everywhere_kinds
 
         def get_accelerator_kinds(
             self, partition: SlurmBatchSystem.PartitionInfo
@@ -1041,7 +1180,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             """
 
             accelerators = accelerators or []
-            accelerator_kinds = frozenset(a["kind"] for a in accelerators)
+            accelerator_kinds = self.boss.partitions.placed_kinds(
+                frozenset(a["kind"] for a in accelerators)
+            )
 
             # Start by naming the job
             sbatch_line = ["sbatch", "-J", f"toil_job_{jobID}_{jobName}"]
@@ -1211,6 +1352,11 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     "--gres="
                     + ",".join(f"{gres}:{count}" for gres, count in gres_counts.items())
                 )
+            sbatch_line.extend(
+                get_accelerator_args(
+                    accelerators, dict(self.boss.config.slurm_accelerator_args or [])  # type: ignore[attr-defined]
+                )
+            )
             if mem is not None and self.boss.config.slurm_allocate_mem:  # type: ignore[attr-defined]
                 # memory passed in is in bytes, but slurm expects megabytes
                 sbatch_line.append(f"--mem={math.ceil(mem / 2 ** 20)}")
@@ -1239,6 +1385,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         self.partitions = SlurmBatchSystem.PartitionSet(
             config.slurm_accelerator_gres,  # type: ignore[attr-defined]
             accelerator_partitions,
+            frozenset(dict(config.slurm_accelerator_args or [])),  # type: ignore[attr-defined]
         )
         # Record when the workflow started, so we know when to stop looking for
         # jobs we ran.
@@ -1291,7 +1438,22 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         return job_id
 
     def _check_accelerator_request(self, requirer: Requirer) -> None:
-        accelerator_kinds = frozenset(a["kind"] for a in requirer.accelerators)
+        try:
+            get_accelerator_args(
+                requirer.accelerators, dict(self.config.slurm_accelerator_args or [])  # type: ignore[attr-defined]
+            )
+        except ValueError as e:
+            raise InsufficientSystemResources(
+                requirer,
+                "accelerators",
+                details=[
+                    f"The accelerators {requirer.accelerators} could not be provided.",
+                    str(e),
+                ],
+            ) from e
+        accelerator_kinds = self.partitions.placed_kinds(
+            frozenset(a["kind"] for a in requirer.accelerators)
+        )
         if (
             accelerator_kinds
             and not self.partitions.get_accelerator_partitions(accelerator_kinds)
@@ -1411,6 +1573,21 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             "gpu GRES unless given here.",
         )
         parser.add_argument(
+            "--slurmAcceleratorArgs",
+            dest="slurm_accelerator_args",
+            type=parse_accelerator_args,
+            action="append",
+            default=[],
+            help="Extra sbatch arguments for Slurm jobs that ask for one kind of "
+            "accelerator, as KIND=ARGS, such as a site's own option for it "
+            "(qpu=--qpu={backend}). Give it once per kind. A {name} field in "
+            "them is filled with the job's accelerator property of that name. "
+            "A kind given here but not in --slurmAcceleratorPartitions or "
+            "--slurmAcceleratorGres is had in every partition. They can't set "
+            "the partition, time limit, QOS, exported environment, GRES, memory "
+            "or CPUs.",
+        )
+        parser.add_argument(
             "--slurmPE",
             dest="slurm_pe",
             default=None,
@@ -1438,5 +1615,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         setOption("slurm_gpu_qos")
         setOption("slurm_accelerator_partitions")
         setOption("slurm_accelerator_gres")
+        setOption("slurm_accelerator_args")
         setOption("slurm_pe")
         setOption("slurm_args")

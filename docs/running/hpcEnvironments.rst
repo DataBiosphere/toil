@@ -55,6 +55,13 @@ If your cluster has a GRES for another kind of accelerator, as it does for GPUs,
 
 A job that needs several kinds of accelerators goes to a partition that has all of them; Toil refuses the job if there is no such partition. To give more than one partition for a kind, give the kind more than once, as in ``--slurmAcceleratorPartitions fpga=fpga-short,fpga=fpga-long``. Partitions given for a kind are used for it instead of the partitions with its GRES. Out of the partitions with all the accelerators a job needs and a long enough time limit, Toil prefers ones without other accelerators, then ones with lower priority, then ones with shorter time limits. Jobs that need accelerators go to a partition with them even if ``--slurmPE`` or ``--slurmPartition`` is set; those only apply to jobs that need no accelerators.
 
+Some kinds need ``sbatch`` arguments of their own, such as a site's option that reserves a quantum service, or that tells the scheduler how large a problem a job will run there. Give them with ``--slurmAcceleratorArgs``, once per kind as ``KIND=ARGS``. A ``{name}`` field in them is filled with the job's accelerator property of that name (see :ref:`cwlAccelerators` for how a CWL step gives properties), and a job whose accelerator lacks a property its arguments need is refused, naming the property. A kind given only this way, with no partition and no GRES, is had in every partition, so its jobs go wherever they would go without it; ``KIND=`` with no arguments says the job gets the kind wherever it runs, such as when it starts it itself. For example::
+
+    $ toil-cwl-runner --batchSystem slurm --batchLogsDir ./logs \
+      --slurmAcceleratorArgs 'qpu=--qpu={backend}' workflow.cwl inputs.yml
+
+These arguments can't set what chooses the partition or what Toil sets itself: the partition, time limit, QOS, exported environment, GRES, memory or CPUs.
+
 Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.) A ``--partition`` passed this way is used for every job, instead of the partition Toil would select, even for jobs that need accelerators the partition might not have.
 
 Slurm Tips

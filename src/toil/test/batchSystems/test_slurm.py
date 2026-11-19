@@ -829,6 +829,72 @@ class SlurmTest(ToilTest):
         assert "--partition=baz" in command
         assert "--gres=fpga:1" in command
 
+    def test_prepareSbatch_accelerator_args(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        parse = toil.batchSystems.slurm.parse_accelerator_args
+        self.worker.boss.config.slurm_accelerator_args = [
+            parse("qpu=--qpu={backend} --comment={{literal}}"),
+            parse("fpga=--constraint=xilinx"),
+            parse("tpu="),
+        ]
+        self.worker.boss.partitions = (
+            toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet(
+                {"fpga": "fpga"}, None, frozenset({"qpu", "fpga", "tpu"})
+            )
+        )
+        self.worker.boss.config.slurm_partition = "foobar"
+        qpu = [{"kind": "qpu", "count": 1, "properties": {"backend": "sim"}}]
+
+        # A kind only the arguments provide is had wherever the job goes
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, qpu)
+        assert "--partition=foobar" in command
+        assert "--qpu=sim" in command and "--comment={literal}" in command
+        assert not any(arg.startswith("--gres") for arg in command)
+        command = self.worker.prepareSbatch(
+            1, 100, 5, 0, "job5", None, [{"kind": "tpu", "count": 1}]
+        )
+        assert "--partition=foobar" in command
+
+        # A kind with a GRES still picks its partition, and gets its arguments too
+        command = self.worker.prepareSbatch(
+            1, 100, 5, 0, "job5", None, [{"kind": "fpga", "count": 1}]
+        )
+        assert "--partition=fpga-nodes" in command
+        assert "--gres=fpga:1" in command and "--constraint=xilinx" in command
+
+        # A property the arguments need but the job doesn't give is refused by name
+        with self.assertRaisesRegex(ValueError, "accelerator property backend"):
+            self.worker.prepareSbatch(
+                1, 100, 5, 0, "job5", None, [{"kind": "qpu", "count": 1}]
+            )
+
+        # Arguments that set what Toil sets or what chooses the partition are refused
+        for arg in ("--partition=qpus", "-t 10", "--gres=qpu:1", "--mem=1G"):
+            with self.subTest(arg=arg), self.assertRaises(ValueError):
+                parse(f"qpu={arg}")
+
+    def test_check_accelerator_args_request(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        boss = FakeBatchSystem()
+        boss.config.slurm_accelerator_args = [
+            toil.batchSystems.slurm.parse_accelerator_args("qpu=--qpu={backend}")
+        ]
+        boss.partitions = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet(
+            None, None, frozenset({"qpu"})
+        )
+
+        def check(accelerators):
+            requirer = Requirer({"accelerators": accelerators})
+            toil.batchSystems.slurm.SlurmBatchSystem._check_accelerator_request(
+                boss, requirer
+            )
+
+        check([{"kind": "qpu", "count": 1, "properties": {"backend": "sim"}}])
+        with self.assertRaisesRegex(
+            InsufficientSystemResources, "accelerator property backend"
+        ):
+            check([{"kind": "qpu", "count": 1}])
+
     def test_check_accelerator_request(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
         boss = FakeBatchSystem()

@@ -273,6 +273,17 @@ levels in toil are based on priority from the logging module:
                         such as fpga=fpga. Partitions with a kind's GRES are
                         used for jobs that ask for it. GPUs use the gpu GRES
                         unless given here.
+  --slurmAcceleratorArgs SLURM_ACCELERATOR_ARGS
+                        Extra sbatch arguments for Slurm jobs that ask for
+                        one kind of accelerator, as KIND=ARGS, such as a
+                        site's own option for it (qpu=--qpu={backend}). Give
+                        it once per kind. A {name} field in them is filled
+                        with the job's accelerator property of that name. A
+                        kind given here but not in
+                        --slurmAcceleratorPartitions or
+                        --slurmAcceleratorGres is had in every partition.
+                        They can't set the partition, time limit, QOS,
+                        exported environment, GRES, memory or CPUs.
   --slurmPE SLURM_PE    Special partition to send Slurm jobs to if they ask
                         for more than 1 CPU. Useful for Slurm clusters that do
                         not offer a partition accepting both single-core and
