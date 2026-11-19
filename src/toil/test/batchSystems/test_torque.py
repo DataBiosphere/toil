@@ -59,3 +59,15 @@ def test_walltime_is_requested_when_set(
     monkeypatch: pytest.MonkeyPatch, version: str, walltime: int, expected: str
 ) -> None:
     assert resource_request(monkeypatch, version, walltime) == expected
+
+
+def test_walltime_in_torque_reqs_is_refused_for_a_job_with_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TOIL_TORQUE_REQS", "walltime=2:00:00")
+    with pytest.raises(ValueError, match="Incompatible"):
+        resource_request(monkeypatch, "pro", 60)
+    assert (
+        resource_request(monkeypatch, "pro", 0)
+        == "select=1:mem=1048576K,walltime=2:00:00"
+    )

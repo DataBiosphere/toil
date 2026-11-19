@@ -228,13 +228,12 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                     "TOIL_TORQUE_REQS env. variable: %s",
                     reqlineEnv,
                 )
-                if (
-                    ("mem=" in reqlineEnv)
-                    or ("nodes=" in reqlineEnv)
-                    or ("ppn=" in reqlineEnv)
-                ):
+                toil_resources = ["mem=", "nodes=", "ppn="]
+                if walltime:
+                    toil_resources.append("walltime=")
+                if any(resource in reqlineEnv for resource in toil_resources):
                     raise ValueError(
-                        f"Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {reqlineEnv}"
+                        f"Incompatible resource arguments ({', '.join(map(repr, toil_resources))}): {reqlineEnv}"
                     )
 
                 reqline.append(reqlineEnv)
