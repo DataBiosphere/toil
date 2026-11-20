@@ -101,6 +101,7 @@ Besides the normal Toil options and the options supported by cwltool, toil-cwl-r
   --disable-streaming   Do not allow streaming of job input files. By default, files marked with ``streamable`` True are streamed from remote job stores.
   --cwl-default-ram     Apply CWL specification default ramMin.
   --no-cwl-default-ram  Do not apply CWL specification default ramMin, so that Toil --defaultMemory applies. This can help jobs get to Slurm with no memory limit assigned.
+  --cwl-max-input-mounts COUNT  Maximum number of mounts a containerized tool can use for its files. Above this, Toil mounts the directories that hold the files instead, so the tool can see other files in those directories. Must be at least 3. Can also be set with the ``TOIL_CWL_MAX_INPUT_MOUNTS`` environment variable. Defaults to 100.
   --cwl-min-ram BYTES   Specify a minimum memory allocation for all tasks. If ``--no-cwl-default-ram`` is passed, this does not apply to tools that do not specify a memory requirement; ``--defaultMemory`` is used for those tools in that case.
 
 Running CWL in the Cloud
