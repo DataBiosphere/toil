@@ -27,7 +27,7 @@ from toil.batchSystems.abstractBatchSystem import (
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.bus import ExternalBatchIdMessage, get_job_kind
 from toil.common import Config
-from toil.job import JobDescription
+from toil.job import AcceleratorRequirement, JobDescription
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.lib.retry import DEFAULT_DELAYS, old_retry
 from toil.statsAndLogging import TRACE
@@ -44,9 +44,17 @@ logger = logging.getLogger(__name__)
 # Command to run
 # Unit name of the job
 # Environment dict for the job
-# Number of GPUs
+# Accelerator requirements for the job
 JobTuple = tuple[
-    int, float, int, int, int, str, str, dict[str, str] | None, int
+    int,
+    float,
+    int,
+    int,
+    int,
+    str,
+    str,
+    dict[str, str] | None,
+    list[AcceleratorRequirement],
 ]
 
 
@@ -156,14 +164,30 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 self.boss.config.max_jobs
             ):
                 activity = True
-                jobID, cpu, memory, disk, walltime, command, jobName, environment, gpus = (
-                    self.waitingJobs.pop(0)
-                )
+                (
+                    jobID,
+                    cpu,
+                    memory,
+                    disk,
+                    walltime,
+                    command,
+                    jobName,
+                    environment,
+                    accelerators,
+                ) = self.waitingJobs.pop(0)
                 if self.boss.config.memory_is_product and cpu > 1:
                     memory = int(memory // cpu)
                 # prepare job submission command
                 subLine = self.prepareSubmission(
-                    cpu, memory, disk, walltime, jobID, command, jobName, environment, gpus
+                    cpu,
+                    memory,
+                    disk,
+                    walltime,
+                    jobID,
+                    command,
+                    jobName,
+                    environment,
+                    accelerators,
                 )
                 logger.debug("Running %r", subLine)
                 batchJobID = self.boss.with_retries(self.submitJob, subLine)
@@ -382,7 +406,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             command: str,
             jobName: str,
             job_environment: dict[str, str] | None = None,
-            gpus: int | None = None,
+            accelerators: list[AcceleratorRequirement] | None = None,
         ) -> T:
             """
             Preparation in putting together something submittable
@@ -396,7 +420,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             :param: command: the command line string to be called
             :param: jobName: the name of the Toil job, to provide metadata to batch systems if desired
             :param: job_environment: the environment variables to be set on the worker
-            :param: gpus: number of gpus
+            :param: accelerators: the accelerators the job needs
 
             :returns: the submission to pass to submitJob()
             """
@@ -483,20 +507,6 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     def supportsAutoDeployment(cls) -> bool:
         return False
 
-    def count_needed_gpus(self, job_desc: JobDescription) -> int:
-        """
-        Count the number of cluster-allocateable GPUs we want to allocate for the given job.
-        """
-        gpus = 0
-        if isinstance(job_desc.accelerators, list):
-            for accelerator in job_desc.accelerators:
-                if accelerator["kind"] == "gpu":
-                    gpus += accelerator["count"]
-        else:
-            gpus = job_desc.accelerators
-
-        return gpus
-
     def issueBatchJob(
         self,
         command: str,
@@ -509,7 +519,6 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             return local_id
         else:
             self.check_resource_request(job_desc)
-            gpus = self.count_needed_gpus(job_desc)
             job_id = self.getNextJobID()
             self.currentJobs.add(job_id)
 
@@ -523,7 +532,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                     command,
                     get_job_kind(job_desc.get_names()),
                     job_environment,
-                    gpus,
+                    job_desc.accelerators,
                 )
             )
             logger.debug(

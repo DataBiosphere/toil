@@ -48,9 +48,57 @@ from toil.lib.accelerators import (
     get_restrictive_environment_for_local_accelerators,
 )
 from toil.lib.threading import cpu_count
-from toil.options.common import SYS_MAX_SIZE, make_open_interval_action
+from toil.options.common import (
+    SYS_MAX_SIZE,
+    make_open_interval_action,
+    parse_accelerator_kind_mapping,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def parse_local_accelerators(spec: str) -> dict[str, int]:
+    """
+    Parse how many accelerators of each kind a machine has.
+
+    >>> parse_local_accelerators("gpu=1,fpga=2")
+    {'gpu': 1, 'fpga': 2}
+    >>> parse_local_accelerators("fpga=many")
+    Traceback (most recent call last):
+    ...
+    ValueError: Expected a count of fpga accelerators but got: 'many'
+
+    :raises ValueError: if not parseable.
+    """
+    counts: dict[str, int] = {}
+    for kind, count in parse_accelerator_kind_mapping(spec):
+        if not count.isdigit():
+            raise ValueError(
+                f"Expected a count of {kind} accelerators but got: {count!r}"
+            )
+        counts[kind] = int(count)
+    return counts
+
+
+def get_local_accelerators(counts: dict[str, int]) -> list[AcceleratorRequirement]:
+    """
+    Get the individual accelerators this machine has, each with count 1.
+
+    These are the GPUs detected, or as many as the given counts say, followed
+    by the given numbers of each other kind. GPUs come first, so their numbers
+    are the ones the GPU drivers use.
+    """
+    gpus = get_individual_local_accelerators()
+    if "gpu" in counts:
+        gpus = (
+            gpus + [{"kind": "gpu", "count": 1} for _ in range(counts["gpu"])]
+        )[: counts["gpu"]]
+    return gpus + [
+        {"kind": kind, "count": 1}
+        for kind, count in counts.items()
+        if kind != "gpu"
+        for _ in range(count)
+    ]
 
 
 class SingleMachineBatchSystem(BatchSystemSupport):
@@ -192,7 +240,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.childToJob: dict[int, str] = {}
 
         # For accelerators, we need a collection of what each accelerator is, and an acquirable set of them.
-        self.accelerator_identities = get_individual_local_accelerators()
+        self.accelerator_identities = get_local_accelerators(config.local_accelerators)
 
         # Put them all organized by resource type
         self.resource_sources = [
@@ -764,7 +812,13 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             accelerators_needed if accelerators_needed is not None else set()
         )
         child_environment.update(
-            get_restrictive_environment_for_local_accelerators(accelerators_acquired)
+            get_restrictive_environment_for_local_accelerators(
+                {
+                    i
+                    for i in accelerators_acquired
+                    if self.accelerator_identities[i]["kind"] == "gpu"
+                }
+            )
         )
 
         # Actually run the job.
@@ -1019,9 +1073,20 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             "(default: %(default)s)",
         )
 
+        parser.add_argument(
+            "--localAccelerators",
+            dest="local_accelerators",
+            type=parse_local_accelerators,
+            default={},
+            help="Accelerators this machine has for jobs run on it, as a "
+            "comma-separated list of KIND=COUNT, such as fpga=2. A gpu count "
+            "replaces the number of GPUs detected.",
+        )
+
     @classmethod
     def setOptions(cls, setOption: OptionSetter):
         setOption("scale")
+        setOption("local_accelerators")
 
 
 class Info:
