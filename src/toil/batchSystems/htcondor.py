@@ -53,6 +53,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             jobName: str,
             job_environment: dict[str, str] | None = None,
             gpus: int | None = None,
+            processes: int = 1,
         ) -> htcondor.Submit:
             if gpus:
                 logger.warning(

@@ -16,11 +16,13 @@ import logging
 import math
 import os
 import signal
+import socket
 import subprocess
 import time
 import traceback
 from argparse import ArgumentParser, _ArgumentGroup
 from collections.abc import Sequence
+from functools import cached_property
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
 
@@ -33,6 +35,13 @@ from toil.batchSystems.abstractBatchSystem import (
     ResourcePool,
     ResourceSet,
     UpdatedBatchJobInfo,
+)
+from toil.batchSystems.allocation import (
+    PROCESS_HOSTFILE,
+    allocation_cores,
+    allocation_variables,
+    short_hostname,
+    write_process_hostfile,
 )
 from toil.batchSystems.options import OptionSetter
 from toil.bus import ExternalBatchIdMessage
@@ -70,6 +79,11 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     If running in debug-worker mode, jobs are run immediately as they are sent
     to the batch system, in the sending thread, and the daddy thread is not
     run. But the queues are still used.
+
+    When Toil runs in a PBS or Slurm job, the processes of a job of more than
+    one process are placed on whole-process slots of cores on the nodes of
+    that job, this machine's first, and the job's process hostfile names them.
+    Jobs of one process run on this machine.
     """
 
     @classmethod
@@ -136,6 +150,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         workdir = Toil.getLocalWorkflowDir(
             config.workflowID, config.workDir
         )  # config.workDir may be None; this sets a real directory
+        self.workflow_dir = workdir
         self.physicalDisk = toil.physicalDisk(workdir)
         if maxDisk > self.physicalDisk:
             if maxDisk < SYS_MAX_SIZE:  # same as maxMemory logger.warning
@@ -260,6 +275,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                             jobMemory,
                             jobDisk,
                             job_accelerators,
+                            processes,
                             environment,
                         ) = args
 
@@ -273,6 +289,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                             jobMemory,
                             jobDisk,
                             job_accelerators,
+                            processes,
                             environment,
                         )
 
@@ -592,12 +609,121 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         self.schedulingStatusMessage = message
 
+    @classmethod
+    def process_placement_variables(cls) -> list[str]:
+        return super().process_placement_variables() + allocation_variables()
+
+    @cached_property
+    def _node_capacity(self) -> dict[str, int] | None:
+        """
+        Get the cores, in units of minCores, of each node of the PBS or Slurm
+        job Toil runs in, this machine's node first with the cores of
+        one-process jobs, or None if Toil does not run in one.
+        """
+        allocation = allocation_cores()
+        if allocation is None:
+            return None
+        this_node = short_hostname(socket.gethostname())
+        return {
+            node: (
+                int(self.maxCores / self.minCores)
+                if short_hostname(node) == this_node
+                else int(allocation[node] / self.minCores)
+            )
+            for node in sorted(
+                allocation, key=lambda node: short_hostname(node) != this_node
+            )
+        }
+
+    @cached_property
+    def _node_cores(self) -> dict[str, ResourcePool]:
+        """
+        Get the free cores, in units of minCores, on each node of the job Toil
+        runs in, this machine's node sharing the pool of one-process jobs.
+        """
+        assert self._node_capacity is not None
+        this_node = short_hostname(socket.gethostname())
+        return {
+            node: (
+                self.resource_sources[1]
+                if short_hostname(node) == this_node
+                else ResourcePool(fractions, f"cores on {node}")
+            )
+            for node, fractions in self._node_capacity.items()
+        }
+
+    def _place_processes(
+        self,
+        processes: int,
+        coreFractions: int,
+        memory: int,
+        free_cores: dict[str, int],
+        free_memory: int,
+    ) -> dict[str, int]:
+        """
+        Get how many of a job's processes go on each node, filling nodes in
+        order, given the free core fractions on each node and the free memory
+        of this machine.
+
+        The job's cores and memory are shared among its processes. Memory is
+        only accounted for on this machine. Places fewer than all the processes
+        if they do not fit.
+        """
+        fractions_per_process = math.ceil(coreFractions / processes)
+        placement: dict[str, int] = {}
+        remaining = processes
+        for node, fractions in free_cores.items():
+            slots = fractions // fractions_per_process
+            if self._node_cores[node] is self.resource_sources[1] and memory > 0:
+                slots = min(slots, int(free_memory * processes // memory))
+            placed = min(remaining, slots)
+            if placed > 0:
+                placement[node] = placed
+                remaining -= placed
+        return placement
+
     def check_resource_request(self, requirer: Requirer) -> None:
         try:
-            super().check_resource_request(requirer)
+            if requirer.processes > 1 and self._node_capacity is not None:
+                self._check_placement_request(requirer)
+            else:
+                super().check_resource_request(requirer)
         except InsufficientSystemResources as e:
             # Tack the scale onto the exception
             e.details.append(f"Scale is set to {self.scale}.")
+            raise e
+
+    def _check_placement_request(self, requirer: Requirer) -> None:
+        """
+        Raise InsufficientSystemResources if a job of more than one process
+        does not fit on the nodes of the job Toil runs in when they are free.
+        """
+        capacity = self._node_capacity
+        assert capacity is not None
+        placement = self._place_processes(
+            requirer.processes,
+            int(requirer.cores / self.minCores),
+            requirer.memory,
+            capacity,
+            self.maxMemory,
+        )
+        try:
+            if sum(placement.values()) < requirer.processes:
+                raise InsufficientSystemResources(
+                    requirer,
+                    "cores",
+                    sum(capacity.values()) * self.minCores,
+                    details=[
+                        f"The {requirer.processes} processes do not fit on the "
+                        f"nodes {', '.join(capacity)} of the job Toil runs in."
+                    ],
+                )
+            if requirer.disk > self.maxDisk:
+                raise InsufficientSystemResources(requirer, "disk", self.maxDisk)
+            self._check_accelerator_request(requirer)
+        except InsufficientSystemResources as e:
+            e.batch_system = self.__class__.__name__
+            e.source = self.config.workDir if e.resource == "disk" else None
             raise e
 
     def _check_accelerator_request(self, requirer: Requirer) -> None:
@@ -626,6 +752,18 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 isinstance(resource, ResourcePool) and isinstance(request, int)
             ) or (isinstance(resource, ResourceSet) and isinstance(request, set))
             resource.release(request)
+
+    def _release_placement(
+        self, placed: list[tuple[ResourcePool, int]], hostfile: str | None
+    ) -> None:
+        """
+        Release the cores a job's processes took on other nodes, and remove
+        its process hostfile.
+        """
+        for pool, amount in placed:
+            pool.release(amount)
+        if hostfile is not None:
+            os.remove(hostfile)
 
     def _identify_sufficient_accelerators(
         self,
@@ -686,6 +824,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         jobMemory,
         jobDisk,
         job_accelerators: list[AcceleratorRequirement],
+        processes: int,
         environment,
     ):
         """
@@ -712,6 +851,33 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             jobMemory,
             jobDisk,
         ]
+
+        # How many of the job's processes go on each node of the job Toil
+        # runs in, if they are placed there.
+        placement: dict[str, int] = {}
+        fractions_per_process = math.ceil(coreFractions / processes)
+        if processes > 1 and self._node_capacity is not None:
+            placement = self._place_processes(
+                processes,
+                coreFractions,
+                jobMemory,
+                {node: pool.value for node, pool in self._node_cores.items()},
+                self.resource_sources[2].value,
+            )
+            if sum(placement.values()) < processes:
+                self._setSchedulingStatusMessage(
+                    f"Not enough cores on the nodes to place job {jobID}"
+                )
+                return None
+            # The processes on this machine take its cores and their share of
+            # the memory.
+            here = sum(
+                count
+                for node, count in placement.items()
+                if self._node_cores[node] is self.resource_sources[1]
+            )
+            resource_requests[1] = fractions_per_process * here
+            resource_requests[2] = math.ceil(jobMemory * here / processes)
 
         # Keep a reference to the accelerators separately
         accelerators_needed = None
@@ -753,10 +919,33 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 self._release_acquired_resources(acquired)
                 return None
 
+        # Then the cores on the other nodes. Only this thread takes resources,
+        # so the ones the placement found free still are.
+        placed = [
+            (self._node_cores[node], fractions_per_process * count)
+            for node, count in placement.items()
+            if self._node_cores[node] is not self.resource_sources[1]
+        ]
+        for pool, amount in placed:
+            if not pool.acquireNow(amount):
+                raise RuntimeError(f"Placed job {jobID} on taken {pool.resource_type}")
+
         # Now we have all the resources!
 
         # Prepare the environment
         child_environment = dict(os.environ, **environment)
+
+        hostfile = None
+        if processes > 1:
+            hostfile = write_process_hostfile(
+                (
+                    [node for node, count in placement.items() for _ in range(count)]
+                    if placement
+                    else self.process_hosts(processes)
+                ),
+                self.workflow_dir,
+            )
+            child_environment[PROCESS_HOSTFILE] = hostfile
 
         # Communicate the accelerator resources, if any, to the child process
         # by modifying the environment
@@ -787,6 +976,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         except Exception:
             # If the job can't start, make sure we release resources now
             self._release_acquired_resources(acquired)
+            self._release_placement(placed, hostfile)
 
             logger.error("Could not start job %s: %s", jobID, traceback.format_exc())
 
@@ -808,7 +998,14 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # Make sure we can look it up by PID later
             self.childToJob[popen.pid] = jobID
             # Record that the job is running, and the resources it is using
-            info = Info(startTime, popen, acquired, killIntended=False)
+            info = Info(
+                startTime,
+                popen,
+                acquired,
+                killIntended=False,
+                placed=placed,
+                hostfile=hostfile,
+            )
             self.runningJobs[jobID] = info
 
             logger.debug("Launched job %s as child %d", jobID, popen.pid)
@@ -881,6 +1078,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # Free up the job's resources.
         self._release_acquired_resources(acquired)
+        self._release_placement(info.placed, info.hostfile)
 
         logger.debug("Child %d for job %s succeeded", pid, jobID)
 
@@ -930,6 +1128,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     scaled_desc.memory,
                     scaled_desc.disk,
                     scaled_desc.accelerators,
+                    scaled_desc.processes,
                     environment,
                 )
             )
@@ -1030,12 +1229,23 @@ class Info:
 
     Stores the start time of the job, the Popen object representing its child
     (or None), the tuple of (coreFractions, memory, disk) it is using (or
-    None), and whether the job is supposed to be being killed.
+    None), whether the job is supposed to be being killed, the cores its
+    processes take on other nodes, and its process hostfile (or None).
     """
 
     # Can't use namedtuple here since killIntended needs to be mutable
-    def __init__(self, startTime, popen, resources, killIntended):
+    def __init__(
+        self,
+        startTime,
+        popen,
+        resources,
+        killIntended,
+        placed: list[tuple[ResourcePool, int]] = [],
+        hostfile: str | None = None,
+    ):
         self.time = startTime
         self.popen = popen
         self.resources = resources
         self.killIntended = killIntended
+        self.placed = placed
+        self.hostfile = hostfile

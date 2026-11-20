@@ -2103,6 +2103,150 @@ def test_filename_conflict_detection_at_root(tmp_path: Path) -> None:
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
+def test_mpi_launcher_gets_placement_variables() -> None:
+    """
+    The MPI launcher of a multi-process step must get the variables through
+    which the batch system tells the processes where it placed them, along
+    with the ones the user's MPI config passes.
+    """
+    from cwltool.mpi import MpiConfig
+
+    from toil.batchSystems.singleMachine import SingleMachineBatchSystem
+    from toil.batchSystems.slurm import SlurmBatchSystem
+    from toil.cwl.cwltoil import pass_placement_variables
+
+    mpi_config = MpiConfig(env_pass_regex=["SITE_.*"])
+    placed = pass_placement_variables(mpi_config, SlurmBatchSystem)
+    assert placed.env_pass_regex == ["SITE_.*", "TOIL_PROCESS_HOSTFILE", "SLURM_.*"]
+    assert mpi_config.env_pass_regex == ["SITE_.*"]
+    env: dict[str, str] = {}
+    with patch.dict(
+        os.environ,
+        {
+            "SLURM_JOB_ID": "42",
+            "SITE_X": "1",
+            "OTHER": "2",
+            "TOIL_PROCESS_HOSTFILE": "/hosts",
+        },
+    ):
+        placed.pass_through_env_vars(env)
+    assert env == {
+        "SLURM_JOB_ID": "42",
+        "SITE_X": "1",
+        "TOIL_PROCESS_HOSTFILE": "/hosts",
+    }
+    with patch.dict(os.environ):
+        for name in ("PBS_NODEFILE", "SLURM_JOB_NODELIST"):
+            os.environ.pop(name, None)
+        assert pass_placement_variables(
+            mpi_config, SingleMachineBatchSystem
+        ).env_pass_regex == ["SITE_.*", "TOIL_PROCESS_HOSTFILE"]
+        os.environ["PBS_NODEFILE"] = "/nodes"
+        assert pass_placement_variables(
+            mpi_config, SingleMachineBatchSystem
+        ).env_pass_regex == ["SITE_.*", "TOIL_PROCESS_HOSTFILE", "PBS_.*"]
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_mpi_processes_on_step_output(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    A step whose MPIRequirement processes reference an upstream step's output
+    must be issued as a job starting that many processes.
+    """
+    from toil.cwl import cwltoil
+
+    with get_data("test/cwl/mock_mpi/fake_mpi.yml") as mpi_config_file:
+        with get_data("test/cwl/mock_mpi/fake_mpi_run.py") as fake_mpi_run:
+            with get_data("test/cwl/mpi_processes_depend_on_step.cwl") as cwl_file:
+                monkeypatch.setenv(
+                    "PATH", f"{os.environ['PATH']}:{fake_mpi_run.parent}"
+                )
+                with caplog.at_level(logging.DEBUG, logger="toil.leader"):
+                    cwltoil.main(
+                        [
+                            "--logDebug",
+                            f"--outdir={tmp_path}",
+                            "--enable-ext",
+                            "--mpi-config-file",
+                            str(mpi_config_file),
+                            "--disableChaining=True",
+                            str(cwl_file),
+                            "--ranks",
+                            "3",
+                        ]
+                    )
+                    assert any(
+                        "Finished toil run successfully" in record.getMessage()
+                        for record in caplog.records
+                    ), "Toil run didn't finish"
+                    assert any(
+                        "Issued job 'CWLJob'" in record.getMessage()
+                        and "consume" in record.getMessage()
+                        and "processes: 3" in record.getMessage()
+                        for record in caplog.records
+                    ), "consume's 'CWLJob' not issued with 3 processes"
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_mpi_processes_placed_on_allocation_nodes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    A multi-process step run by single_machine in a PBS job must have its
+    processes placed on the job's nodes, and its launcher must get the process
+    hostfile naming them.
+    """
+    import socket
+
+    from toil.cwl import cwltoil
+
+    this_node = socket.gethostname()
+    nodefile = tmp_path / "nodefile"
+    nodefile.write_text(f"{this_node}\nnode-b\n")
+    qstat = json.dumps(
+        {
+            "Jobs": {
+                "1.server": {"exec_vnode": f"({this_node}:ncpus=1)+(node-b:ncpus=4)"}
+            }
+        }
+    )
+    monkeypatch.setenv("PBS_NODEFILE", str(nodefile))
+    monkeypatch.setenv("PBS_JOBID", "1.server")
+    monkeypatch.setattr(
+        "toil.batchSystems.allocation.call_command", lambda *_, **__: qstat
+    )
+    stdout = StringIO()
+    with get_data("test/cwl/mock_mpi/fake_mpi.yml") as mpi_config_file:
+        with get_data("test/cwl/mock_mpi/fake_mpi_run.py") as fake_mpi_run:
+            with get_data("test/cwl/mpi_process_hostfile.cwl") as cwl_file:
+                monkeypatch.setenv(
+                    "PATH", f"{os.environ['PATH']}:{fake_mpi_run.parent}"
+                )
+                cwltoil.main(
+                    [
+                        f"--outdir={tmp_path / 'out'}",
+                        "--enable-ext",
+                        "--maxCores=1",
+                        "--mpi-config-file",
+                        str(mpi_config_file),
+                        str(cwl_file),
+                    ],
+                    stdout=stdout,
+                )
+    out = json.loads(stdout.getvalue())
+    with open(out["hosts"]["location"][len("file://") :]) as f:
+        assert f.read().split() == [this_node, "node-b"] * 2
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
 def test_pick_value_with_one_null_value(
     caplog: pytest.LogCaptureFixture, tmp_path: Path
 ) -> None:
