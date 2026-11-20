@@ -28,16 +28,63 @@ For example, to run the sort example :ref:`sort example <sortExample>` on Slurm,
 
 By default, this does not include any time limit or particular Slurm partition. If your Slurm cluster requires time limits, you can set the ``--defaultWalltime`` in seconds, or assign wall clock time requirements to your jobs individually in your workflow.
 
-For jobs that have a walltime requirement, a partition will be automatically selected that can accommodate jobs of that duration. A partition will also be automatically selected for jobs that need GPUs. To use a particular partition, use the ``--slurmPartition`` argument. If you are running GPU jobs and they need to go to a different partition, use the ``--slurmGPUPartition`` argument. For example, to :ref:`run a WDL workflow from Dockstore <runWdl>` using GPUs on Slurm, with a time limit of 4 hours per job and partitions manually specified, you would run::
+For jobs that have a walltime requirement, a partition will be automatically selected that can accommodate jobs of that duration. To use a particular partition, use the ``--slurmPartition`` argument. For example, to :ref:`run a WDL workflow from Dockstore <runWdl>` on Slurm, with a time limit of 4 hours per job and the partition manually specified, you would run::
+
+    $ toil-wdl-runner '#workflow/github.com/vgteam/vg_wdl/GiraffeDeepVariantFromGAF:gbz' \
+      https://raw.githubusercontent.com/vgteam/vg_wdl/refs/heads/gbz/params/giraffe_and_deepvariant_gaf.json \
+      --jobStore ./store --batchSystem slurm --batchLogsDir ./logs \
+      --defaultWalltime 14400 --slurmPartition medium
+
+If some of your jobs can take a lot longer than others, you can set ``--defaultWalltime`` to reserve enough time for the typical cases, and add ``--doubleTime=True`` to double the time limit for a job every time it fails with a timeout. This can let the short jobs run in a partition for short jobs, while jobs that take longer get retried in a partition for longer jobs.
+
+Some jobs need computational accelerators, like GPUs, and Slurm clusters often keep the nodes that have them in partitions of their own. Toil automatically selects a partition with GPUs, from the partitions whose nodes have the ``gpu`` GRES, for jobs that need GPUs, and asks Slurm for the GPUs with ``--gres``. If your GPU jobs need to go to a particular partition, use the ``--slurmGPUPartition`` argument. For example, if the workflow above uses GPUs, and your GPUs are in a partition named ``gpu``, you would run::
 
     $ toil-wdl-runner '#workflow/github.com/vgteam/vg_wdl/GiraffeDeepVariantFromGAF:gbz' \
       https://raw.githubusercontent.com/vgteam/vg_wdl/refs/heads/gbz/params/giraffe_and_deepvariant_gaf.json \
       --jobStore ./store --batchSystem slurm --batchLogsDir ./logs \
       --defaultWalltime 14400 --slurmPartition medium --slurmGPUPartition gpu
 
-If some of your jobs can take a lot longer than others, you can set ``--defaultWalltime`` to reserve enough time for the typical cases, and add ``--doubleTime=True`` to double the time limit for a job every time it fails with a timeout. This can let the short jobs run in a partition for short jobs, while jobs that take longer get retried in a partition for longer jobs.
+GPUs are just one kind of accelerator, and Toil supports other kinds, such as ``fpga``. If you have jobs that need other kinds of accelerators, you can give the partitions that have each kind with the ``--slurmAcceleratorPartitions`` argument, a comma-separated list of ``KIND=PARTITION`` pairs. (``--slurmGPUPartition gpu`` is the same as ``--slurmAcceleratorPartitions gpu=gpu``.) For example, if your FPGAs are in a partition named ``fpga-nodes``, you would run::
 
-Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.)
+    $ toil-cwl-runner --batchSystem slurm --batchLogsDir ./logs \
+      --slurmAcceleratorPartitions fpga=fpga-nodes workflow.cwl inputs.yml
+
+A job that needs a kind of accelerator that Toil does not know any partition for is refused, rather than sent to a partition without it.
+
+If your cluster has a GRES for another kind of accelerator, as it does for GPUs, you can give it with the ``--slurmAcceleratorGres`` argument, a comma-separated list of ``KIND=GRES`` pairs. Toil then asks Slurm for that GRES for jobs that need the kind, as it does for GPUs, and finds the partitions that have it by itself. For example, with ``--slurmAcceleratorGres fpga=fpga``, a job that needs 2 FPGAs is submitted with ``--gres=fpga:2``. For a kind without a GRES, Toil only sends the job to a partition that has it, and the job gets whatever the nodes of that partition provide.
+
+A job that needs several kinds of accelerators goes to a partition that has all of them; Toil refuses the job if there is no such partition. To give more than one partition for a kind, give the kind more than once, as in ``--slurmAcceleratorPartitions fpga=fpga-short,fpga=fpga-long``. Partitions given for a kind are used for it instead of the partitions with its GRES. Out of the partitions with all the accelerators a job needs and a long enough time limit, Toil prefers ones without other accelerators, then ones with lower priority, then ones with shorter time limits. Jobs that need accelerators go to a partition with them even if ``--slurmPE`` or ``--slurmPartition`` is set; those only apply to jobs that need no accelerators.
+
+Some kinds need ``sbatch`` arguments of their own, such as a site's option that reserves a quantum service, or that tells the scheduler how large a problem a job will run there. Give them with ``--slurmAcceleratorArgs``, once per kind as ``KIND=ARGS``. A ``{name}`` field in them is filled with the job's accelerator property of that name (see :ref:`cwlAccelerators` for how a CWL step gives properties), and a job whose accelerator lacks a property its arguments need is refused, naming the property. A kind given only this way, with no partition and no GRES, is had in every partition, so its jobs go wherever they would go without it; ``KIND=`` with no arguments says the job gets the kind wherever it runs, such as when it starts it itself. For example::
+
+    $ toil-cwl-runner --batchSystem slurm --batchLogsDir ./logs \
+      --slurmAcceleratorArgs 'qpu=--qpu={backend}' workflow.cwl inputs.yml
+
+These arguments can't set what chooses the partition or what Toil sets itself: the partition, time limit, QOS, exported environment, GRES, memory or CPUs.
+
+Some ``sbatch`` arguments belong to a partition rather than to every job, such as ``--exclusive`` for a partition whose nodes are only handed out whole. Give them with ``--slurmPartitionArgs``, once per partition as ``PARTITION=ARGS``. They are added once a job's partition is chosen, so a job sent to another partition for its accelerators does not get them, and they can't set what chooses the partition or what Toil sets itself. For example::
+
+    $ toil-cwl-runner --batchSystem slurm --batchLogsDir ./logs \
+      --slurmPartition compute --slurmPartitionArgs compute=--exclusive \
+      --slurmAcceleratorPartitions qpu=quantum workflow.cwl inputs.yml
+
+If Slurm's accounting limits how many jobs each user may have submitted at once, through a QOS (``MaxSubmitJobsPerUser``) or an association (``MaxSubmitJobs``), Toil submits no more jobs at once than that limit, less the jobs the user already has queued when the workflow starts, or than ``--maxJobs`` if that is smaller. It reads the limits of the ``--slurmQOS`` QOS, or else of the QOSes of the user's associations, and of the QOS of the ``--slurmPartition`` partition, or else of the default partition, with ``sacctmgr`` and ``scontrol``; if it cannot read them, it uses ``--maxJobs`` alone.
+
+Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.) A ``--partition`` passed this way is used for every job, instead of the partition Toil would select, even for jobs that need accelerators the partition might not have.
+
+.. _runningSlurmAllocation:
+
+Running inside one Slurm allocation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some Slurm clusters limit how many jobs each user may have queued or running, through a QOS, or give each job a large minimum number of cores. Submitting one ``sbatch`` job for every Toil job then runs into those limits. Instead, you can get one allocation with ``sbatch`` or ``salloc``, run the Toil leader inside it, and use ``--batchSystem slurm_allocation``. Each Toil job then runs as a job step of the allocation, with ``srun``, on a node of the allocation that has room for its cores, memory and GPUs. The nodes and their CPUs are read from ``SLURM_JOB_NODELIST`` and ``SLURM_JOB_CPUS_PER_NODE``, and their memory and GPUs from ``scontrol show job -d``. On the node the leader runs on, one default job's cores and memory (``--defaultCores`` and ``--defaultMemory``) are kept for the leader. A job that the allocation cannot hold, because it asks for more cores, memory or GPUs than any one node of the allocation has, or for an accelerator kind other than GPUs, is instead submitted as a Slurm job of its own, as with ``--batchSystem slurm`` and the same ``--slurm...`` options, such as ``--slurmAcceleratorArgs``.
+
+For example, to run a CWL workflow on two nodes for up to a day::
+
+    $ sbatch --nodes=2 --time=1-00:00:00 --wrap \
+      "toil-cwl-runner --batchSystem slurm_allocation --jobStore ./store workflow.cwl inputs.yml"
+
+Each step is started with ``srun --exact`` and its own ``--cpus-per-task`` and ``--mem``, so steps on the same node do not share cores. Any additional ``srun`` arguments your cluster needs can be passed with ``--slurmStepArgs``.
 
 Slurm Tips
 ~~~~~~~~~~
