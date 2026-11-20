@@ -15,6 +15,7 @@
 import os
 from unittest.mock import patch
 
+from toil.batchSystems.abstractBatchSystem import JobEnvironmentVariables
 from toil.common import Config
 from toil.job import CheckpointJobDescription, JobDescription
 from toil.jobStores.fileJobStore import FileJobStore
@@ -177,3 +178,17 @@ class ApplyLeaderEnvironmentTests(ToilTest):
         with patch.dict(os.environ, {"PATH": "/worker/bin"}):
             apply_leader_environment({"PATH": "/leader/bin"})
             self.assertEqual(os.environ["PATH"], "/leader/bin:/worker/bin")
+
+    def test_keeps_variables_the_batch_system_declares(self) -> None:
+        """
+        Variables the batch system declares, by name or prefix, keep the
+        worker's value.
+        """
+        declared = JobEnvironmentVariables(
+            names=frozenset({"NODE_RANK"}), prefixes=("PLUGIN_",)
+        )
+        names = ["NODE_RANK", "PLUGIN_NODELIST"]
+        with patch.dict(os.environ, {name: "worker" for name in names}):
+            apply_leader_environment({name: "leader" for name in names}, declared)
+            for name in names:
+                self.assertEqual(os.environ[name], "worker", name)

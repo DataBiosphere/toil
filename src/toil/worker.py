@@ -37,6 +37,8 @@ from configargparse import ArgParser
 
 from toil import logProcessContext, options
 from toil.common import Config, Toil, safeUnpickleFromStream
+from toil.batchSystems.abstractBatchSystem import JobEnvironmentVariables
+from toil.batchSystems.registry import get_batch_system
 from toil.cwl.utils import (
     CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
     CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
@@ -69,9 +71,8 @@ WALLTIME_EXIT_CODE = 77
 # Should be a signal that shouldn't arrive for other reasons.
 WALLTIME_SIGNAL = signal.SIGUSR2
 
-# Environment variables that describe the host, login session or batch system
-# job a process runs in, so a worker keeps its own values instead of the
-# leader's.
+# Environment variables that describe the host or login session a process runs
+# in, so a worker keeps its own values instead of the leader's.
 LOCAL_VARIABLE_NAMES = frozenset(
     {
         "TMPDIR",
@@ -89,25 +90,25 @@ LOCAL_VARIABLE_NAMES = frozenset(
         "XDG_RUNTIME_DIR",
         "XDG_DATA_DIRS",
         "DBUS_SESSION_BUS_ADDRESS",
-        # Grid Engine's unprefixed job variables
-        "JOB_ID",
-        "JOB_NAME",
-        "NHOSTS",
-        "NQUEUES",
-        "NSLOTS",
-        "PE_HOSTFILE",
     }
 )
 
-# Prefixes of the environment variables that Slurm, Torque, LSF, Grid Engine
-# and HTCondor set for each job.
-BATCH_SYSTEM_JOB_VARIABLE_PREFIXES = (
-    "SLURM_",
-    "SLURMD_",
-    "PBS_",
-    "LSB_",
-    "SGE_",
-    "_CONDOR_",
+# Environment variables that Slurm, Torque, LSF, Grid Engine and HTCondor set
+# for each job. A worker keeps its own values for these whatever batch system
+# runs it, since the leader may itself run in a job of any of them.
+GRID_JOB_VARIABLES = JobEnvironmentVariables(
+    names=frozenset(
+        {
+            # Grid Engine's unprefixed job variables
+            "JOB_ID",
+            "JOB_NAME",
+            "NHOSTS",
+            "NQUEUES",
+            "NSLOTS",
+            "PE_HOSTFILE",
+        }
+    ),
+    prefixes=("SLURM_", "SLURMD_", "PBS_", "LSB_", "SGE_", "_CONDOR_"),
 )
 
 # When a walltime signal arrives, we set this.
@@ -322,23 +323,31 @@ def unstick_worker(interval: float = 120, timeout: float = 120) -> None:
         time.sleep(interval)
 
 
-def apply_leader_environment(leader_environment: dict[str, str]) -> None:
+def apply_leader_environment(
+    leader_environment: dict[str, str],
+    batch_system_variables: JobEnvironmentVariables = JobEnvironmentVariables(),
+) -> None:
     """
     Update this process's environment from the leader's saved environment.
 
     Each variable takes the leader's value, except that ``PATH`` becomes the
     union of the leader's and this process's, and variables that describe
     this host, login session or batch system job keep this process's value.
+
+    :param batch_system_variables: The job variables of the batch system that
+        ran this process, kept as well as the grid batch systems'.
     """
+    kept_names = (
+        LOCAL_VARIABLE_NAMES | GRID_JOB_VARIABLES.names | batch_system_variables.names
+    )
+    kept_prefixes = GRID_JOB_VARIABLES.prefixes + batch_system_variables.prefixes
     for name, value in leader_environment.items():
         if name == "PATH":
             # Sometimes e.g. leader may not include /bin, but the Toil
             # appliance needs it. Use the provided PATH and then the local
             # system's PATH if any.
             os.environ[name] = path_union(value, os.environ.get(name))
-        elif name not in LOCAL_VARIABLE_NAMES and not name.startswith(
-            BATCH_SYSTEM_JOB_VARIABLE_PREFIXES
-        ):
+        elif name not in kept_names and not name.startswith(kept_prefixes):
             os.environ[name] = value
 
 
@@ -434,7 +443,20 @@ def workerScript(
     # First load the environment for the job.
     with job_store.read_shared_file_stream("environment.pickle") as fileHandle:
         environment = safeUnpickleFromStream(fileHandle)
-    apply_leader_environment(environment)
+    try:
+        batch_system_variables = get_batch_system(
+            config.batchSystem
+        ).job_environment_variables()
+    except (KeyError, ImportError) as error:
+        # The batch system's module may need a library the leader has but this
+        # node lacks, such as HTCondor's Python bindings.
+        logger.warning(
+            "Could not load batch system %s to get its job variables: %s",
+            config.batchSystem,
+            error,
+        )
+        batch_system_variables = JobEnvironmentVariables()
+    apply_leader_environment(environment, batch_system_variables)
     # sys.path is used by __import__ to find modules
     if "PYTHONPATH" in environment:
         for e in environment["PYTHONPATH"].split(":"):
