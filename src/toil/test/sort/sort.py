@@ -22,6 +22,7 @@ from configargparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 from toil.lib.misc import StrPath
 from toil.realtimeLogger import RealtimeLogger
 
@@ -284,7 +285,7 @@ def main(options=None):
     fileName = options.fileToSort
     if options.fileToSort is None:
         # make the file ourselves
-        fileName = "fileToSort.txt"
+        fileName = os.path.join(mkdtemp(), "fileToSort.txt")
         if os.path.exists(fileName):
             print(f"Sorting existing file: {fileName}")
         else:
@@ -306,7 +307,7 @@ def main(options=None):
         sortedFileURL = "file://" + os.path.abspath(sortedFileName)
         if not workflow.options.restart:
             sortFileURL = "file://" + os.path.abspath(fileName)
-            sortFileID = workflow.importFile(sortFileURL)
+            sortFileID = workflow.import_file(sortFileURL)
             sortedFileID = workflow.start(
                 Job.wrapJobFn(
                     setup,
@@ -319,7 +320,7 @@ def main(options=None):
             )
         else:
             sortedFileID = workflow.restart()
-        workflow.exportFile(sortedFileID, sortedFileURL)
+        workflow.export_file(sortedFileID, sortedFileURL)
 
 
 if __name__ == "__main__":

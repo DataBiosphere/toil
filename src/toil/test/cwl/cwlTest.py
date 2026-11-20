@@ -238,14 +238,14 @@ class TestCWLWorkflow:
     inputs.
     """
 
-    def test_cwl_cmdline_input(self) -> None:
+    def test_cwl_cmdline_input(self, tmp_path: Path) -> None:
         """
         Test that running a CWL workflow with inputs specified on the command line passes.
         """
         from toil.cwl import cwltoil
 
         with get_data("test/cwl/conditional_wf.cwl") as cwlfile:
-            args = [str(cwlfile), "--message", "str", "--sleep", "2"]
+            args = [f"--outdir={tmp_path}", str(cwlfile), "--message", "str", "--sleep", "2"]
             st = StringIO()
             # If the workflow runs, it must have had options
             cwltoil.main(args, stdout=st)
@@ -1940,6 +1940,7 @@ def test_workflow_echo_string_scatter_stderr_log_dir(tmp_path: Path) -> None:
             f"--jobStore={tmp_path / 'jobstore'}",
             "--strict-memory-limit",
             f"--log-dir={log_dir}",
+            f"--outdir={tmp_path / 'results'}",
             str(cwl_file),
         ]
         p = subprocess.run(cmd, capture_output=True, text=True)
@@ -1983,7 +1984,8 @@ def test_log_dir_echo_no_output(tmp_path: Path) -> None:
             "toil-cwl-runner",
             f"--jobStore={job_store}",
             "--strict-memory-limit",
-            f"--log-dir={str(log_dir)}",
+            f"--log-dir={log_dir}",
+            f"--outdir={tmp_path / 'results'}",
             str(cwl_file),
         ]
         subprocess.run(cmd)
@@ -2009,11 +2011,12 @@ def test_log_dir_echo_stderr(tmp_path: Path) -> None:
     with get_data("test/cwl/echo-stderr.cwl") as cwl_file:
         cmd = [
             "toil-cwl-runner",
-            f"--jobStore={str(tmp_path / 'test_log_dir_echo_stderr')}",
+            f"--jobStore={tmp_path / 'test_log_dir_echo_stderr'}",
             "--strict-memory-limit",
             "--force-docker-pull",
             "--clean=always",
-            f"--log-dir={str(log_dir)}",
+            f"--log-dir={log_dir}",
+            f"--outdir={tmp_path / 'results'}",
             str(cwl_file),
         ]
         subprocess.run(cmd)
@@ -2234,6 +2237,7 @@ def test_workflow_echo_string_scatter_capture_stdout(tmp_path: Path) -> None:
             "toil-cwl-runner",
             f"--jobStore=file:{tmp_path / 'jobStore'}",
             "--strict-memory-limit",
+            f"--outdir={tmp_path / 'results'}",
             str(cwl_file),
         ]
         p = subprocess.run(cmd, capture_output=True, text=True)
@@ -2268,6 +2272,7 @@ def test_captured_stderr_for_failed_job_is_reported(tmp_path: Path) -> None:
         cmd = [
             "toil-cwl-runner",
             f"--jobStore=file:{tmp_path / 'jobStore'}",
+            f"--outdir={tmp_path / 'results'}",
             str(cwl_file),
         ]
         p = subprocess.run(cmd, capture_output=True, text=True)
@@ -2720,7 +2725,7 @@ def test_cwl_resource_message_parsing_records_cpu_and_memory(
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.timeout(300)
-def test_import_on_workers() -> None:
+def test_import_on_workers(tmp_path: Path) -> None:
     from toil.cwl import cwltoil
 
     detector = ImportWorkersMessageHandler()
@@ -2740,6 +2745,7 @@ def test_import_on_workers() -> None:
                 "--logLevel=INFO",
                 "--logColors=False",
                 "--disableChaining=True",
+                f"--outdir={tmp_path}",
                 str(cwl_file),
                 "--input",
                 str(file_path),

@@ -632,6 +632,7 @@ class TestUtils:
             python,
             "-m",
             "toil.test.sort.sort",
+            f"--outputFile={tmp_path/'sortedFile.txt'}",
             "--logDebug",
             jobstore.as_uri(),
             "--restart",

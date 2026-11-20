@@ -1654,9 +1654,9 @@ class ServiceJobDescription(JobDescription):
         """
         super().onRegistration(jobStore)
 
-        self.startJobStoreID = jobStore.getEmptyFileStoreID()
-        self.terminateJobStoreID = jobStore.getEmptyFileStoreID()
-        self.errorJobStoreID = jobStore.getEmptyFileStoreID()
+        self.startJobStoreID = jobStore.get_empty_file_store_id()
+        self.terminateJobStoreID = jobStore.get_empty_file_store_id()
+        self.errorJobStoreID = jobStore.get_empty_file_store_id()
 
 
 class CheckpointJobDescription(JobDescription):

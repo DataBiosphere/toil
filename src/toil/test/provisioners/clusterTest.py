@@ -16,41 +16,51 @@ import os
 import subprocess
 import time
 from uuid import uuid4
+from functools import cached_property
+from typing import TYPE_CHECKING
 
-from toil.lib.aws import zone_to_region
-from toil.lib.aws.session import AWSConnectionManager
 from toil.lib.retry import retry
 from toil.provisioners import cluster_factory
-from toil.provisioners.aws import get_best_aws_zone
 from toil.test import (
     ToilTest,
-    needs_aws_ec2,
     needs_env_var,
     needs_fetchable_appliance,
-    slow,
     pneeds_aws_ec2,
+    slow,
 )
 from toil.test.cwl.cwlTest import TestCWLv12Conformance
 
+if TYPE_CHECKING:
+    from toil.lib.aws.session import AWSConnectionManager
+
 log = logging.getLogger(__name__)
 
+pytestmark = pneeds_aws_ec2  # this entire file needs AWS EC2
 
-@needs_aws_ec2
+
 @needs_fetchable_appliance
 class AbstractClusterTest(ToilTest):
     def __init__(self, methodName: str) -> None:
         super().__init__(methodName=methodName)
+
         self.keyName = os.getenv("TOIL_AWS_KEYNAME", "id_rsa").strip()
         self.clusterName = f"aws-provisioner-test-{uuid4()}"
         self.leaderNodeType = "t2.medium"
         self.clusterType = "mesos"
-        self.zone = get_best_aws_zone()
-
-        # Get connection to AWS
-        self.aws = AWSConnectionManager()
 
         # Where should we put our virtualenv?
         self.venvDir = "/tmp/venv"
+
+    @cached_property
+    def zone(self) -> str | None:
+        from toil.provisioners.aws import get_best_aws_zone
+        return get_best_aws_zone()
+
+    @cached_property
+    def aws() -> "AWSConnectionManager":
+        """Get connection to AWS."""
+        from toil.lib.aws.session import AWSConnectionManager
+        return AWSConnectionManager()
 
     def python(self) -> str:
         """
@@ -214,7 +224,6 @@ class AbstractClusterTest(ToilTest):
         self.createClusterUtil()
 
 
-@needs_aws_ec2
 @needs_fetchable_appliance
 @slow
 class CWLOnARMTest(AbstractClusterTest):

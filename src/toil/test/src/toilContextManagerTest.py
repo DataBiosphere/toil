@@ -56,7 +56,7 @@ class ToilContextManagerTest(ToilTest):
             fileID = toil.restart()
             print(fileID)
             # Hopefully the error didn't cause us to lose all our work!
-            toil.exportFile(fileID, "file://" + self.exportPath)
+            toil.export_file(fileID, "file://" + self.exportPath)
         with open(self.exportPath) as f:
             # The file should have all our content
             self.assertEqual(f.read(), "Hello, World!")
