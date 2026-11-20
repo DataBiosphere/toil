@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+from unittest.mock import patch
 
 from toil.common import Config
 from toil.job import CheckpointJobDescription, JobDescription
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import ToilTest
-from toil.worker import nextChainable
+from toil.worker import apply_leader_environment, nextChainable
 
 
 class WorkerTests(ToilTest):
@@ -141,3 +143,37 @@ class WorkerTests(ToilTest):
             chainable = nextChainable(jobDesc1, self.jobStore, self.config)
             self.assertNotEqual(chainable, None)
             self.assertEqual(chainable.jobStoreID, jobDesc2.jobStoreID)
+
+
+class ApplyLeaderEnvironmentTests(ToilTest):
+    """Test which of the leader's environment variables a worker takes."""
+
+    def test_takes_leader_value_for_other_variables(self) -> None:
+        """A variable the worker doesn't keep gets the leader's value."""
+        with patch.dict(os.environ, {"MAGIC_ENV_VAR_123": "worker"}):
+            apply_leader_environment({"MAGIC_ENV_VAR_123": "leader"})
+            self.assertEqual(os.environ["MAGIC_ENV_VAR_123"], "leader")
+
+    def test_keeps_own_batch_system_job_variables(self) -> None:
+        """
+        Variables a batch system sets for each job keep the worker's value,
+        whether matched by prefix or by name.
+        """
+        names = ["SLURM_JOB_ID", "PBS_JOBID", "LSB_JOBID", "_CONDOR_SLOT", "JOB_ID"]
+        with patch.dict(os.environ, {name: "worker" for name in names}):
+            apply_leader_environment({name: "leader" for name in names})
+            for name in names:
+                self.assertEqual(os.environ[name], "worker", name)
+
+    def test_does_not_add_batch_system_job_variables(self) -> None:
+        """A batch system job variable the worker lacks stays unset."""
+        with patch.dict(os.environ):
+            os.environ.pop("SLURM_JOB_ID", None)
+            apply_leader_environment({"SLURM_JOB_ID": "leader"})
+            self.assertNotIn("SLURM_JOB_ID", os.environ)
+
+    def test_merges_path(self) -> None:
+        """PATH has the leader's entries, then the worker's."""
+        with patch.dict(os.environ, {"PATH": "/worker/bin"}):
+            apply_leader_environment({"PATH": "/leader/bin"})
+            self.assertEqual(os.environ["PATH"], "/leader/bin:/worker/bin")
