@@ -30,7 +30,7 @@ import threading
 import time
 import traceback
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Any
 
 from configargparse import ArgParser
@@ -50,6 +50,8 @@ from toil.job import (
     JobDescription,
 )
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobStoreException
+from toil import job_telemetry
+from toil.lib import telemetry
 from toil.lib.io import make_public_dir, path_union, ensure_dir_exists
 from toil.lib.resources import ResourceMonitor
 from toil.statsAndLogging import StatsDict, configure_root_logger, install_log_color, set_log_level
@@ -390,6 +392,8 @@ def workerScript(
         "XDG_DATA_DIRS",
         "DBUS_SESSION_BUS_ADDRESS",
     }
+    if not job_telemetry.worker_takes_leader_trace_context(environment):
+        env_reject.update(telemetry.TRACE_CONTEXT_VARIABLES.values())
     for k, v in environment.items():
         if k == "PATH":
             # Handle path specially. Sometimes e.g. leader may not include
@@ -399,6 +403,8 @@ def workerScript(
             os.environ[k] = path_union(v, os.environ.get(k))
         elif k not in env_reject:
             os.environ[k] = v
+    job_telemetry.start_worker(config.batchSystem)
+
     # sys.path is used by __import__ to find modules
     if "PYTHONPATH" in environment:
         for e in environment["PYTHONPATH"].split(":"):
@@ -620,12 +626,18 @@ def workerScript(
                                 # wants across multiple Toil versions. We also
                                 # still pass a jobGraph argument to placate old
                                 # versions of Cactus.
-                                job._runner(
-                                    jobGraph=None,
-                                    jobStore=job_store,
-                                    fileStore=fileStore,
-                                    defer=defer,
-                                )
+                                worker_telemetry = job_telemetry.worker()
+                                with (
+                                    worker_telemetry.job_run(jobDesc)
+                                    if worker_telemetry is not None
+                                    else nullcontext()
+                                ):
+                                    job._runner(
+                                        jobGraph=None,
+                                        jobStore=job_store,
+                                        fileStore=fileStore,
+                                        defer=defer,
+                                    )
 
                                 # When the executor for the job finishes it will
                                 # kick off a commit with the link to the job body
@@ -1054,9 +1066,15 @@ def main(argv: list[str] | None = None) -> None:
 
     config = job_store.config
 
-    with in_contexts(options.context):
-        # Call the worker
-        exit_code = workerScript(job_store, config, options.jobName, options.jobStoreID)
+    exit_code = 1
+    try:
+        with in_contexts(options.context):
+            # Call the worker
+            exit_code = workerScript(
+                job_store, config, options.jobName, options.jobStoreID
+            )
+    finally:
+        job_telemetry.end_worker(exit_code)
 
     # Exit with its return value
     sys.exit(exit_code)

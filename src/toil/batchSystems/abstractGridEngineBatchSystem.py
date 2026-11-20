@@ -28,6 +28,7 @@ from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.bus import ExternalBatchIdMessage, get_job_kind
 from toil.common import Config
 from toil.job import JobDescription
+from toil import job_telemetry
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.lib.retry import DEFAULT_DELAYS, old_retry
 from toil.statsAndLogging import TRACE
@@ -166,7 +167,14 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                     cpu, memory, disk, walltime, jobID, command, jobName, environment, gpus
                 )
                 logger.debug("Running %r", subLine)
-                batchJobID = self.boss.with_retries(self.submitJob, subLine)
+                workflow_telemetry = job_telemetry.leader()
+                batchJobID = self.boss.with_retries(
+                    self._submit_reporting_refusals, jobID, subLine
+                )
+                if workflow_telemetry is not None:
+                    workflow_telemetry.job_submitted(
+                        jobID, str(batchJobID), self.submission_queue(subLine)
+                    )
                 if self.boss._outbox is not None:
                     # JobID corresponds to the toil version of the jobID,
                     # different from the jobstore's idea of the id. batchjobid
@@ -401,6 +409,29 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             :returns: the submission to pass to submitJob()
             """
             raise NotImplementedError()
+
+        def _submit_reporting_refusals(self, jobID: int, subLine: T) -> str | int:
+            """Submit a job, reporting refusals to telemetry."""
+            try:
+                return self.submitJob(subLine)
+            except CalledProcessErrorStderr as error:
+                workflow_telemetry = job_telemetry.leader()
+                if workflow_telemetry is not None:
+                    workflow_telemetry.job_refused(
+                        jobID,
+                        self.refusal_reason(error),
+                        error.stderr.strip(),
+                        self.submission_queue(subLine),
+                    )
+                raise
+
+        def submission_queue(self, subLine: T) -> str | None:
+            """Get the queue a submission command line asks for, if any."""
+            return None
+
+        def refusal_reason(self, error: CalledProcessErrorStderr) -> str:
+            """Classify a failed submission as ``submit_limit`` or ``other``."""
+            return "other"
 
         @abstractmethod
         def submitJob(self, subLine: T) -> str|int:

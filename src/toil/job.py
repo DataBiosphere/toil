@@ -957,6 +957,9 @@ class JobDescription(Requirer):
         # TODO: Move into ToilState itself so leader stops mutating us so much?
         self.predecessorsFinished: set[str] = set()
 
+        # Span attributes from the workflow language, such as the CWL step.
+        self.telemetry_attributes: dict[str, str | int] = {}
+
         # Note that we don't hold IDs of our predecessors. Predecessors know
         # about us, and not the other way around. Otherwise we wouldn't be able
         # to save ourselves to the job store until our predecessors were saved,

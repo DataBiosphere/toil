@@ -34,6 +34,7 @@ from toil.batchSystems.abstractBatchSystem import (
     BatchJobExitReason,
     UpdatedBatchJobInfo,
 )
+from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.batchSystems.abstractGridEngineBatchSystem import (
     AbstractGridEngineBatchSystem,
 )
@@ -56,6 +57,7 @@ from toil.job import (
     TemporaryID,
 )
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
+from toil import job_telemetry
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.clusterScaler import ScalerThread, NonScalableBatchSystemError
@@ -153,6 +155,9 @@ class Leader:
         # TODO: Give other components a chance to connect to the bus before
         # this, somehow, so they can also see messages from this?
         self.toilState.load_workflow(rootJob, jobCache=jobCache)
+
+        self._workflow_name = get_job_kind(rootJob.get_names())
+        self._running_jobs_polled = 0.0
 
         logger.debug(
             "Found %s jobs to start and %i jobs with successors to run",
@@ -266,7 +271,26 @@ class Leader:
 
         :return: The return value of the root job's run function.
         """
+        job_telemetry.start_leader(
+            self.config.batchSystem,
+            {
+                "workflow.name": self._workflow_name,
+                "toil.workflow.id": self.config.workflowID or "",
+            },
+        )
+        result = "failed"
+        try:
+            value = self._run()
+            result = "success"
+            return value
+        except KeyboardInterrupt:
+            result = "cancelled"
+            raise
+        finally:
+            job_telemetry.end_leader(result)
 
+    def _run(self) -> Any:
+        """Run the leader's main loop; see :meth:`run`."""
         if isinstance(self.batchSystem, AbstractGridEngineBatchSystem):
             # The batch system isn't available yet when Toil logs the other
             # resolved run paths (see Toil._log_resolved_paths), so log this
@@ -566,6 +590,10 @@ class Leader:
                 continue
             if self._makeJobSuccessorReadyToRun(successor_id, predecessor_id):
                 successors.append(successor)
+        workflow_telemetry = job_telemetry.leader()
+        if workflow_telemetry is not None:
+            for successor in successors:
+                workflow_telemetry.job_ready(successor.jobStoreID)
         self.issueJobs(successors)
 
     def _processFailedSuccessors(self, predecessor_id: str):
@@ -971,6 +999,18 @@ class Leader:
                 # This means we'll try again in a minute, providing things are quiet
                 self.timeSinceJobsLastRescued += 60
 
+    def _report_running_jobs(self) -> None:
+        """Report running jobs to telemetry, at most once per --statePollingWait."""
+        workflow_telemetry = job_telemetry.leader()
+        if (
+            workflow_telemetry is None
+            or time.time() - self._running_jobs_polled
+            < (self.config.statePollingWait or 1)
+        ):
+            return
+        self._running_jobs_polled = time.time()
+        workflow_telemetry.jobs_running(self.batchSystem.getRunningBatchJobIDs())
+
     def innerLoop(self):
         """
         Process jobs.
@@ -996,6 +1036,8 @@ class Leader:
             self._startServiceJobs()
             self._processJobsWithRunningServices()
             self._processJobsWithFailedServices()
+
+            self._report_running_jobs()
 
             # check in with the batch system
             update: UpdatedBatchJobInfo = self.batchSystem.getUpdatedBatchJob(maxWait=2)
@@ -1183,10 +1225,25 @@ class Leader:
             "OMP_NUM_THREADS": omp_threads,
         }
 
+        workflow_telemetry = job_telemetry.leader()
+        attempt = None
+        if workflow_telemetry is not None:
+            runs_on_leader = (
+                isinstance(self.batchSystem, BatchSystemLocalSupport)
+                and jobNode.local
+                and not self.config.run_local_jobs_on_workers
+            )
+            attempt = workflow_telemetry.job_issuing(
+                jobNode, "local" if runs_on_leader else None
+            )
+            job_environment.update(attempt.environment)
+
         # jobBatchSystemID is an int for each job
         jobBatchSystemID = self.batchSystem.issueBatchJob(
             " ".join(workerCommand), jobNode, job_environment=job_environment
         )
+        if workflow_telemetry is not None and attempt is not None:
+            workflow_telemetry.job_issued(jobBatchSystemID, attempt)
         # Record the job by the ID the batch system will use to talk about it with us
         self.issued_jobs_by_batch_system_id[jobBatchSystemID] = jobNode.jobStoreID
         # Record that this job is issued right now and shouldn't e.g. be issued again.
@@ -1486,9 +1543,15 @@ class Leader:
             self.progress_failed.update(incr=1)
 
         # Delegate to the version that uses a JobDescription
-        return self.process_finished_job_description(
+        runs_again = self.process_finished_job_description(
             issued_job, result_status, wall_time, exit_reason, batch_system_id
         )
+        workflow_telemetry = job_telemetry.leader()
+        if workflow_telemetry is not None:
+            workflow_telemetry.job_ended(
+                batch_system_id, result_status, exit_reason, wall_time, runs_again
+            )
+        return runs_again
 
     def process_finished_job_description(
         self,
