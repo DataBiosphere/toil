@@ -13,6 +13,11 @@ from toil.batchSystems.abstractBatchSystem import (
     EXIT_STATUS_UNAVAILABLE_VALUE,
     BatchJobExitReason,
     BatchSystemSupport,
+    UpdatedBatchJobInfo,
+)
+from toil.batchSystems.abstractGridEngineBatchSystem import (
+    AbstractGridEngineBatchSystem,
+    SubmissionRefused,
 )
 from toil.common import Config
 from toil.lib.misc import CalledProcessErrorStderr
@@ -301,6 +306,8 @@ class FakeBatchSystem(BatchSystemSupport):
     Class that implements a minimal Batch System, needed to create a Worker (see below).
     """
 
+    with_retries = AbstractGridEngineBatchSystem.with_retries
+
     def __init__(self):
         super().__init__(self.__fake_config(), float("inf"), sys.maxsize, sys.maxsize)
         # Pretend to be a workflow that started before we pretend the jobs
@@ -327,6 +334,33 @@ class FakeBatchSystem(BatchSystemSupport):
             lambda o: setattr(config, o, None)
         )
         return config
+
+
+REFUSED_FOR_MEMORY = (
+    "sbatch: error: Memory specification can not be satisfied\n"
+    "sbatch: error: Batch job submission failed: "
+    "Requested node configuration is not available\n"
+)
+
+SOCKET_TIMED_OUT = (
+    "sbatch: error: Batch job submission failed: "
+    "Socket timed out on send/recv operation\n"
+)
+
+
+class SbatchAnswering:
+    def __init__(self, returncode: int, stderr: str) -> None:
+        self.returncode = returncode
+        self.stderr = stderr
+        self.submissions = 0
+
+    def __call__(self, args, **_) -> str:
+        if args[0] == "sinfo":
+            return call_sinfo()
+        if args[0] == "sbatch":
+            self.submissions += 1
+            raise CalledProcessErrorStderr(self.returncode, args, stderr=self.stderr)
+        raise RuntimeError(f"Cannot fake command call: {args}")
 
 
 # Make the mock class not have abstract methods anymore, even though we don't
@@ -775,6 +809,51 @@ class SlurmTest(ToilTest):
         self.worker.boss.config.slurm_args = "--export-file=./thefile.txt"
         command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, None)
         assert "--export=ALL" not in command
+
+    def test_submitJob_refusal_is_permanent(self):
+        self.monkeypatch.setattr(
+            toil.batchSystems.slurm,
+            "call_command",
+            SbatchAnswering(1, REFUSED_FOR_MEMORY),
+        )
+        with pytest.raises(SubmissionRefused) as refusal:
+            self.worker.submitJob(["sbatch"])
+        assert str(refusal.value) == REFUSED_FOR_MEMORY.strip()
+
+    def test_submitJob_transient_answer_is_retried(self):
+        self.monkeypatch.setattr(
+            toil.batchSystems.slurm,
+            "call_command",
+            SbatchAnswering(1, SOCKET_TIMED_OUT),
+        )
+        with pytest.raises(CalledProcessErrorStderr):
+            self.worker.submitJob(["sbatch"])
+
+    def test_submitJob_refusal_line_needs_sbatch_error_exit(self):
+        self.monkeypatch.setattr(
+            toil.batchSystems.slurm,
+            "call_command",
+            SbatchAnswering(2, REFUSED_FOR_MEMORY),
+        )
+        with pytest.raises(CalledProcessErrorStderr):
+            self.worker.submitJob(["sbatch"])
+
+    def test_createJobs_fails_a_refused_job_at_once(self):
+        sbatch = SbatchAnswering(1, REFUSED_FOR_MEMORY)
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", sbatch)
+        self.worker.boss.partitions = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.config.statePollingWait = 0
+        self.worker.boss.config.state_polling_timeout = 2
+
+        self.worker.createJobs((5, 1, 2**30, 2**30, 0, "true", "job5", None, 0))
+
+        assert sbatch.submissions == 1
+        assert self.worker.updatedJobsQueue.get_nowait() == UpdatedBatchJobInfo(
+            jobID=5,
+            exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE,
+            exitReason=BatchJobExitReason.ERROR,
+        )
+        assert self.worker.runningJobs == set()
 
     def test_option_detector(self):
         detector = toil.batchSystems.slurm.option_detector("foobar", "f")

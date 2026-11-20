@@ -21,6 +21,7 @@ from collections.abc import Callable
 from typing import Any, Generic, ParamSpec, TypeVar
 
 from toil.batchSystems.abstractBatchSystem import (
+    EXIT_STATUS_UNAVAILABLE_VALUE,
     BatchJobExitReason,
     UpdatedBatchJobInfo,
 )
@@ -53,6 +54,11 @@ JobTuple = tuple[
 class ExceededRetryAttempts(Exception):
     def __init__(self) -> None:
         super().__init__("Exceeded retry attempts talking to scheduler.")
+
+
+class SubmissionRefused(Exception):
+    pass
+
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -166,7 +172,23 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                     cpu, memory, disk, walltime, jobID, command, jobName, environment, gpus
                 )
                 logger.debug("Running %r", subLine)
-                batchJobID = self.boss.with_retries(self.submitJob, subLine)
+                try:
+                    batchJobID = self.boss.with_retries(self.submitJob, subLine)
+                except SubmissionRefused as refusal:
+                    logger.error(
+                        "Job %s with batch system ID %s was refused: %s",
+                        jobName,
+                        jobID,
+                        refusal,
+                    )
+                    self.updatedJobsQueue.put(
+                        UpdatedBatchJobInfo(
+                            jobID=jobID,
+                            exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE,
+                            exitReason=BatchJobExitReason.ERROR,
+                        )
+                    )
+                    continue
                 if self.boss._outbox is not None:
                     # JobID corresponds to the toil version of the jobID,
                     # different from the jobstore's idea of the id. batchjobid

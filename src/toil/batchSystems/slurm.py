@@ -31,6 +31,7 @@ from toil.batchSystems.abstractBatchSystem import (
 )
 from toil.batchSystems.abstractGridEngineBatchSystem import (
     AbstractGridEngineBatchSystem,
+    SubmissionRefused,
 )
 from toil.batchSystems.options import OptionSetter
 from toil.bus import get_job_kind
@@ -83,6 +84,41 @@ NONTERMINAL_STATES: set[str] = {
     "STOPPED",
     "SUSPENDED",
 }
+
+SBATCH_ERROR_EXIT = 1
+
+SBATCH_SUBMISSION_FAILED = "sbatch: error: Batch job submission failed: "
+
+PERMANENT_SUBMISSION_FAILURES: dict[str, str] = {
+    "ESLURM_INVALID_PARTITION_NAME": "Invalid partition name specified",
+    "ESLURM_ACCESS_DENIED": "Access/permission denied",
+    "ESLURM_JOB_MISSING_REQUIRED_PARTITION_GROUP": "User's group not permitted to use this partition",
+    "ESLURM_TOO_MANY_REQUESTED_CPUS": "More processors requested than permitted",
+    "ESLURM_INVALID_NODE_COUNT": "Node count specification invalid",
+    "ESLURM_REQUESTED_NODE_CONFIG_UNAVAILABLE": "Requested node configuration is not available",
+    "ESLURM_INVALID_FEATURE": "Invalid feature specification",
+    "ESLURM_INVALID_TASK_MEMORY": "Memory required by task is not available",
+    "ESLURM_INVALID_ACCOUNT": "Invalid account or account/partition combination specified",
+    "ESLURM_INVALID_QOS": "Invalid qos specification",
+    "ESLURM_INVALID_WCKEY": "Invalid wckey specification",
+    "ESLURM_INVALID_LICENSES": "Invalid license specification",
+    "ESLURM_INVALID_TIME_LIMIT": "Requested time limit is invalid (missing or exceeds some limit)",
+    "ESLURM_INVALID_CPU_COUNT": "CPU count specification invalid",
+    "ESLURM_INVALID_GRES": "Invalid generic resource (gres) specification",
+    "ESLURM_INVALID_TRES": "Invalid Trackable RESource (TRES) specification",
+    "ESLURM_INVALID_GRES_TYPE": "Invalid GRES specification (with and without type identification)",
+}
+
+PERMANENT_SBATCH_REFUSALS = frozenset(
+    SBATCH_SUBMISSION_FAILED + message
+    for message in PERMANENT_SUBMISSION_FAILURES.values()
+)
+
+
+def is_permanent_refusal(error: CalledProcessErrorStderr) -> bool:
+    return error.returncode == SBATCH_ERROR_EXIT and any(
+        line in PERMANENT_SBATCH_REFUSALS for line in error.stderr.splitlines()
+    )
 
 
 def parse_slurm_time(slurm_time: str) -> int:
@@ -396,6 +432,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 result = int(output.strip().split()[-1])
                 logger.debug("sbatch submitted job %d", result)
                 return result
+            except CalledProcessErrorStderr as e:
+                if is_permanent_refusal(e):
+                    raise SubmissionRefused(e.stderr.strip()) from e
+                raise
             except OSError as e:
                 logger.error(f"sbatch command failed with error: {e}")
                 raise e
