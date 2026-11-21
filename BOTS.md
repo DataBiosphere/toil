@@ -41,6 +41,7 @@ The WDL spec embeds example workflows as unit tests (under the `wdl-1.1` and `wd
 
 - `WDL_UNIT_TEST_ID`: which test to run (default: `glob_task`)
 - `WDL_UNIT_TEST_VERSION`: WDL version (default: `1.1`)
+- `WDL_UNIT_TEST_TAG`: WDL spec tag to use instead of version (like: `v1.1.3`)
 
 ```bash
 WDL_UNIT_TEST_ID=serde_pair ./venv/bin/python -m pytest \

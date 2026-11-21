@@ -123,11 +123,12 @@ class TestWDLConformance:
     @slow
     @needs_docker
     def test_unit_tests_v11(self, wdl_conformance_test_repo: Path) -> None:
-        # TODO: Using a branch lets Toil commits that formerly passed start to
-        # fail CI when the branch moves.
+        # WDL has been known to introduce new behaviors (like coercions that
+        # weren't previously allowed becoming required) in patch releases of
+        # the spec. So we need to track a tag and not a branch.
         os.chdir(wdl_conformance_test_repo)
         repo_url = "https://github.com/openwdl/wdl.git"
-        repo_branch = "wdl-1.1"
+        repo_ref = "v1.1.3"
         commands1 = [
             exactPython,
             "setup_unit_tests.py",
@@ -138,7 +139,7 @@ class TestWDLConformance:
             "--repo",
             repo_url,
             "--branch",
-            repo_branch,
+            repo_ref,
             "--force-pull",
         ]
         p1 = subprocess.run(commands1, capture_output=True)
@@ -164,7 +165,7 @@ class TestWDLConformance:
         # fail CI when the branch moves.
         os.chdir(wdl_conformance_test_repo)
         repo_url = "https://github.com/adamnovak/wdl.git"
-        repo_branch = "wdl-1.2-fix-json"
+        repo_ref = "wdl-1.2-fix-json"
         commands1 = [
             exactPython,
             "setup_unit_tests.py",
@@ -175,7 +176,7 @@ class TestWDLConformance:
             "--repo",
             repo_url,
             "--branch",
-            repo_branch,
+            repo_ref,
             "--force-pull",
         ]
         p1 = subprocess.run(commands1, capture_output=True)
@@ -203,12 +204,13 @@ class TestWDLConformance:
 
         - ``WDL_UNIT_TEST_ID``: id of the test to run (e.g. ``serde_pair``)
         - ``WDL_UNIT_TEST_VERSION``: WDL version to use (e.g. ``1.2``)
+        - ``WDL_UNIT_TEST_TAG``: WDL spec tag to use instead (e.g. ``v1.1.3``)
         """
         test_id = os.environ.get("WDL_UNIT_TEST_ID", "glob_task")
         wdl_version = os.environ.get("WDL_UNIT_TEST_VERSION", "1.1")
         os.chdir(wdl_conformance_test_repo)
         repo_url = "https://github.com/openwdl/wdl.git"
-        repo_branch = f"wdl-{wdl_version}"
+        repo_ref = os.environ.get("WDL_UNIT_TEST_TAG", f"wdl-{wdl_version}")
         commands1 = [
             exactPython,
             "setup_unit_tests.py",
@@ -219,7 +221,7 @@ class TestWDLConformance:
             "--repo",
             repo_url,
             "--branch",
-            repo_branch,
+            repo_ref,
             "--force-pull",
         ]
         p1 = subprocess.run(commands1, capture_output=True)
