@@ -57,6 +57,7 @@ If using Toil for your research, please cite
    running/debugging
    running/cloud/cloud
    running/hpcEnvironments
+   running/telemetry
    running/server/wes
    
 .. toctree::

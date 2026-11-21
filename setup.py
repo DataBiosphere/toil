@@ -63,6 +63,7 @@ def run_setup():
         "kubernetes",
         "wdl",
         "server",
+        "otel",
     ]
     for extra in non_htcondor_extras:
         extras_require[extra] = get_requirements(extra)

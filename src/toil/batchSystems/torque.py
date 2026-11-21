@@ -140,6 +140,15 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         def submitJob(self, subLine: list[str]) -> str:
             return call_command(subLine)
 
+        def submission_queue(self, subLine: list[str]) -> str | None:
+            queue = None
+            for i, arg in enumerate(subLine):
+                if arg == "-q" and i + 1 < len(subLine):
+                    queue = subLine[i + 1]
+                elif arg.startswith("-q") and len(arg) > 2:
+                    queue = arg[2:]
+            return queue
+
         def getJobExitCode(self, torqueJobID: str) -> int | None:
             if self._version == "pro":
                 args = ["qstat", "-x", "-f", str(torqueJobID).split(".")[0]]
@@ -196,7 +205,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                 qsubline.append(
                     ",".join(
                         k + "=" + quote(os.environ[k] if v is None else v)
-                        for k, v in self.boss.environment.items()
+                        for k, v in environment.items()
                     )
                 )
 

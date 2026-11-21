@@ -137,6 +137,9 @@ Here's what each extra provides:
 |                | `Workflow Description Language`_. This extra has no native |
 |                | dependencies.                                              |
 +----------------+------------------------------------------------------------+
+| ``otel``       | Records OpenTelemetry traces and metrics of the leader and |
+|                | its jobs; see :ref:`telemetry`.                            |
++----------------+------------------------------------------------------------+
 | ``kubernetes`` | Provides support for running workflows written using a     |
 |                | `Kubernetes`_ cluster.                                     |
 +----------------+------------------------------------------------------------+
