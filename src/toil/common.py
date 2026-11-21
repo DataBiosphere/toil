@@ -1668,7 +1668,7 @@ class Toil(ContextManager["Toil"]):
                does not exist. If false, return None when the file does not
                exist.
 
-        See :func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile` for a
+        See :func:`toil.jobStores.abstractJobStore.AbstractJobStore.import_file` for a
         full description
         """
         self._assertContextManagerUsed()
@@ -1704,7 +1704,7 @@ class Toil(ContextManager["Toil"]):
         """
         Export file to destination pointed at by the destination URL.
 
-        See :func:`toil.jobStores.abstractJobStore.AbstractJobStore.exportFile` for a
+        See :func:`toil.jobStores.abstractJobStore.AbstractJobStore.export_file` for a
         full description
         """
         self._assertContextManagerUsed()

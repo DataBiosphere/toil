@@ -153,7 +153,7 @@ def finalize_jobs(job, num):
 def broken_job(job, num):
     """A job that will always fail.  To be used for a tutorial."""
     job.fileStore.log_to_leader("""broken_job""")
-    file = toil.importFile(None)
+    file = toil.import_file(None)
 
 
 if __name__ == "__main__":
@@ -166,12 +166,12 @@ if __name__ == "__main__":
     with Toil(options) as toil:
 
         with get_data("test/utils/ABCWorkflowDebug/B_file.txt") as B_file_path:
-            B_file0 = toil.importFile(B_file_path.as_uri())
+            B_file0 = toil.import_file(B_file_path.as_uri())
         B_file0_preserveThisFilename = "B_file.txt"
         B_file = (B_file0, B_file0_preserveThisFilename)
 
         with get_data("test/utils/ABCWorkflowDebug/mkFile.py") as mkFile_path:
-            file_maker0 = toil.importFile(mkFile_path.as_uri())
+            file_maker0 = toil.import_file(mkFile_path.as_uri())
         file_maker0_preserveThisFilename = "mkFile.py"
         file_maker = (file_maker0, file_maker0_preserveThisFilename)
 

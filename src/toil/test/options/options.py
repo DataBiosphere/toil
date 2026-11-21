@@ -19,7 +19,7 @@ class OptionsTest(ToilTest):
         """
         parser = ArgParser()
         addOptions(parser, jobstore_as_flag=True, wdl=False, cwl=False)
-        test_args = ["--jobstore=example-jobstore", "--batchSystem=slurm"]
+        test_args = [f"--jobstore={self._getTestJobStorePath()}", "--batchSystem=slurm"]
         options = parser.parse_args(test_args)
         with Toil(options) as toil:
             caching_value = toil.config.caching
@@ -41,7 +41,7 @@ class OptionsTest(ToilTest):
         # the kubernetes batchsystem (and I think all batchsystems including singlemachine) return False
         # for default_caching
         test_args = [
-            "--jobstore=example-jobstore",
+            f"--jobstore={self._getTestJobStorePath()}",
             "--batchSystem=kubernetes",
             "--caching=True",
         ]

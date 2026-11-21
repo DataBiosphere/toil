@@ -868,8 +868,8 @@ def workerScript(
     # interpret seek offsets in characters for us). TODO: We may get invalid or
     # just different Unicode by breaking up a character at the boundary!
     if jobAttemptFailed and redirect_output_to_log_file:
-        jobDesc.logJobStoreFileID = logJobStoreFileID = job_store.getEmptyFileStoreID(
-            jobDesc.jobStoreID, cleanup=True
+        jobDesc.logJobStoreFileID = logJobStoreFileID = job_store.get_empty_file_store_id(
+            str(jobDesc.jobStoreID), cleanup=True
         )
         with job_store.update_file_stream(logJobStoreFileID) as w:
             with open(tempWorkerLogPath, "rb") as f:

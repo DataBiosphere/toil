@@ -87,7 +87,7 @@ class BatchSystemPluginTest(ToilTest):
         parser = ArgParser()
         addOptions(parser)
 
-        options = parser.parse_args(["test-jobstore", "--clean=always"])
+        options = parser.parse_args(["--clean=always", self._getTestJobStorePath()])
 
         # try to install a batchsystem plugin with some arguments
         # if the arguments exists, the values should also exist in the config

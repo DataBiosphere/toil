@@ -14,6 +14,7 @@
 import logging
 import os
 import subprocess
+import re
 from pathlib import Path
 
 import pytest
@@ -57,19 +58,21 @@ def testJobStoreContents(tmp_path: Path) -> None:
     original_path = os.getcwd()
     os.chdir(tmp_path)
     with get_data("utils/toilDebugFile.py") as toilDebugFile:
-        subprocess.check_call(
+        result = subprocess.run(
             [
                 python,
                 str(toilDebugFile),
                 str(workflow_debug_jobstore(tmp_path)),
                 "--logDebug",
                 "--listFilesInJobStore=True",
-            ]
+            ], check=True, capture_output=True, text=True
         )
-    jobstoreFileContents = tmp_path / "jobstore_files.txt"
+    jobstore_files_path_match = re.search(r"log: (.*)", result.stderr)
+    assert jobstore_files_path_match is not None, result.stderr
+    jobstore_files_path = jobstore_files_path_match.group(1)
     files = []
     match = 0
-    with jobstoreFileContents.open() as f:
+    with Path(jobstore_files_path).open() as f:
         for line in f:
             files.append(line.strip())
     for xfile in files:

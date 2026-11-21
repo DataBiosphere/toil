@@ -26,6 +26,7 @@ from configargparse import ArgumentParser
 from toil.common import Toil
 from toil.job import Job
 from toil.realtimeLogger import RealtimeLogger
+from toil.lib.io import mkdtemp
 
 defaultLines = 1000
 defaultLineLen = 50
@@ -284,7 +285,7 @@ def main(options=None):
     fileName = options.fileToSort
     if options.fileToSort is None:
         # make the file ourselves
-        fileName = "fileToSort.txt"
+        fileName = os.path.join(mkdtemp(), "fileToSort.txt")
         if os.path.exists(fileName):
             print(f"Sorting existing file: {fileName}")
         else:
@@ -308,7 +309,7 @@ def main(options=None):
 
         if not workflow.options.restart:
             sortFileURL = "file://" + os.path.abspath(fileName)
-            sortFileID = workflow.importFile(sortFileURL)
+            sortFileID = workflow.import_file(sortFileURL)
             sortedFileID = workflow.start(
                 Job.wrapJobFn(
                     setup,

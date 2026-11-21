@@ -118,7 +118,7 @@ class AbstractJobStoreTest:
 
         def setUp(self):
             super().setUp()
-            self.namePrefix = "jobstore-test-" + str(uuid.uuid4())
+            self.namePrefix = mkdtemp() + "jobstore-test-" + str(uuid.uuid4())
             self.config = self._createConfig()
 
             # Jobstores to be used in testing.
@@ -1763,7 +1763,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         jobstore.delete_job(overlargeJob.jobStoreID)
 
     def testMultiThreadImportFile(self) -> None:
-        """Tests that importFile is thread-safe."""
+        """Tests that import_file is thread-safe."""
 
         from concurrent.futures.thread import ThreadPoolExecutor
 
@@ -1786,13 +1786,13 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
         for thread_count in threads:
             with self.subTest(
-                f'Testing threaded importFile with "{thread_count}" threads.'
+                f'Testing threaded import_file with "{thread_count}" threads.'
             ):
                 results = []
 
                 with ThreadPoolExecutor(max_workers=thread_count) as executor:
                     for url, expected_md5 in test_files:
-                        # run jobStore.importFile() asynchronously
+                        # run jobStore.import_file() asynchronously
                         future = executor.submit(
                             self.jobstore_initialized.import_file, url
                         )

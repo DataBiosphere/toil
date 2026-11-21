@@ -16,8 +16,6 @@ import os
 import uuid
 from typing import TYPE_CHECKING, Optional
 
-from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.utils import get_bucket_region
 from toil.test import ToilTest, needs_aws_s3
 
 logger = logging.getLogger(__name__)
@@ -37,12 +35,14 @@ class S3Test(ToilTest):
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
+        from toil.lib.aws.session import establish_boto3_session
         session = establish_boto3_session(region_name="us-east-1")
         cls.s3_resource = session.resource("s3", region_name="us-east-1")
 
     def test_create_bucket(self) -> None:
         """Test bucket creation for us-east-1."""
         from toil.lib.aws.s3 import create_s3_bucket, delete_s3_bucket
+        from toil.lib.aws.utils import get_bucket_region
         bucket_name = f"toil-s3test-{uuid.uuid4()}"
         assert self.s3_resource
         bucket: Optional["Bucket"] = None
@@ -77,6 +77,7 @@ class S3Test(ToilTest):
         Test getting bucket location for a bucket we don't own.
         """
 
+        from toil.lib.aws.utils import get_bucket_region
         bucket_name = "spacenet-dataset"
         # This bucket happens to live in us-east-1
         self.assertEqual(get_bucket_region(bucket_name), "us-east-1")
