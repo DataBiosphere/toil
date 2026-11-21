@@ -51,8 +51,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             """Determines PBS/Torque version via pbsnodes"""
             try:
                 out = call_command(["pbsnodes", "--version"])
-                if "PBSPro" in out:
-                    logger.debug("PBS Pro proprietary Torque version detected")
+                if "PBSPro" in out or out.lstrip().startswith("pbs_version ="):
+                    logger.debug("PBS Pro / OpenPBS version detected")
                     self._version = "pro"
                 else:
                     logger.debug("Torque OSS version detected")
@@ -133,7 +133,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             job_environment: dict[str, str] | None = None,
             gpus: int | None = None,
         ) -> list[str]:
-            return self.prepareQsub(cpu, memory, jobID, job_environment) + [
+            return self.prepareQsub(cpu, memory, jobID, job_environment, walltime) + [
                 self.generateTorqueWrapper(command, jobID)
             ]
 
@@ -180,6 +180,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             mem: int,
             jobID: int,
             job_environment: dict[str, str] | None,
+            walltime: int = 0,
         ) -> list[str]:
 
             # TODO: passing $PWD on command line not working for -d, resorting to
@@ -214,6 +215,11 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                 if cpu is not None and math.ceil(cpu) > 1:
                     reqline.append("nodes=1:ppn=" + str(int(math.ceil(cpu))))
 
+            if walltime:
+                minutes, seconds = divmod(math.ceil(walltime), 60)
+                hours, minutes = divmod(minutes, 60)
+                reqline.append(f"walltime={hours}:{minutes:02d}:{seconds:02d}")
+
             # Other resource requirements can be passed through the environment (see man qsub)
             reqlineEnv = os.getenv("TOIL_TORQUE_REQS")
             if reqlineEnv is not None:
@@ -222,13 +228,12 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                     "TOIL_TORQUE_REQS env. variable: %s",
                     reqlineEnv,
                 )
-                if (
-                    ("mem=" in reqlineEnv)
-                    or ("nodes=" in reqlineEnv)
-                    or ("ppn=" in reqlineEnv)
-                ):
+                toil_resources = ["mem=", "nodes=", "ppn="]
+                if walltime:
+                    toil_resources.append("walltime=")
+                if any(resource in reqlineEnv for resource in toil_resources):
                     raise ValueError(
-                        f"Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {reqlineEnv}"
+                        f"Incompatible resource arguments ({', '.join(map(repr, toil_resources))}): {reqlineEnv}"
                     )
 
                 reqline.append(reqlineEnv)
