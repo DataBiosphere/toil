@@ -36,6 +36,8 @@ from typing import Any
 from configargparse import ArgParser
 
 from toil import logProcessContext, options
+from toil.batchSystems.allocation import PROCESS_HOSTFILE, write_process_hostfile
+from toil.batchSystems.registry import get_batch_system
 from toil.common import Config, Toil, safeUnpickleFromStream
 from toil.cwl.utils import (
     CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
@@ -151,6 +153,11 @@ def nextChainable(
         return None
     if successor.disk > predecessor.disk:
         logger.debug("We need more disk for the next job, so finishing")
+        return None
+    if successor.processes != predecessor.processes:
+        logger.debug(
+            "The next job starts a different number of processes, returning to the leader"
+        )
         return None
     if successor.preemptible != predecessor.preemptible:
         logger.debug(
@@ -508,6 +515,12 @@ def workerScript(
 
         jobDesc = job_store.load_job(job_store_id)
         logger.debug("Parsed job description")
+
+        if jobDesc.processes > 1 and PROCESS_HOSTFILE not in os.environ:
+            os.environ[PROCESS_HOSTFILE] = write_process_hostfile(
+                get_batch_system(config.batchSystem).process_hosts(jobDesc.processes),
+                local_worker_temp_dir,
+            )
 
         ##########################################
         # Cleanup from any earlier invocation of the job
@@ -912,6 +925,11 @@ def workerScript(
     # We report even if the job attempt failed.
     # TODO: Will that upset analysis of the stats?
     job_store.write_logs(json.dumps(statsDict, ensure_ascii=True))
+
+    if os.path.dirname(os.environ.get(PROCESS_HOSTFILE, "")) == local_worker_temp_dir:
+        # A worker run in the leader's process must not leave the hostfile it
+        # wrote to the next one.
+        del os.environ[PROCESS_HOSTFILE]
 
     # Remove the temp dir
     cleanUp = config.cleanWorkDir

@@ -42,6 +42,7 @@ class WorkerTests(ToilTest):
             preemptible: bool = True,
             checkpoint: bool = False,
             local: bool | None = None,
+            processes: int | None = None,
         ):
             """
             Create a JobDescription with no command (representing a Job that
@@ -57,6 +58,7 @@ class WorkerTests(ToilTest):
                     "cores": cores,
                     "disk": disk,
                     "preemptible": preemptible,
+                    "processes": processes,
                 },
                 jobName=name,
                 local=local,
@@ -126,6 +128,14 @@ class WorkerTests(ToilTest):
             jobDesc2 = createTestJobDesc(1, 2, 3, preemptible=False)
             getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
             self.assertEqual(nextChainable(jobDesc1, self.jobStore, self.config), None)
+
+            for processes1, processes2 in ((None, 4), (4, None), (4, 2)):
+                jobDesc1 = createTestJobDesc(1, 2, 3, processes=processes1)
+                jobDesc2 = createTestJobDesc(1, 2, 3, processes=processes2)
+                getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
+                self.assertEqual(
+                    nextChainable(jobDesc1, self.jobStore, self.config), None
+                )
 
             # A change in local-ness from True to False should be disallowed.
             jobDesc1 = createTestJobDesc(1, 2, 3, local=True)

@@ -1,5 +1,6 @@
 import errno
 import logging
+import os
 import sys
 import textwrap
 from datetime import datetime, timedelta
@@ -776,6 +777,61 @@ class SlurmTest(ToilTest):
         command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, None)
         assert "--export=ALL" not in command
 
+    def test_submitJob_environment(self):
+        submitted = {}
+
+        def call_sbatch(args, env=None, **_) -> str:
+            submitted.update(env)
+            return "Submitted batch job 7"
+
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sbatch)
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PATH": "/usr/bin",
+                "SLURM_CONF": "/etc/slurm/slurm.conf",
+                "SLURM_JOB_ID": "6",
+                "SLURM_MEM_PER_NODE": "8192",
+                "SLURMD_NODENAME": "node1",
+                "XDG_RUNTIME_DIR": "/run/user/1000",
+            },
+            clear=True,
+        ):
+            assert self.worker.submitJob(["sbatch"]) == 7
+        assert submitted == {"PATH": "/usr/bin", "SLURM_CONF": "/etc/slurm/slurm.conf"}
+
+    def test_prepareSbatch_processes(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        self.worker.boss.partitions = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.config.slurm_allocate_mem = True
+
+        command = self.worker.prepareSbatch(4, 4 * 2**30, 5, 0, "job5", None, None)
+        assert "--cpus-per-task=4" in command
+        assert "--mem=4096" in command
+        assert not any(arg.startswith("--ntasks") for arg in command)
+
+        command = self.worker.prepareSbatch(
+            96, 96 * 2**30, 5, 0, "job5", None, None, 2
+        )
+        assert "--ntasks=2" in command
+        assert "--cpus-per-task=48" in command
+        assert "--mem-per-cpu=1024" in command
+        assert not any(arg.startswith("--mem=") for arg in command)
+
+        command = self.worker.prepareSbatch(1, 2**30, 5, 0, "job5", None, None, 3)
+        assert "--ntasks=3" in command
+        assert "--cpus-per-task=1" in command
+        assert "--mem-per-cpu=342" in command
+
+        command = self.worker.prepareSbatch(2, 0, 5, 0, "job5", None, None, 2)
+        assert "--mem=0" in command
+
+        self.worker.boss.config.slurm_args = "--ntasks=4"
+        with pytest.raises(ValueError):
+            self.worker.prepareSbatch(2, 2**30, 5, 0, "job5", None, None, 2)
+        command = self.worker.prepareSbatch(2, 2**30, 5, 0, "job5", None, None)
+        assert "--ntasks=4" in command
+
     def test_option_detector(self):
         detector = toil.batchSystems.slurm.option_detector("foobar", "f")
 
@@ -922,3 +978,50 @@ class SlurmTest(ToilTest):
 
         result = toil.batchSystems.slurm.parse_slurm_time("365-00:00:00")
         self.assertEqual(result, 365 * 86400)
+
+
+def call_scontrol_hostnames(args: list[str], **_: object) -> str:
+    assert args == ["scontrol", "show", "hostnames", "node[1-3]"]
+    return "node1\nnode2\nnode3\n"
+
+
+def test_process_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A Slurm job's processes must be named on the nodes Slurm placed its tasks.
+    """
+    import toil.batchSystems.allocation
+
+    monkeypatch.setattr(
+        toil.batchSystems.allocation, "call_command", call_scontrol_hostnames
+    )
+    monkeypatch.setenv("SLURM_JOB_NODELIST", "node[1-3]")
+    monkeypatch.setenv("SLURM_TASKS_PER_NODE", "2(x2),1")
+    assert toil.batchSystems.slurm.SlurmBatchSystem.process_hosts(5) == [
+        "node1",
+        "node1",
+        "node2",
+        "node2",
+        "node3",
+    ]
+
+
+def test_allocation_cores(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    The nodes of a Slurm job Toil runs in must come with their CPUs.
+    """
+    import toil.batchSystems.allocation
+
+    monkeypatch.setattr(
+        toil.batchSystems.allocation, "call_command", call_scontrol_hostnames
+    )
+    monkeypatch.delenv("PBS_NODEFILE", raising=False)
+    monkeypatch.setenv("SLURM_JOB_NODELIST", "node[1-3]")
+    monkeypatch.setenv("SLURM_JOB_CPUS_PER_NODE", "48(x2),36")
+    assert toil.batchSystems.allocation.allocation_cores() == {
+        "node1": 48,
+        "node2": 48,
+        "node3": 36,
+    }
+    monkeypatch.setenv("SLURM_JOB_CPUS_PER_NODE", "48")
+    with pytest.raises(RuntimeError):
+        toil.batchSystems.allocation.allocation_cores()

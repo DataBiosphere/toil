@@ -15,6 +15,7 @@ import enum
 import logging
 import os
 import shutil
+import socket
 import time
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
@@ -24,6 +25,7 @@ from dataclasses import dataclass
 from threading import Condition
 from typing import Any, ContextManager, NamedTuple, cast
 
+from toil.batchSystems.allocation import PROCESS_HOSTFILE
 from toil.batchSystems.options import OptionSetter
 from toil.bus import MessageBus, MessageOutbox
 from toil.common import Config, Toil, cacheDirName
@@ -314,6 +316,29 @@ class AbstractBatchSystem(ABC):
         process.
         """
         return []
+
+    @classmethod
+    def process_placement_variables(cls) -> list[str]:
+        """
+        Get regular expressions matching the environment variables that tell
+        the launcher of a job's processes, such as mpirun, which machines the
+        batch system placed them on.
+
+        A job of more than one process always has its process hostfile, named
+        by TOIL_PROCESS_HOSTFILE (see :mod:`toil.batchSystems.allocation`).
+        """
+        return [PROCESS_HOSTFILE]
+
+    @classmethod
+    def process_hosts(cls, processes: int) -> list[str]:
+        """
+        Get the host of each of a job's processes, from inside the job.
+
+        Batch systems that place a job's processes on several machines must
+        override this, or set TOIL_PROCESS_HOSTFILE when starting the job. This
+        one puts them all on the machine the job runs on.
+        """
+        return [socket.gethostname()] * processes
 
 
 class BatchSystemSupport(AbstractBatchSystem):

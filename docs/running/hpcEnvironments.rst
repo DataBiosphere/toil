@@ -12,6 +12,19 @@ Due to the cost and complexity of maintaining support for these schedulers we cu
 
 Developing the support of a new or existing batch system involves extending the abstract batch system class :class:`toil.batchSystems.abstractBatchSystem.AbstractBatchSystem`.
 
+.. _multiProcessJobs:
+
+Jobs of Several Processes
+-------------------------
+
+A job can start more than one process, such as the ranks of an MPI program, with its ``processes`` requirement; a CWL step with ``cwltool:MPIRequirement`` gets it from the requirement's ``processes``. The job's cores, memory and disk are shared among its processes. The job then starts its processes itself, for a CWL step with the launcher from ``--mpi-config-file`` (``mpirun`` by default).
+
+Toil tells the launcher where the processes go through a process hostfile: ``TOIL_PROCESS_HOSTFILE`` names a file with one line per process, naming the host it goes on, as ``PBS_NODEFILE`` lists a PBS job's MPI processes. For a CWL step, Toil passes the launcher that variable and the variables through which the batch system's own launchers find the job's allocation, such as ``SLURM_*``. A launcher that is to use the hostfile must be told so, for example with an MPI config file whose ``runner`` is a script running ``mpirun --hostfile "$TOIL_PROCESS_HOSTFILE" "$@"``.
+
+* ``slurm`` submits the job as that many Slurm tasks, and the hostfile names the nodes Slurm placed them on.
+* ``single_machine``, when Toil itself runs in a PBS or Slurm job, places the processes on the nodes of that job: each process takes the cores of one process on a single node, this machine's node first, and the job is refused if they do not fit on the nodes. The nodes and their cores come from ``PBS_NODEFILE`` and the job's ``exec_vnode`` in ``qstat -f -F json``, or from ``SLURM_JOB_NODELIST`` and ``SLURM_JOB_CPUS_PER_NODE``. Memory is only accounted for on this machine. Outside such a job, all the processes run on this machine.
+* On the other batch systems, the hostfile names the machine the job runs on for each of its processes.
+
 .. _runningSlurm:
 
 Running on Slurm
@@ -38,6 +51,8 @@ For jobs that have a walltime requirement, a partition will be automatically sel
 If some of your jobs can take a lot longer than others, you can set ``--defaultWalltime`` to reserve enough time for the typical cases, and add ``--doubleTime=True`` to double the time limit for a job every time it fails with a timeout. This can let the short jobs run in a partition for short jobs, while jobs that take longer get retried in a partition for longer jobs.
 
 Any additional Slurm ``sbatch`` arguments your cluster needs that aren't directly supported by Toil can be passed via the Toil ``--slurmArgs`` option, or the ``TOIL_SLURM_ARGS`` environment variable. (There is special handling for some Slurm options Toil needs to interact with, like ``--time`` or ``--partition``, if they are passed this way.)
+
+A job that starts more than one process is submitted as that many Slurm tasks with ``--ntasks``, sharing the job's cores and memory, so Slurm can place them on several nodes (see :ref:`multiProcessJobs`).
 
 Slurm Tips
 ~~~~~~~~~~
