@@ -2209,6 +2209,42 @@ def test_when_on_step_output_scheduled(
 @needs_cwl
 @pytest.mark.cwl
 @pytest.mark.cwl_small
+def test_timelimit_on_step_output(
+    caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    """
+    A step whose ToolTimeLimit references an upstream step's output must run
+    with the evaluated time limit as its walltime.
+    """
+    from toil.cwl import cwltoil
+
+    with get_data("test/cwl/timelimit_depends_on_step.cwl") as cwl_file:
+        with caplog.at_level(logging.DEBUG, logger="toil.leader"):
+            cwltoil.main(
+                [
+                    "--logDebug",
+                    f"--outdir={tmp_path}",
+                    str(cwl_file),
+                    "--seconds",
+                    "3723",
+                    "--disableChaining=True",
+                ]
+            )
+            assert any(
+                "Finished toil run successfully" in record.getMessage()
+                for record in caplog.records
+            ), "Toil run didn't finish"
+            assert any(
+                "Issued job 'CWLJob'" in record.getMessage()
+                and "consume" in record.getMessage()
+                and "walltime: 00-01:02:03" in record.getMessage()
+                for record in caplog.records
+            ), "consume's 'CWLJob' not issued with the evaluated walltime"
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
 def test_workflow_echo_string(tmp_path: Path) -> None:
     with get_data("test/cwl/echo_string.cwl") as cwl_file:
         cmd = [
