@@ -84,6 +84,27 @@ NONTERMINAL_STATES: set[str] = {
     "SUSPENDED",
 }
 
+# Slurm's submit limit reasons all contain this (src/common/job_state_reason.c).
+SUBMIT_LIMIT_REASON = "SubmitJob"
+
+
+def is_submit_limit_refusal(error: CalledProcessErrorStderr) -> bool:
+    return SUBMIT_LIMIT_REASON in error.stderr
+
+
+def sbatch_partition(sbatch_line: list[str]) -> str | None:
+    """Get the partition an sbatch command line asks for, if any."""
+    partition = None
+    for i, arg in enumerate(sbatch_line):
+        if arg in ("-p", "--partition") and i + 1 < len(sbatch_line):
+            partition = sbatch_line[i + 1]
+        elif arg.startswith("--partition="):
+            partition = arg.split("=", 1)[1]
+        elif arg.startswith("-p") and not arg.startswith("--") and len(arg) > 2:
+            partition = arg[2:]
+    return partition
+
+
 
 def parse_slurm_time(slurm_time: str) -> int:
     """
@@ -399,6 +420,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             except OSError as e:
                 logger.error(f"sbatch command failed with error: {e}")
                 raise e
+
+        def submission_queue(self, subLine: list[str]) -> str | None:
+            return sbatch_partition(subLine)
+
+        def refusal_reason(self, error: CalledProcessErrorStderr) -> str:
+            return "submit_limit" if is_submit_limit_refusal(error) else "other"
 
         def coalesce_job_exit_codes(
             self, batch_job_id_list: list[str]
