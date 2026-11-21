@@ -106,6 +106,33 @@ def parse_accelerator_list(specs: str | None) -> list["AcceleratorRequirement"]:
     return [parse_accelerator(r) for r in specs.split(",")]
 
 
+def parse_accelerator_kind_mapping(spec: str) -> list[tuple[str, str]]:
+    """
+    Parse a comma-separated list of ``KIND=VALUE`` pairs, giving values for
+    kinds of accelerators.
+
+    >>> parse_accelerator_kind_mapping("fpga=fpgas")
+    [('fpga', 'fpgas')]
+    >>> parse_accelerator_kind_mapping("gpu=a,gpu=b,tpu=c")
+    [('gpu', 'a'), ('gpu', 'b'), ('tpu', 'c')]
+    >>> parse_accelerator_kind_mapping("")
+    []
+    >>> parse_accelerator_kind_mapping("fpga")
+    Traceback (most recent call last):
+    ...
+    ValueError: Expected KIND=VALUE but got: 'fpga'
+
+    :raises ValueError: if not parseable.
+    """
+    mapping: list[tuple[str, str]] = []
+    for pair in filter(None, spec.split(",")):
+        kind, _, value = pair.partition("=")
+        if not kind or not value:
+            raise ValueError(f"Expected KIND=VALUE but got: {pair!r}")
+        mapping.append((kind, value))
+    return mapping
+
+
 def parseBool(val: str) -> bool:
     if val.lower() in ["true", "t", "yes", "y", "on", "1"]:
         return True

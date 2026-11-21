@@ -32,14 +32,27 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         self, config: Config, maxCores: float, maxMemory: float, maxDisk: int
     ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
+        self.localBatch: SingleMachineBatchSystem = self._create_local_batch(
+            config, maxCores, maxMemory, maxDisk
+        )
+
+    def _create_local_batch(
+        self, config: Config, maxCores: float, maxMemory: float, maxDisk: int
+    ) -> SingleMachineBatchSystem:
+        """Make the batch system that runs the jobs handled locally."""
         max_local_jobs = (
             config.max_local_jobs if config.max_local_jobs is not None else cpu_count()
         )
-        self.localBatch: SingleMachineBatchSystem = SingleMachineBatchSystem(
+        return SingleMachineBatchSystem(
             config, maxCores, maxMemory, maxDisk, max_jobs=max_local_jobs
         )
 
-    def handleLocalJob(self, command: str, jobDesc: JobDescription) -> int | None:
+    def handleLocalJob(
+        self,
+        command: str,
+        jobDesc: JobDescription,
+        job_environment: dict[str, str] | None = None,
+    ) -> int | None:
         """
         To be called by issueBatchJob.
 
@@ -54,7 +67,9 @@ class BatchSystemLocalSupport(BatchSystemSupport):
             # somehow doesn't error whereas just returning the value complains
             # we're returning an Any. TODO: When singleMachine.py typechecks,
             # remove all these extra variables.
-            local_id: int = self.localBatch.issueBatchJob(command, jobDesc)
+            local_id: int = self.localBatch.issueBatchJob(
+                command, jobDesc, job_environment
+            )
             return local_id
         else:
             return None

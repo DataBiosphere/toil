@@ -920,6 +920,33 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
         """
         self.testProcessEscape(hide=True)
 
+    def test_local_accelerators(self) -> None:
+        """
+        Test that configured accelerators can be had, with a GPU count
+        replacing the GPUs detected.
+        """
+        self.batchSystem.shutdown()
+        self.config.local_accelerators = {"fpga": 1, "gpu": 2}
+        self.batchSystem = self.createBatchSystem()
+        assert isinstance(self.batchSystem, SingleMachineBatchSystem)
+
+        def needing(kind: str, count: int) -> Requirer:
+            return Requirer(
+                dict(
+                    memory=5,
+                    cores=1,
+                    disk=100,
+                    accelerators=[{"kind": kind, "count": count}],
+                )
+            )
+
+        self.batchSystem.check_resource_request(needing("fpga", 1))
+        self.batchSystem.check_resource_request(needing("gpu", 2))
+        with pytest.raises(InsufficientSystemResources):
+            self.batchSystem.check_resource_request(needing("fpga", 2))
+        with pytest.raises(InsufficientSystemResources):
+            self.batchSystem.check_resource_request(needing("gpu", 3))
+
 
 @slow
 class MaxCoresSingleMachineBatchSystemTest(ToilTest):
