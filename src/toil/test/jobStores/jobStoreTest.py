@@ -28,7 +28,8 @@ from pathlib import Path
 from queue import Queue
 from tempfile import mkstemp
 from threading import Thread
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 from urllib.request import Request, urlopen
 
 import pytest

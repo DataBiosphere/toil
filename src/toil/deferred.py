@@ -17,7 +17,8 @@ import os
 import tempfile
 from collections import namedtuple
 from contextlib import contextmanager
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 from typing_extensions import ParamSpec
 
 import dill
