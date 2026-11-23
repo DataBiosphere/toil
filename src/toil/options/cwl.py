@@ -190,7 +190,11 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     parser.add_argument(
         "--tmp-outdir-prefix",
         type=str,
-        help=suppress_help or "Path prefix for intermediate output directories",
+        help=suppress_help
+        or "Path prefix for intermediate output directories. With "
+        "--bypass-file-store, jobs keep their outputs here in place of Toil's "
+        "file store, so it must be on storage that the leader and all workers "
+        "share.",
         default=None,
     )
     tmpdirgroup = (
@@ -392,8 +396,11 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         action="store_true",
         default=False,
         help=suppress_help
-        or "Do not use Toil's file store and assume all "
-        "paths are accessible in place from all nodes.",
+        or "Do not use Toil's file store. Jobs read input files in place and "
+        "keep their outputs under --tmp-outdir-prefix (or --cachedir, for "
+        "cached steps), so input files and those directories must be on "
+        "storage that the leader and all workers share, as the job store is. "
+        "Only the leader writes to --outdir.",
         dest="bypass_file_store",
     )
     parser.add_argument(
@@ -454,8 +461,9 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         help=suppress_help
         or "Directory to cache intermediate workflow outputs to avoid "
         "recomputing steps. Can be very helpful in the development and "
-        "troubleshooting of CWL documents. This automatically bypasses the file store."
-        " Not to be confused with --caching.",
+        "troubleshooting of CWL documents. This automatically bypasses the file store, "
+        "so it must be on storage that the leader and all workers share. "
+        "Not to be confused with --caching.",
         dest="cachedir",
     )
 
