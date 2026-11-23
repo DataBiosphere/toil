@@ -3305,11 +3305,28 @@ class CWLJob(CWLNamedJob):
                 streaming_allowed=runtime_context.streaming_allowed,
             )
         else:
-            if runtime_context.outdir is not None:
-                # Multiple jobs may be racing to create the workflow outdir,
-                # and cwltool's creation code doesn't handle that, so create it
-                # now.
-                os.makedirs(runtime_context.outdir, exist_ok=True)
+            intermediate_store = getattr(runtime_context, "intermediate_store", None)
+            work_reuse = self.cwltool.get_requirement("WorkReuse")[0] or {}
+            if (
+                runtime_context.cachedir
+                and isinstance(self.cwltool, cwltool.command_line_tool.CommandLineTool)
+                and work_reuse.get("enableReuse", True)
+            ):
+                # cwltool keeps this job's outputs in the cache, which is
+                # never deleted. Leave them there: moving them would empty the
+                # cache, and copying them would change the paths in the cache
+                # keys of downstream jobs.
+                runtime_context.move_outputs = "leave"
+            elif intermediate_store is not None:
+                # cwltool runs the job in an output directory of its own under
+                # --tmp-outdir-prefix. When the job ends, cwltool moves the
+                # outputs to runtime_context.outdir and deletes that directory.
+                # So make runtime_context.outdir a new directory for this job
+                # in the intermediate store (see main()), where downstream
+                # jobs read the outputs, and where same-named outputs of
+                # different jobs don't overwrite each other.
+                os.makedirs(intermediate_store, exist_ok=True)
+                runtime_context.outdir = mkdtemp(dir=intermediate_store)
 
         # Collect standard output and standard error somewhere if they don't go to files.
         # We need to keep two FDs to these because cwltool will close what we give it.
@@ -5164,13 +5181,6 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
 
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
-    tmpdir_prefix = options.tmpdir_prefix = (
-        options.tmpdir_prefix or DEFAULT_TMPDIR_PREFIX
-    )
-    tmp_outdir_prefix = options.tmp_outdir_prefix or tmpdir_prefix
-    # tmpdir_prefix and tmp_outdir_prefix must not be checked for existence as they may exist on a worker only path
-    # See https://github.com/DataBiosphere/toil/issues/5310
-
     if options.runDir is not None:
         # Apply the --runDir defaults before we fill in a None jobStore below.
         options.runDir, options.jobStore, options.workDir, options.coordination_dir = (
@@ -5183,6 +5193,17 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
         )
         if options.cachedir is None:
             options.cachedir = os.path.join(options.runDir, "image-cache")
+        if options.tmp_outdir_prefix is None:
+            # Bypassing the file store, intermediate outputs must be on
+            # storage that all nodes share, as the run directory is.
+            options.tmp_outdir_prefix = os.path.join(options.runDir, "intermediate-")
+
+    tmpdir_prefix = options.tmpdir_prefix = (
+        options.tmpdir_prefix or DEFAULT_TMPDIR_PREFIX
+    )
+    tmp_outdir_prefix = options.tmp_outdir_prefix or tmpdir_prefix
+    # tmpdir_prefix and tmp_outdir_prefix must not be checked for existence as they may exist on a worker only path
+    # See https://github.com/DataBiosphere/toil/issues/5310
 
     workdir = options.workDir or tmp_outdir_prefix
 
@@ -5447,11 +5468,10 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
                 runtime_context.move_outputs = "move"
             elif options.rm_tmpdir:
                 # If bypassing the file store but wanting to clean up temp
-                # directories, we need to copy outputs out of tmpdir before
+                # directories, we need to move outputs out of tmpdir before
                 # deletion. Otherwise, downstream steps that reference files
                 # in the tmpdir will fail.
-                # TODO: "move" doesn't work here. Why?
-                runtime_context.move_outputs = "copy"
+                runtime_context.move_outputs = "move"
 
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need
@@ -5490,6 +5510,18 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
             tool = remove_pickle_problems(tool)
 
         with Toil(options, workflow_name=workflow_name, trs_spec=trs_spec) as toil:
+            intermediate_store = None
+            if options.bypass_file_store and options.rm_tmpdir:
+                # Bypassing the file store, jobs keep their outputs in the
+                # intermediate store: one directory per workflow under
+                # --tmp-outdir-prefix, which stands in for the file store. So,
+                # like the file store, it must be on storage that all nodes
+                # share, and it outlives the jobs (see CWLJob.run). It is named
+                # after the workflow so that a --restart finds it.
+                intermediate_store = (
+                    f"{os.path.realpath(tmp_outdir_prefix)}{toil.config.workflowID}"
+                )
+                setattr(runtime_context, "intermediate_store", intermediate_store)
             if options.restart:
                 outobj = toil.restart()
             else:
@@ -5524,6 +5556,10 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
                 log_level=logging.INFO,
             )
             logger.info("Stored workflow outputs")
+            if intermediate_store is not None:
+                # The workflow succeeded and its outputs are all exported out
+                # of the intermediate store, so delete it.
+                shutil.rmtree(intermediate_store, ignore_errors=True)
 
             if runtime_context.research_obj is not None:
                 cwltool.cwlprov.writablebagfile.create_job(

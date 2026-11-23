@@ -356,7 +356,8 @@ def add_base_toil_options(
         env_var="TOIL_RUN_DIR",
         metavar="PATH",
         help="Directory under which to place the job store, work dir, coordination "
-        "dir, and CWL/WDL image caches for this run, unless overridden individually. "
+        "dir, CWL/WDL image caches, and CWL intermediate outputs for this run, "
+        "unless overridden individually. "
         "Toil creates the directory and its subdirectories.",
     )
     core_options.add_argument(
