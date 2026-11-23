@@ -2939,6 +2939,33 @@ def test_bypass_file_store_restart(tmp_path: Path) -> None:
     assert len(leftover_dirs) == 0, f"Expected temp directories to be removed, but found: {leftover_dirs}"
 
 
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_bypass_file_store_run_dir(tmp_path: Path) -> None:
+    """
+    Test that --runDir holds the intermediate outputs when bypassing the file
+    store, as it holds the job store.
+    """
+    run_dir = tmp_path / "rundir"
+    flag = tmp_path / "flag"
+    flag.touch()
+    with get_data("test/cwl/fail_while_file_exists.cwl") as cwl_file:
+        cmd = [
+            "toil-cwl-runner",
+            f"--runDir={run_dir}",
+            "--bypass-file-store",
+            f"--outdir={tmp_path / 'outdir'}",
+            "--retryCount=0",
+            str(cwl_file),
+            f"--flag={flag}",
+        ]
+        assert subprocess.run(cmd).returncode != 0
+
+    # The failed workflow keeps the output of the step that finished.
+    assert [p.read_text() for p in run_dir.rglob("first.txt")] == ["first\n"]
+
+
 # StreamHandler is generic, _typeshed doesn't exist at runtime, do a bit of typing trickery, see https://github.com/python/typeshed/issues/5680
 if TYPE_CHECKING:
     from _typeshed import SupportsWrite

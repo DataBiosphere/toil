@@ -5181,13 +5181,6 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
 
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
-    tmpdir_prefix = options.tmpdir_prefix = (
-        options.tmpdir_prefix or DEFAULT_TMPDIR_PREFIX
-    )
-    tmp_outdir_prefix = options.tmp_outdir_prefix or tmpdir_prefix
-    # tmpdir_prefix and tmp_outdir_prefix must not be checked for existence as they may exist on a worker only path
-    # See https://github.com/DataBiosphere/toil/issues/5310
-
     if options.runDir is not None:
         # Apply the --runDir defaults before we fill in a None jobStore below.
         options.runDir, options.jobStore, options.workDir, options.coordination_dir = (
@@ -5200,6 +5193,17 @@ def main(args: list[str] | None = None, stdout: TextIO = sys.stdout) -> int:
         )
         if options.cachedir is None:
             options.cachedir = os.path.join(options.runDir, "image-cache")
+        if options.tmp_outdir_prefix is None:
+            # Bypassing the file store, intermediate outputs must be on
+            # storage that all nodes share, as the run directory is.
+            options.tmp_outdir_prefix = os.path.join(options.runDir, "intermediate-")
+
+    tmpdir_prefix = options.tmpdir_prefix = (
+        options.tmpdir_prefix or DEFAULT_TMPDIR_PREFIX
+    )
+    tmp_outdir_prefix = options.tmp_outdir_prefix or tmpdir_prefix
+    # tmpdir_prefix and tmp_outdir_prefix must not be checked for existence as they may exist on a worker only path
+    # See https://github.com/DataBiosphere/toil/issues/5310
 
     workdir = options.workDir or tmp_outdir_prefix
 

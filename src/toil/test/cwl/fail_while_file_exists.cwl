@@ -2,7 +2,8 @@ cwlVersion: v1.2
 class: Workflow
 doc: >
   The first step writes a File, and the second step copies it, but fails while
-  a file exists at the path given as flag.
+  a file exists at the path given as flag. The first step is never reused from
+  a --cachedir, so its output is kept with the other intermediate outputs.
 
 inputs:
   - id: flag
@@ -12,6 +13,9 @@ steps:
   first:
     run:
       class: CommandLineTool
+      hints:
+        WorkReuse:
+          enableReuse: false
       inputs: []
       baseCommand: [sh, -c, 'echo first > first.txt']
       outputs:
