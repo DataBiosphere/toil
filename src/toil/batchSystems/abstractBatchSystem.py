@@ -115,6 +115,18 @@ class WorkerCleanupInfo(NamedTuple):
     """
 
 
+class JobEnvironmentVariables(NamedTuple):
+    """
+    Environment variables a batch system sets for each job it runs.
+
+    A variable belongs to the set if its name is in ``names`` or starts with
+    one of ``prefixes``.
+    """
+
+    names: frozenset[str] = frozenset()
+    prefixes: tuple[str, ...] = ()
+
+
 class AbstractBatchSystem(ABC):
     """An abstract base class to represent the interface the batch system must provide to Toil."""
 
@@ -286,6 +298,16 @@ class AbstractBatchSystem(ABC):
         If no value is provided it will be looked up from the current environment.
         """
         raise NotImplementedError()
+
+    @classmethod
+    def job_environment_variables(cls) -> JobEnvironmentVariables:
+        """
+        Get the environment variables this batch system sets for each job.
+
+        A worker keeps its own values for these instead of taking the leader's,
+        in addition to the variables of the grid batch systems Toil ships with.
+        """
+        return JobEnvironmentVariables()
 
     @classmethod
     def add_options(cls, parser: ArgumentParser | _ArgumentGroup) -> None:
