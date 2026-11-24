@@ -13,8 +13,10 @@ from toil.batchSystems.abstractBatchSystem import (
     EXIT_STATUS_UNAVAILABLE_VALUE,
     BatchJobExitReason,
     BatchSystemSupport,
+    InsufficientSystemResources,
 )
 from toil.common import Config
+from toil.job import Requirer
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.worker import WALLTIME_SIGNAL, WALLTIME_EXIT_CODE
 
@@ -291,6 +293,8 @@ def call_sinfo(*_) -> str:
         simple_nodelist gpu:A100:8 1:00 65000 256 996800
         simple_nodelist gpu:A5500:8 1:00 65000 256 1996800
         simple_nodelist (null) 1:00 65000 256+ 1996800+
+        fpga-nodes fpga:2 1-00:00:00 500 64 996800
+        mixed gpu:A100:4(S:0-1),fpga:1 1-00:00:00 500 64 996800
         """
     )
     return stdout
@@ -662,13 +666,37 @@ class SlurmTest(ToilTest):
         with self.assertRaises(Exception):
             ps.get_partition(365 * 24 * 60 * 60)
 
-    def test_PartitionSet_default_gpu_partition(self):
+    def test_PartitionSet_accelerators(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
-        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet(
+            {"fpga": "fpga"}, {"qpu": ["qpus"]}
+        )
 
-        # Make sure we picked the useful-length GPU partition and not the super
-        # short one.
-        self.assertEqual(ps.default_gpu_partition.partition_name, "gpu")
+        # GPUs are found through their GRES. Make sure we picked the
+        # useful-length GPU partition and not the super short one, and not the
+        # one with FPGAs too.
+        self.assertEqual(ps.get_partition(None, frozenset({"gpu"})), "gpu")
+        self.assertEqual(ps.get_partition(60, frozenset({"gpu"})), "gpu")
+        # Other kinds are found through the GRES given for them
+        self.assertEqual(ps.get_partition(60, frozenset({"fpga"})), "fpga-nodes")
+        # A job needing several kinds goes where they all are
+        self.assertEqual(ps.get_partition(60, frozenset({"gpu", "fpga"})), "mixed")
+        # Partitions given for a kind are used even if sinfo doesn't list them
+        self.assertEqual(ps.get_partition(60, frozenset({"qpu"})), "qpus")
+        # The time limit still has to fit
+        with self.assertRaises(RuntimeError):
+            ps.get_partition(8 * 24 * 60 * 60, frozenset({"gpu"}))
+        # And there has to be a partition with every kind
+        with self.assertRaises(RuntimeError):
+            ps.get_partition(60, frozenset({"gpu", "qpu"}))
+        # Jobs without accelerators stay away from partitions with them
+        self.assertEqual(ps.get_partition(6 * 24 * 60 * 60), "long")
+
+        # Partitions given for a kind replace the ones with its GRES
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet(
+            None, {"gpu": ["high_priority"]}
+        )
+        self.assertEqual(ps.get_partition(60, frozenset({"gpu"})), "high_priority")
 
     def test_prepareSbatch_partition(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
@@ -757,6 +785,184 @@ class SlurmTest(ToilTest):
         assert "--partition=medium" in command
         assert "--time=0:36000" in command
 
+    def test_prepareSbatch_accelerators(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet(
+            {"fpga": "fpga"}, {"qpu": ["qpus"]}
+        )
+        self.worker.boss.partitions = ps
+        self.worker.boss.config.slurm_time = 30
+        gpus = [{"kind": "gpu", "count": 2}]
+        fpga = [{"kind": "fpga", "count": 1}]
+        qpu = [{"kind": "qpu", "count": 1}]
+
+        # Jobs go to a partition with their accelerators, and get the GRES
+        # for the kinds that have one
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, gpus)
+        assert "--partition=gpu" in command
+        assert "--gres=gpu:2" in command
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, fpga)
+        assert "--partition=fpga-nodes" in command
+        assert "--gres=fpga:1" in command
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, gpus + fpga)
+        assert "--partition=mixed" in command
+        assert "--gres=gpu:2,fpga:1" in command
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, qpu)
+        assert "--partition=qpus" in command
+        assert not any(arg.startswith("--gres") for arg in command)
+
+        # Even over the configured default partitions
+        self.worker.boss.config.slurm_partition = "foobar"
+        self.worker.boss.config.slurm_pe = "parallel"
+        command = self.worker.prepareSbatch(2, 100, 5, 0, "job5", None, fpga)
+        assert "--partition=fpga-nodes" in command
+
+        # Jobs without accelerators are unaffected
+        command = self.worker.prepareSbatch(2, 100, 5, 0, "job5", None, None)
+        assert "--partition=parallel" in command
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, None)
+        assert "--partition=foobar" in command
+
+        # But the argument overrides win, wherever they send the job
+        self.worker.boss.config.slurm_args = "-p baz"
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, fpga)
+        assert "--partition=baz" in command
+        assert "--gres=fpga:1" in command
+
+    def test_prepareSbatch_accelerator_args(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        parse = toil.batchSystems.slurm.parse_accelerator_args
+        self.worker.boss.config.slurm_accelerator_args = [
+            parse("qpu=--qpu={backend} --comment={{literal}}"),
+            parse("fpga=--constraint=xilinx"),
+            parse("tpu="),
+        ]
+        self.worker.boss.partitions = (
+            toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet(
+                {"fpga": "fpga"}, None, frozenset({"qpu", "fpga", "tpu"})
+            )
+        )
+        self.worker.boss.config.slurm_partition = "foobar"
+        qpu = [{"kind": "qpu", "count": 1, "properties": {"backend": "sim"}}]
+
+        # A kind only the arguments provide is had wherever the job goes
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, qpu)
+        assert "--partition=foobar" in command
+        assert "--qpu=sim" in command and "--comment={literal}" in command
+        assert not any(arg.startswith("--gres") for arg in command)
+        command = self.worker.prepareSbatch(
+            1, 100, 5, 0, "job5", None, [{"kind": "tpu", "count": 1}]
+        )
+        assert "--partition=foobar" in command
+
+        # A kind with a GRES still picks its partition, and gets its arguments too
+        command = self.worker.prepareSbatch(
+            1, 100, 5, 0, "job5", None, [{"kind": "fpga", "count": 1}]
+        )
+        assert "--partition=fpga-nodes" in command
+        assert "--gres=fpga:1" in command and "--constraint=xilinx" in command
+
+        # A property the arguments need but the job doesn't give is refused by name
+        with self.assertRaisesRegex(ValueError, "accelerator property backend"):
+            self.worker.prepareSbatch(
+                1, 100, 5, 0, "job5", None, [{"kind": "qpu", "count": 1}]
+            )
+
+        # Arguments that set what Toil sets or what chooses the partition are refused
+        for arg in ("--partition=qpus", "-t 10", "--gres=qpu:1", "--mem=1G"):
+            with self.subTest(arg=arg), self.assertRaises(ValueError):
+                parse(f"qpu={arg}")
+
+    def test_check_accelerator_args_request(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        boss = FakeBatchSystem()
+        boss.config.slurm_accelerator_args = [
+            toil.batchSystems.slurm.parse_accelerator_args("qpu=--qpu={backend}")
+        ]
+        boss.partitions = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet(
+            None, None, frozenset({"qpu"})
+        )
+
+        def check(accelerators):
+            requirer = Requirer({"accelerators": accelerators})
+            toil.batchSystems.slurm.SlurmBatchSystem._check_accelerator_request(
+                boss, requirer
+            )
+
+        check([{"kind": "qpu", "count": 1, "properties": {"backend": "sim"}}])
+        with self.assertRaisesRegex(
+            InsufficientSystemResources, "accelerator property backend"
+        ):
+            check([{"kind": "qpu", "count": 1}])
+
+    def test_prepareSbatch_partition_args(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        self.worker.boss.partitions = (
+            toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet({"fpga": "fpga"})
+        )
+        self.worker.boss.config.slurm_partition = "foobar"
+        self.worker.boss.config.slurm_partition_args = [
+            toil.batchSystems.slurm.parse_partition_args("foobar=--exclusive --nodes=1")
+        ]
+
+        # Jobs in the partition get its arguments
+        command = self.worker.prepareSbatch(1, 100, 5, 0, "job5", None, None)
+        assert "--partition=foobar" in command
+        assert {"--exclusive", "--nodes=1"} <= set(command)
+
+        # Jobs sent to another partition for their accelerators don't
+        command = self.worker.prepareSbatch(
+            1, 100, 5, 0, "job5", None, [{"kind": "fpga", "count": 1}]
+        )
+        assert "--partition=fpga-nodes" in command
+        assert not {"--exclusive", "--nodes=1"} & set(command)
+
+        # Arguments that set what Toil sets or what chooses the partition are refused
+        for arg in (
+            "--partition=long",
+            "-p long",
+            "--time=10",
+            "--qos=high",
+            "--export=ALL",
+            "--export-file=env",
+            "--mem=10G",
+            "--cpus-per-task=4",
+            "--gres=gpu:1",
+        ):
+            with self.subTest(arg=arg), self.assertRaises(ValueError):
+                toil.batchSystems.slurm.parse_partition_args(f"foobar={arg}")
+
+    def test_check_accelerator_request(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        boss = FakeBatchSystem()
+        boss.partitions = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet(
+            {"fpga": "fpga"}, {"qpu": ["qpus"]}
+        )
+
+        def check(accelerators):
+            requirer = Requirer({"accelerators": accelerators})
+            toil.batchSystems.slurm.SlurmBatchSystem._check_accelerator_request(
+                boss, requirer
+            )
+
+        # Kinds some partition has can be provided
+        check([{"kind": "gpu", "count": 1}])
+        check([{"kind": "fpga", "count": 1}, {"kind": "gpu", "count": 1}])
+        check([{"kind": "qpu", "count": 1}])
+
+        # Kinds no partition has together can't, and the error says how to
+        # give partitions for them
+        with self.assertRaisesRegex(
+            InsufficientSystemResources, "--slurmAcceleratorPartitions"
+        ):
+            check([{"kind": "tpu", "count": 1}])
+        with self.assertRaises(InsufficientSystemResources):
+            check([{"kind": "qpu", "count": 1}, {"kind": "gpu", "count": 1}])
+
+        # Unless the Slurm arguments say where the job goes
+        boss.config.slurm_args = "--partition=tpus"
+        check([{"kind": "tpu", "count": 1}])
+
     def test_prepareSbatch_export(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
         ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
@@ -826,12 +1032,17 @@ class SlurmTest(ToilTest):
         error_raised = CalledProcessErrorStderr(1, 'sinfo')
         with (
             mock.patch("toil.batchSystems.slurm.call_command", side_effect=error_raised),
-            mock.patch("toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet._get_gpu_partitions") as mock_fn
         ):
-            partition_set = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+            partition_set = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet(
+                None, {"qpu": ["qpus"]}
+            )
 
 
         assert partition_set.get_partition(120.0) is None
+        # Partitions given for a kind can still be used
+        assert partition_set.get_partition(120.0, frozenset({"qpu"})) == "qpus"
+        with self.assertRaises(RuntimeError):
+            partition_set.get_partition(120.0, frozenset({"gpu"}))
 
         self.assertIsNone(partition_set.all_partitions)
 

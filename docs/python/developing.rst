@@ -45,6 +45,12 @@ example::
 In the example a class, HelloWorld, is defined. The constructor requests 2
 gigabytes of memory, 2 cores and 3 gigabytes of local disk to complete the work.
 
+A job can also ask for accelerators, such as
+``accelerators=[{"kind": "gpu", "count": 1}]``. Kinds other than ``gpu``, like
+``fpga``, can be asked for too, if the batch system can provide them (see
+:ref:`runningSlurm` for Slurm, and ``--localAccelerators`` for jobs run on the
+local machine).
+
 The :func:`toil.job.Job.run` method is the function the user overrides to get
 work done. Here it just returns a message.
 
