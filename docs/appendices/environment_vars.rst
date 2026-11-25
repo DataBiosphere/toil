@@ -59,6 +59,10 @@ There are several environment variables that affect the way Toil runs.
 | TOIL_JOB_HISTORY                     | Whether to enable per-job history in the Toil       |
 |                                      | history database. Defaults to false.                |
 +--------------------------------------+-----------------------------------------------------+
+| TOIL_CWL_MAX_INPUT_MOUNTS            | Maximum number of mounts a containerized CWL tool   |
+|                                      | can use for its input files. The                    |
+|                                      | ``--cwl-max-input-mounts`` option overrides this.   |
++--------------------------------------+-----------------------------------------------------+
 | TOIL_KUBERNETES_HOST_PATH            | A path on Kubernetes hosts that will be mounted as  |
 |                                      | the Toil work directory in the workers, to allow    |
 |                                      | for shared caching. Will be created if it doesn't   |
