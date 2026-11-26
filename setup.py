@@ -136,8 +136,8 @@ def import_version():
     if not os.path.exists("src/toil/version.py"):
         for req in get_requirements("cwl"):
             # Determine cwltool version from requirements file
-            if req.startswith("cwltool=="):
-                cwltool_version = req[len("cwltool==") :]
+            if req.startswith("cwltool[deps]=="):
+                cwltool_version = req[len("cwltool[deps]==") :]
                 break
         # Use the template to generate src/toil/version.py
 

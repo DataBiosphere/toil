@@ -778,7 +778,7 @@ def resolve_dict_w_promises(
         }
     else:
         first_pass_results = cast(
-            CWLObjectType, {k: v for k, v in dict_w_promises.items()}
+            CWLObjectType, {**dict_w_promises}
         )
 
     result: CWLObjectType = {}
